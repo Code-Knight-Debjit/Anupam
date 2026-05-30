@@ -601,7 +601,8 @@ h1, h2, h3, h4, h5 { font-family: var(--font-display); line-height: 1.15; }
 }
 .about-img-wrap img {
   width: 100%;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
+  transition: border-radius 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
   object-fit: cover;
   aspect-ratio: 4/3;
 }
@@ -833,12 +834,12 @@ h1, h2, h3, h4, h5 { font-family: var(--font-display); line-height: 1.15; }
   background-size: cover, cover, auto;
   background-position: center, center, center;
   border-radius: 1.1rem;
-  border: 1px solid rgba(255, 106, 0, 0.08);
-  box-shadow: 0 14px 34px rgba(27, 27, 31, 0.08), 0 0 0 1px rgba(27, 27, 31, 0.04);
-  overflow: hidden;
-  transition: transform 0.35s cubic-bezier(0.34, 1.2, 0.64, 1), box-shadow 0.35s ease;
-  position: relative;
-  height: 100%;
+  border: 1px solid rgba(255, 106, 0, 0.12);
+  color: #fff;
+  padding: 1.125rem 1.5rem;
+  border-radius: var(--radius-full);
+  transition: border-radius 0.28s cubic-bezier(0.2,0.8,0.2,1), box-shadow 0.28s ease, transform 0.28s ease;
+  box-shadow: 0 28px 64px rgba(27, 27, 31, 0.08);
   min-height: 20rem;
   display: flex;
   flex-direction: column;
@@ -986,6 +987,30 @@ h1, h2, h3, h4, h5 { font-family: var(--font-display); line-height: 1.15; }
 .cat-tab:focus-visible {
   outline: 3px solid rgba(255, 106, 0, 0.25);
   outline-offset: 3px;
+}
+
+/* Category tab images */
+.category-tabs { overflow: visible; }
+.cat-tab { overflow: visible; }
+.cat-tab-img {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  transition: transform 0.28s cubic-bezier(0.2,0.8,0.2,1), box-shadow 0.28s ease;
+  transform-origin: center center;
+}
+.cat-tab:hover .cat-tab-img {
+  transform: scale(1.7);
+  box-shadow: 0 12px 30px rgba(27,27,31,0.18);
+  z-index: 40;
+}
+.cat-tab-name { display: inline-block; }
+
+@media (max-width: 640px) {
+  .cat-tab-img { width: 28px; height: 28px; border-radius: 6px; }
+  .cat-tab:hover .cat-tab-img { transform: scale(1.45); }
 }
 
 @media (max-width: 640px) {
@@ -2321,25 +2346,58 @@ textarea.form-input { min-height: 140px; resize: vertical; }
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
-.about-story-img-frame img {
+.about-story-img-frame > img {
   width: 100%;
   display: block;
   aspect-ratio: 4/3;
   object-fit: cover;
   transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.about-story-img-frame:hover img { transform: scale(1.03); }
+.about-story-img-frame:hover > img { transform: scale(1.03); }
 
 /* Bottom-left badge on the image */
 .about-story-badge {
   position: absolute;
-  bottom: var(--sp-3);
+  top: var(--sp-3);
   left: var(--sp-3);
-  background: var(--gradient-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  background: linear-gradient(180deg, #1a1b20 0%, #111216 100%);
+  border: 1px solid rgba(255, 106, 0, 0.24);
   color: #fff;
-  padding: var(--sp-2) var(--sp-3);
+  padding: 1rem 1.25rem;
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-float);
+}
+.about-story-badge--logo {
+  /* Make badge size responsive to the image width: scales between 8rem and 12rem, prefers 22% of the container */
+  width: clamp(8rem, 22%, 12rem);
+  max-width: 12rem;
+  /* Ensure the text 'Certified Partner' fits without overflowing */
+  min-width: 11rem;
+}
+.about-story-badge-logo {
+  display: block;
+  width: 100%;
+  max-width: 10rem;
+  height: auto;
+  aspect-ratio: auto !important;
+  object-fit: contain;
+}
+
+/* Ensure logo has no unexpected padding on small screens */
+@media (max-width: 900px) {
+  .about-story-badge {
+    top: var(--sp-3);
+    left: var(--sp-3);
+  }
+  .about-story-badge-logo {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 9.5rem; /* slightly smaller on narrow viewports */
+  }
 }
 .about-story-badge-year {
   font-family: var(--font-display);
@@ -2348,12 +2406,15 @@ textarea.form-input { min-height: 140px; resize: vertical; }
   line-height: 1;
 }
 .about-story-badge-text {
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: 0.78rem;
+  font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  opacity: 0.85;
+  color: rgba(255, 255, 255, 0.9);
   margin-top: 2px;
+  text-align: center;
+  /* Keep the badge label on a single line to avoid awkward wrapping */
+  white-space: nowrap;
 }
 
 /* Small floating tile below the image */
@@ -3464,17 +3525,8 @@ iframe {
   }
 
   .about-story-img-frame img {
-    aspect-ratio: 16/9 !important;
-  }
-
-  .about-story-badge {
-    bottom: var(--sp-2) !important;
-    left: var(--sp-2) !important;
-    padding: 0.625rem 1rem !important;
-  }
-
-  .about-story-badge-year {
-    font-size: 1.5rem !important;
+    /* unset forced aspect ratio on small screens to avoid extra bottom padding */
+    aspect-ratio: auto !important;
   }
 
   .about-story-tile {

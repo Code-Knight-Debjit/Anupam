@@ -85,13 +85,20 @@
       <div class="about-story-visual anim-slide-left">
         <div class="about-story-img-frame">
           <img
-            src="images/about-story.jpg"
+            src="{% static 'images/our-story.jpeg' %}"
             alt="Anupam Bearings — industrial heritage"
             loading="lazy"
           />
           <!-- Overlay badge -->
-          <div class="about-story-badge">
-            <div class="about-story-badge-year">Timken</div>
+          <div class="about-story-badge about-story-badge--logo">
+            <img
+              src="{% static 'images/Timken.png' %}"
+              alt="Timken logo"
+              class="about-story-badge-logo"
+              loading="lazy"
+              width="240"
+              height="96"
+            />
             <div class="about-story-badge-text">Certified Partner</div>
           </div>
         </div>
@@ -237,8 +244,8 @@
       
       <div class="about-why-visual anim-slide-right">
         <img
-          src="https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=700&q=80"
-          alt="Industrial bearing application"
+          src="{% static 'images/Why_us.png' %}"
+          alt="Why Anupam Bearings"
           loading="lazy"
         />
         <!-- Floating stat card -->
