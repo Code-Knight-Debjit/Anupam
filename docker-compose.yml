@@ -1,0 +1,151 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Anupam Bearings — Groq Production Stack
+#
+# Services:
+#   web      → Django + Gunicorn (port 8000)
+#   worker   → Celery async worker (RAG pipeline)
+#   beat     → Celery scheduler
+#   redis    → Broker + cache
+#   postgres → Primary database
+#   nginx    → Reverse proxy (port 80)
+#
+# Quick start:
+#   docker compose up -d
+#   docker compose exec web python manage.py migrate
+#   docker compose exec web python manage.py seed_data
+#   docker compose exec web python manage.py createsuperuser
+#   docker compose exec web python manage.py ingest_rag_data --also-seed-products
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-django-env: &django-env
+  env_file: .env
+  environment:
+    DB_ENGINE:   django.db.backends.postgresql
+    DB_NAME:     anupam_bearings_db
+    DB_USER:     postgres
+    DB_PASSWORD: ${DB_PASSWORD:-postgres}
+    DB_HOST:     postgres
+    DB_PORT:     "5432"
+    REDIS_URL:   redis://redis:6379/0
+    DEBUG:       "False"
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+
+  # ── PostgreSQL Database ──────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       anupam_bearings_db
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (Celery broker + RAG query cache) ──────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── Django Web Server ────────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    <<: *django-env
+    command: >
+      gunicorn anupam_bearings.wsgi:application
+        --bind 0.0.0.0:8000
+        --workers 3
+        --worker-class sync
+        --timeout 120
+        --access-logfile -
+        --error-logfile -
+    volumes:
+      - ./static:/app/static
+      - ./media:/app/media
+      - ./data:/app/data          # FAISS index + knowledge base
+      - static_files:/app/staticfiles
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Celery Worker (RAG pipeline + async tasks) ───────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    <<: *django-env
+    command: >
+      celery -A anupam_bearings worker
+        --loglevel=info
+        --concurrency=4
+        --queues=celery
+        --hostname=worker@%h
+    volumes:
+      - ./data:/app/data          # Shared FAISS index
+      - ./media:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Celery Beat Scheduler (optional periodic tasks) ──────────────────────
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    <<: *django-env
+    command: >
+      celery -A anupam_bearings beat
+        --loglevel=info
+        --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Nginx Reverse Proxy ──────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - static_files:/app/staticfiles:ro
+      - ./media:/app/media:ro
+    depends_on:
+      - web
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_files:

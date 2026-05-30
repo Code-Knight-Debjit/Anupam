@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Gallery — Anupam Bearings{% endblock %}
+
+{% block content %}
+
+<!-- ── HERO ── -->
+<section style="background:var(--gradient-hero);padding:9rem 0 4rem;position:relative;overflow:hidden;" aria-label="Gallery hero">
+  <div class="dot-grid"></div>
+  <div class="container" style="position:relative;z-index:1;">
+    <p class="section-label anim-fade-up" style="color:rgba(255,255,255,0.5);">Visual Showcase</p>
+    <h1 class="display-lg anim-fade-up" style="color:#fff;margin-top:0.5rem;">
+      Industrial <span class="gradient-text">Gallery</span>
+    </h1>
+    <p class="body-lg anim-fade-up" style="color:rgba(255,255,255,0.55);max-width:480px;margin-top:1.5rem;">
+      A glimpse into the world of precision bearing manufacturing, installation, and industrial application.
+    </p>
+  </div>
+</section>
+
+
+<!-- ── GALLERY ── -->
+{% if gallery_images %}
+<section class="section-pad surface-base">
+  <div class="container">
+
+    <div class="category-tabs anim-fade-up" style="margin-bottom:var(--sp-6);">
+      <button class="cat-tab active" onclick="filterGallery(event, 'all')">All</button>
+      {% for category in gallery_categories %}
+      <button class="cat-tab" onclick="filterGallery(event, '{{ category|slugify }}')">{{ category }}</button>
+      {% endfor %}
+    </div>
+
+    <div class="gallery-grid" id="gallery-grid">
+      {% for image in gallery_images %}
+      <div class="gallery-item anim-fade-up" data-category="{{ image.category|slugify }}">
+        {% if image.image %}
+        <img src="{{ image.image.url }}" alt="{{ image.title }}" loading="lazy" />
+        {% else %}
+        <!-- Image missing for this GalleryImage; skip rendering or show placeholder -->
+        {% endif %}
+        <div class="gallery-overlay">
+          <span class="label-sm" style="color:#fff;">{{ image.caption|default:image.title }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="section-pad surface-base" {% if gallery_images %}style="display:none;"{% endif %}>
+  <div class="container">
+
+    <!-- Filter tabs -->
+    <div class="category-tabs anim-fade-up" style="margin-bottom:var(--sp-6);">
+      <button class="cat-tab active" onclick="filterGallery(event, 'all')">All</button>
+      <button class="cat-tab" onclick="filterGallery(event, 'bearings')">Bearings</button>
+      <button class="cat-tab" onclick="filterGallery(event, 'facility')">Facility</button>
+      <button class="cat-tab" onclick="filterGallery(event, 'application')">Applications</button>
+      <button class="cat-tab" onclick="filterGallery(event, 'team')">Team</button>
+    </div>
+
+    <div class="gallery-grid" id="gallery-grid">
+
+      <!-- Bearings -->
+      <div class="gallery-item anim-fade-up" data-category="bearings">
+        <img src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600&q=80" alt="Industrial bearings" loading="lazy" />
+        <div class="gallery-overlay">
+          <span class="label-sm" style="color:#fff;">Tapered Roller Bearings</span>
+        </div>
+      </div>
+
+      <div class="gallery-item anim-fade-up" data-category="facility">
+        <img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=600&q=80" alt="Manufacturing facility" loading="lazy" />
+        <div class="gallery-overlay">
+          <span class="label-sm" style="color:#fff;">Warehouse Facility</span>
+        </div>
+      </div>
+
+      <div class="gallery-item anim-fade-up" data-category="bearings">
+        <img src="https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=600&q=80" alt="Precision engineering" loading="lazy" />
+        <div class="gallery-overlay">
+          <span class="label-sm" style="color:#fff;">Precision Engineering</span>
+        </div>
+      </div>
+
+      <div class="gallery-item anim-fade-up" data-category="application">
+        <img src="https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=600&q=80" alt="Industrial machinery" loading="lazy" />
+        <div class="gallery-overlay">
+          <span class="label-sm" style="color:#fff;">Industrial Machinery</span>
+        </div>
+      </div>
+
+      <div class="gallery-item anim-fade-up" data-category="bearings">
+        <img src="https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&q=80" alt="Precision components" loading="lazy" />
+        <div class="gallery-overlay">
+          <span class="label-sm" style="color:#fff;">Precision Components</span>
+        </div>
+      </div>
+
+      <div class="gallery-item anim-fade-up" data-category="facility">
+        <img src="https://images.unsplash.com/photo-1487611459768-bd414656ea10?w=600&q=80" alt="Industrial facility" loading="lazy" />
+        <div class="gallery-overlay">
+          <span class="label-sm" style="color:#fff;">Bengaluru Facility</span>
+        </div>
+      </div>
+
+      <div class="gallery-item anim-fade-up" data-category="application">
+        <img src="https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=600&q=80" alt="Power transmission" loading="lazy" />
+        <div class="gallery-overlay">
+          <span class="label-sm" style="color:#fff;">Power Transmission</span>
+        </div>
+      </div>
+
+      <div class="gallery-item anim-fade-up" data-category="team">
+        <img src="https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=600&q=80" alt="Engineering team" loading="lazy" />
+        <div class="gallery-overlay">
+          <span class="label-sm" style="color:#fff;">Our Team</span>
+        </div>
+      </div>
+
+      <div class="gallery-item anim-fade-up" data-category="bearings">
+        <img src="https://images.unsplash.com/photo-1531482615713-2afd69097998?w=600&q=80" alt="Ball bearings close up" loading="lazy" />
+        <div class="gallery-overlay">
+          <span class="label-sm" style="color:#fff;">Ball Bearing Detail</span>
+        </div>
+      </div>
+
+      <div class="gallery-item anim-fade-up" data-category="application">
+        <img src="https://images.unsplash.com/photo-1509390874189-a8ada6ed9b34?w=600&q=80" alt="Heavy equipment" loading="lazy" />
+        <div class="gallery-overlay">
+          <span class="label-sm" style="color:#fff;">Heavy Equipment</span>
+        </div>
+      </div>
+
+      <div class="gallery-item anim-fade-up" data-category="facility">
+        <img src="https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=600&q=80" alt="Storage and logistics" loading="lazy" />
+        <div class="gallery-overlay">
+          <span class="label-sm" style="color:#fff;">Chennai Office</span>
+        </div>
+      </div>
+
+      <div class="gallery-item anim-fade-up" data-category="team">
+        <img src="https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=600&q=80" alt="Technical team" loading="lazy" />
+        <div class="gallery-overlay">
+          <span class="label-sm" style="color:#fff;">Technical Experts</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function filterGallery(ev, cat) {
+  document.querySelectorAll('.cat-tab').forEach(t => t.classList.remove('active'));
+  ev.target.classList.add('active');
+  const items = document.querySelectorAll('.gallery-item');
+  items.forEach((item, i) => {
+    const show = cat === 'all' || item.dataset.category === cat;
+    item.style.display = show ? 'block' : 'none';
+    if (show && typeof gsap !== 'undefined') {
+      gsap.fromTo(item, { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1, duration: 0.45, delay: i * 0.04, ease: 'power3.out' });
+    }
+  });
+}
+</script>
+{% endblock %}

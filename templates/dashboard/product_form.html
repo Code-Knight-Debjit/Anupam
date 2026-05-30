@@ -1,0 +1,236 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{% if product %}Edit{% else %}Add{% endif %} Product{% endblock %}
+{% block page_title %}{% if product %}Edit Product{% else %}Add Product{% endif %}{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ <a href="{% url 'dashboard:products' %}" style="color:var(--muted);text-decoration:none;">Products</a> / {% if product %}Edit{% else %}New{% endif %}</span>{% endblock %}
+{% block nav_prods %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>{% if product %}Edit "{{ product.name }}"{% else %}Add New Product{% endif %}</h1>
+    <p>{% if product %}Update product details and specifications{% else %}Add a new product to the catalogue{% endif %}</p>
+  </div>
+  <a href="{% url 'dashboard:products' %}" class="btn btn-ghost">← Back to Products</a>
+</div>
+
+<form method="POST" enctype="multipart/form-data">
+  {% csrf_token %}
+  <div style="display:grid;grid-template-columns:1fr 340px;gap:1.5rem;align-items:start;">
+
+    <!-- Left Column -->
+    <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+      <!-- Basic Info -->
+      <div class="card card-pad">
+        <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1.25rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">Basic Information</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Product Name *</label>
+            <input class="form-input" type="text" name="name" required value="{{ product.name|default:'' }}" placeholder="e.g. Tapered Roller Bearing"/>
+          </div>
+          <div class="form-group">
+            <label>Category *</label>
+            <select class="form-input" name="category" required>
+              <option value="">Select a category…</option>
+              {% for cat in categories %}
+              <option value="{{ cat.pk }}" {% if product and product.category_id == cat.pk %}selected{% endif %}>
+                {{ cat.icon }} {{ cat.name }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <textarea class="form-input" name="description" placeholder="Describe the product, its features, and use cases…" style="min-height:120px;">{{ product.description|default:'' }}</textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Specifications -->
+      <div class="card card-pad">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">
+          <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;">Technical Specifications</h3>
+          <button type="button" onclick="addSpecRow()" class="btn btn-ghost btn-sm">+ Add Spec</button>
+        </div>
+        <div id="spec-rows">
+          {% if product and product.specifications %}
+            {% for key, value in product.specifications.items %}
+            <div class="spec-row">
+              <input class="form-input" type="text" name="spec_key" value="{{ key }}" placeholder="e.g. Bore Diameter"/>
+              <input class="form-input" type="text" name="spec_value" value="{{ value }}" placeholder="e.g. 25mm"/>
+              <button type="button" onclick="this.closest('.spec-row').remove()" class="btn btn-danger btn-icon btn-sm">✕</button>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="spec-row">
+              <input class="form-input" type="text" name="spec_key" placeholder="e.g. Bore Diameter"/>
+              <input class="form-input" type="text" name="spec_value" placeholder="e.g. 25mm"/>
+              <button type="button" onclick="this.closest('.spec-row').remove()" class="btn btn-danger btn-icon btn-sm">✕</button>
+            </div>
+          {% endif %}
+        </div>
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:0.75rem;">Add technical specs like bore diameter, OD, width, load capacity, speed rating, etc.</p>
+      </div>
+    </div>
+
+    <!-- Right Column -->
+    <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+      <!-- Publish -->
+      <div class="card card-pad">
+        <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1.25rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">Publish</h3>
+        <label class="form-check" style="margin-bottom:1.5rem;">
+          <input type="checkbox" name="is_featured" {% if product and product.is_featured %}checked{% endif %}/>
+          <div>
+            <div class="form-check-label">⭐ Featured Product</div>
+            <div style="font-size:0.75rem;color:var(--muted);">Show on homepage featured section</div>
+          </div>
+        </label>
+
+        <label class="form-check" style="margin-bottom:1rem;align-items:flex-start;">
+          <input type="checkbox" name="needs_excel_table" id="needs-excel-table" {% if product and product.needs_excel_table %}checked{% endif %} style="margin-top:0.2rem;"/>
+          <div>
+            <div class="form-check-label">Needs Excel Table</div>
+            <div style="font-size:0.75rem;color:var(--muted);">Enable this for products that need a dynamic table upload.</div>
+          </div>
+        </label>
+
+        <div id="excel-table-panel" style="display:{% if product %}{% if product.needs_excel_table or product.excel_table_file %}block{% else %}none{% endif %}{% else %}none{% endif %};margin-bottom:1.25rem;padding:1rem;border:1px solid var(--border);border-radius:8px;background:var(--surface-container-low);">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:0.75rem;">
+            <div>
+              <div style="font-size:0.78rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--secondary);margin-bottom:0.2rem;">Excel Upload</div>
+              <div style="font-size:0.78rem;color:var(--muted);">Upload a single .xlsx file to populate the public specification table.</div>
+            </div>
+            {% if product and product.excel_table_file %}
+            <div style="font-size:0.72rem;color:var(--primary-container);font-weight:700;white-space:nowrap;">Current file attached</div>
+            {% endif %}
+          </div>
+          <div style="border:2px dashed var(--border);border-radius:8px;padding:1.1rem;text-align:center;cursor:pointer;transition:border-color 0.2s;" onclick="document.getElementById('excel-upload').click()" id="excel-drop-zone">
+            <div style="font-size:1.8rem;margin-bottom:0.35rem;">📄</div>
+            <div style="font-size:0.83rem;font-weight:600;color:var(--on);">Click to upload Excel table</div>
+            <div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem;">Only .xlsx files are supported</div>
+            <p id="excel-name" style="font-size:0.75rem;color:var(--orange);margin-top:0.45rem;"></p>
+          </div>
+          <input type="file" id="excel-upload" name="excel_table_file" accept=".xlsx" style="display:none;" onchange="document.getElementById('excel-name').textContent = this.files[0]?.name || ''"/>
+        </div>
+
+        {% if excel_error %}
+        <p style="font-size:0.78rem;color:#dc2626;margin:-0.5rem 0 1rem;">{{ excel_error }}</p>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.875rem;">
+          {% if product %}Save Changes{% else %}Add Product{% endif %}
+        </button>
+        {% if product %}
+        <a href="{% url 'dashboard:products' %}" class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:0.5rem;">Cancel</a>
+        {% endif %}
+      </div>
+
+      <!-- Image -->
+      <div class="card card-pad">
+        <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1.25rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">Product Image</h3>
+        {% if product and product.image %}
+        <div style="margin-bottom:1rem;border-radius:8px;overflow:hidden;border:1px solid var(--border);">
+          <img src="{{ product.image.url }}" alt="Current image" style="width:100%;display:block;max-height:200px;object-fit:cover;"/>
+        </div>
+        <p style="font-size:0.75rem;color:var(--muted);margin-bottom:0.75rem;">Upload a new image to replace the current one.</p>
+        {% endif %}
+        <div style="border:2px dashed var(--border);border-radius:8px;padding:1.5rem;text-align:center;cursor:pointer;transition:border-color 0.2s;"
+             onclick="document.getElementById('img-upload').click()"
+             id="drop-zone">
+          <div style="font-size:2rem;margin-bottom:0.5rem;">🖼</div>
+          <div style="font-size:0.83rem;font-weight:600;color:var(--on);">Click to upload image</div>
+          <div style="font-size:0.75rem;color:var(--muted);margin-top:0.25rem;">PNG, JPG, WEBP up to 5MB</div>
+          <p id="img-name" style="font-size:0.75rem;color:var(--orange);margin-top:0.5rem;"></p>
+        </div>
+        <input type="file" id="img-upload" name="image" accept="image/*" style="display:none;" onchange="document.getElementById('img-name').textContent = this.files[0]?.name || ''"/>
+      </div>
+
+      <div class="card card-pad">
+        <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">Additional Images</h3>
+        <div style="border:2px dashed var(--border);border-radius:8px;padding:1.25rem;text-align:center;cursor:pointer;transition:border-color 0.2s;"
+             onclick="document.getElementById('gallery-upload').click()"
+             id="gallery-drop-zone">
+          <div style="font-size:1.8rem;margin-bottom:0.4rem;">📚</div>
+          <div style="font-size:0.83rem;font-weight:600;color:var(--on);">Click to upload multiple images</div>
+          <div style="font-size:0.75rem;color:var(--muted);margin-top:0.25rem;">Select several files to build the slideshow on the product page.</div>
+          <p id="gallery-name" style="font-size:0.75rem;color:var(--orange);margin-top:0.5rem;"></p>
+        </div>
+        <input type="file" id="gallery-upload" name="gallery_images" accept="image/*" multiple style="display:none;" onchange="document.getElementById('gallery-name').textContent = this.files.length ? this.files.length + ' file(s) selected' : ''"/>
+
+        {% if product and product.images.all %}
+        <div style="margin-top:1rem;display:grid;gap:0.75rem;">
+          {% for img in product.images.all %}
+          <div id="product-image-{{ img.pk }}" style="display:grid;grid-template-columns:72px 1fr auto;gap:0.75rem;align-items:center;padding:0.75rem;border:1px solid var(--border);border-radius:8px;">
+            <img src="{{ img.image.url }}" alt="{{ img.caption|default:product.name }}" style="width:72px;height:56px;object-fit:cover;border-radius:6px;"/>
+            <div>
+              <div style="font-size:0.83rem;font-weight:600;">Image {{ forloop.counter }}</div>
+              <div style="font-size:0.72rem;color:var(--muted);">{% if img.caption %}{{ img.caption }}{% else %}Gallery image{% endif %}</div>
+            </div>
+            <button type="button" class="btn btn-danger btn-sm" onclick="deleteProductImage({{ img.pk }}, this)">Delete</button>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function addSpecRow() {
+  const container = document.getElementById('spec-rows');
+  const div = document.createElement('div');
+  div.className = 'spec-row';
+  div.innerHTML = `
+    <input class="form-input" type="text" name="spec_key" placeholder="e.g. Load Capacity"/>
+    <input class="form-input" type="text" name="spec_value" placeholder="e.g. 12kN"/>
+    <button type="button" onclick="this.closest('.spec-row').remove()" class="btn btn-danger btn-icon btn-sm">✕</button>
+  `;
+  container.appendChild(div);
+  div.querySelector('input').focus();
+}
+
+const excelToggle = document.getElementById('needs-excel-table');
+const excelPanel = document.getElementById('excel-table-panel');
+if (excelToggle && excelPanel) {
+  const syncExcelPanel = () => {
+    excelPanel.style.display = excelToggle.checked ? 'block' : 'none';
+  };
+  excelToggle.addEventListener('change', syncExcelPanel);
+  syncExcelPanel();
+}
+
+// Drag & drop
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = 'var(--orange)'; });
+dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = 'var(--border)'; });
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    document.getElementById('img-upload').files = dt.files;
+    document.getElementById('img-name').textContent = file.name;
+  }
+});
+
+async function deleteProductImage(imageId, button) {
+  if (!confirm('Delete this product image?')) return;
+  const response = await fetch(`{% url 'dashboard:product_image_delete' 0 %}`.replace('/0/', `/${imageId}/`), {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCsrf() },
+  });
+  const data = await response.json();
+  if (data.success) {
+    const row = document.getElementById(`product-image-${imageId}`);
+    if (row) row.remove();
+    showToast('Product image deleted', 'success');
+  }
+}
+</script>
+{% endblock %}

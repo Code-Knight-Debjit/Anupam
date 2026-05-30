@@ -1,0 +1,56 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Chat Sessions{% endblock %}
+{% block page_title %}Chat Sessions{% endblock %}
+{% block nav_chats %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>AI Chat Sessions</h1>
+    <p>All conversations with Anupam Assistant</p>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Session ID</th>
+        <th>Messages</th>
+        <th>Last Activity</th>
+        <th style="text-align:right;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for session in sessions %}
+      <tr id="chat-row-{{ session.session_id }}">
+        <td>
+          <div class="prod-td">
+            <div style="width:38px;height:38px;border-radius:50%;background:rgba(168,85,247,0.12);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;">💬</div>
+            <div>
+              <div class="td-name" style="font-size:0.83rem;font-family:monospace;">{{ session.session_id|truncatechars:20 }}</div>
+              <div class="td-sub">Anonymous visitor</div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <span class="pill" style="background:rgba(168,85,247,0.1);color:#7c3aed;">
+            {{ session.count }} message{{ session.count|pluralize }}
+          </span>
+        </td>
+        <td style="color:var(--muted);font-size:0.8rem;">{{ session.latest|timesince }} ago</td>
+        <td style="text-align:right;">
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.4rem;">
+            <a href="{% url 'dashboard:chat_detail' session.session_id %}" class="btn btn-ghost btn-sm">View Transcript</a>
+            <button class="btn btn-danger btn-sm btn-icon" title="Delete session"
+              onclick="confirmDelete('{% url 'dashboard:chat_delete' session.session_id %}', 'Session {{ session.session_id|truncatechars:12|escapejs }}', () => document.getElementById('chat-row-{{ session.session_id }}').remove())">🗑</button>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4"><div class="empty-state"><div class="empty-state-icon">🤖</div><h3>No chat sessions yet</h3><p>When visitors use the Anupam Assistant chatbot, their conversations will appear here.</p></div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,92 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Messages{% endblock %}
+{% block page_title %}Contact Messages{% endblock %}
+{% block nav_msgs %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>Contact Messages</h1>
+    <p>{{ messages|length }} message{{ messages|length|pluralize }}</p>
+  </div>
+  <button class="btn btn-ghost" onclick="markAllRead()">✓ Mark All as Read</button>
+</div>
+
+<!-- Filters -->
+<div class="filter-bar">
+  <a href="{% url 'dashboard:messages' %}" class="btn {% if not read_filter %}btn-primary{% else %}btn-ghost{% endif %} btn-sm">All</a>
+  <a href="?read=unread" class="btn {% if read_filter == 'unread' %}btn-primary{% else %}btn-ghost{% endif %} btn-sm">🔴 Unread</a>
+  <a href="?read=read"   class="btn {% if read_filter == 'read' %}btn-primary{% else %}btn-ghost{% endif %} btn-sm">✓ Read</a>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:0.75rem;">
+  {% for msg in messages %}
+  <div class="card" id="msg-card-{{ msg.pk }}" style="{% if not msg.is_read %}border-left:3px solid var(--orange);{% endif %}">
+    <div style="padding:1.25rem 1.5rem;display:flex;gap:1rem;align-items:flex-start;">
+      <div style="width:44px;height:44px;border-radius:50%;background:{% if not msg.is_read %}rgba(255,106,0,0.15){% else %}var(--surface){% endif %};display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">
+        {% if not msg.is_read %}📬{% else %}📭{% endif %}
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+          <div>
+            <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+              <span class="td-name">{{ msg.name }}</span>
+              {% if not msg.is_read %}<span class="pill pill-unread">New</span>{% endif %}
+            </div>
+            <div class="td-sub" style="margin-top:2px;">
+              <a href="mailto:{{ msg.email }}" style="color:var(--muted);text-decoration:none;">{{ msg.email }}</a>
+              {% if msg.phone %} · <a href="tel:{{ msg.phone }}" style="color:var(--muted);text-decoration:none;">{{ msg.phone }}</a>{% endif %}
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem;flex-shrink:0;">
+            <span style="font-size:0.75rem;color:var(--muted);">{{ msg.created_at|date:"d M Y, H:i" }}</span>
+            {% if not msg.is_read %}
+            <button class="btn btn-ghost btn-sm" onclick="markRead({{ msg.pk }})">✓ Mark Read</button>
+            {% endif %}
+            <a href="mailto:{{ msg.email }}?subject=Re: {{ msg.subject }}" class="btn btn-ghost btn-sm btn-icon" title="Reply">✉</a>
+            <button class="btn btn-danger btn-sm btn-icon"
+              onclick="confirmDelete('{% url 'dashboard:message_delete' msg.pk %}', '{{ msg.name|escapejs }}', () => document.getElementById('msg-card-{{ msg.pk }}').remove())">🗑</button>
+          </div>
+        </div>
+
+        <div style="margin-top:0.875rem;padding:1rem;background:var(--surface);border-radius:8px;">
+          <div style="font-size:0.78rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin-bottom:0.4rem;">{{ msg.subject }}</div>
+          <p style="font-size:0.875rem;line-height:1.65;color:var(--on);">{{ msg.message }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="card">
+    <div class="empty-state"><div class="empty-state-icon">📭</div><h3>No messages</h3><p>Contact form submissions will appear here.</p></div>
+  </div>
+  {% endfor %}
+</div>
+{% if page_obj %}{% include "includes/pagination.html" %}{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function markRead(pk) {
+  const res = await fetch(`/dashboard/messages/${pk}/read/`, {
+    method: 'POST', headers: { 'X-CSRFToken': getCsrf() }
+  });
+  const d = await res.json();
+  if (d.success) {
+    const card = document.getElementById(`msg-card-${pk}`);
+    card.style.borderLeft = '';
+    card.querySelector('.pill-unread')?.remove();
+    card.querySelectorAll('button').forEach(b => { if (b.textContent.includes('Mark Read')) b.remove(); });
+    showToast('Marked as read', 'success');
+    fetchNotifications();
+  }
+}
+async function markAllRead() {
+  const res = await fetch('{% url "dashboard:message_mark_all_read" %}', {
+    method: 'POST', headers: { 'X-CSRFToken': getCsrf() }
+  });
+  const d = await res.json();
+  if (d.success) { showToast('All messages marked as read', 'success'); setTimeout(() => location.reload(), 1200); }
+}
+</script>
+{% endblock %}

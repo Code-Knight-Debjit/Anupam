@@ -1,0 +1,58 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Industries{% endblock %}
+{% block page_title %}Industries We Serve{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ Content</span>{% endblock %}
+{% block nav_industries %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>Industries We Serve</h1>
+    <p>{{ industries|length }} card{{ industries|length|pluralize }} available on the public site</p>
+  </div>
+  <a href="{% url 'dashboard:industry_add' %}" class="btn btn-primary">+ Add Industry</a>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Industry</th>
+        <th>Order</th>
+        <th>Status</th>
+        <th style="text-align:right;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for industry in industries %}
+      <tr id="industry-row-{{ industry.pk }}">
+        <td>
+          <div class="prod-td">
+            <div class="prod-thumb">
+              {% if industry.image %}<img src="{{ industry.image.url }}" alt="{{ industry.title }}"/>
+              {% else %}🏭{% endif %}
+            </div>
+            <div>
+              <div class="td-name">{{ industry.title }}</div>
+              <div class="td-sub">{{ industry.description|truncatechars:70 }}</div>
+            </div>
+          </div>
+        </td>
+        <td style="color:var(--muted);font-size:0.875rem;">{{ industry.order }}</td>
+        <td>
+          <span class="pill {% if industry.is_active %}pill-resolved{% else %}pill-read{% endif %}">{{ industry.is_active|yesno:"Active,Hidden" }}</span>
+        </td>
+        <td style="text-align:right;">
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.4rem;">
+            <a href="{% url 'dashboard:industry_edit' industry.pk %}" class="btn btn-ghost btn-sm btn-icon" title="Edit">✏️</a>
+            <button class="btn btn-danger btn-sm btn-icon" title="Delete" onclick="confirmDelete('{% url 'dashboard:industry_delete' industry.pk %}', '{{ industry.title|escapejs }}', () => document.getElementById('industry-row-{{ industry.pk }}').remove())">🗑</button>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4"><div class="empty-state"><div class="empty-state-icon">🏭</div><h3>No industries yet</h3><p><a href="{% url 'dashboard:industry_add' %}">Add your first industry card</a></p></div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

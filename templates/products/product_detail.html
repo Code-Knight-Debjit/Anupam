@@ -1,0 +1,406 @@
+{% extends "base.html" %}
+{% load static product_table %}
+
+{% block title %}{{ product.name }} — Anupam Bearings{% endblock %}
+{% block meta_desc %}{{ product.description|truncatewords:30 }} — Anupam Bearings, certified Timken partner.{% endblock %}
+{% block extra_head %}
+{% if excel_table_enabled %}
+<link rel="stylesheet" href="{% static 'css/product-table.css' %}"/>
+{% endif %}
+<style>
+  /*
+   * Sticky table header offset fix.
+   * This page has: navbar (80px) + breadcrumb bar (~44px) = 124px total.
+   * The CSS variable --table-header-top tells the sticky <thead> where to stop.
+   */
+  :root {
+    --table-header-top: 124px;
+  }
+  @media (max-width: 900px) {
+    :root { --table-header-top: 112px; }
+  }
+  @media (max-width: 640px) {
+    :root { --table-header-top: 104px; }
+  }
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org/",
+  "@type": "Product",
+  "name": "{{ product.name|escapejs }}",
+  "description": "{{ product.description|truncatechars:300|escapejs }}",
+  "sku": "{{ product.slug }}",
+  "brand": { "@type": "Organization", "name": "Anupam Bearings" },
+  "image": [
+    {% for image in product_images %}
+      "{{ request.scheme }}://{{ request.get_host }}{{ image.image.url }}"{% if not forloop.last %},{% endif %}
+    {% endfor %}
+  ],
+  "offers": {
+    "@type": "Offer",
+    "url": "{{ request.scheme }}://{{ request.get_host }}{{ request.path }}",
+    "availability": "https://schema.org/InStock"
+  }
+}
+</script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": "{{ request.scheme }}://{{ request.get_host }}{% url 'core:home' %}" },
+    { "@type": "ListItem", "position": 2, "name": "Products", "item": "{{ request.scheme }}://{{ request.get_host }}{% url 'products:list' %}" },
+    { "@type": "ListItem", "position": 3, "name": "{{ product.category.name }}", "item": "{{ request.scheme }}://{{ request.get_host }}{% url 'products:list' % }}?category={{ product.category.slug }}" },
+    { "@type": "ListItem", "position": 4, "name": "{{ product.name }}", "item": "{{ request.scheme }}://{{ request.get_host }}{{ request.path }}" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── BREADCRUMB ── -->
+<div style="background:var(--surface-container-low);padding:1rem 0;border-bottom:1px solid rgba(226,191,176,0.08);margin-top:80px;">
+  <div class="container" style="display:flex;align-items:center;gap:.5rem;font-size:.82rem;color:var(--secondary);">
+    <a href="{% url 'core:home' %}"     style="color:var(--secondary);text-decoration:none;">Home</a>
+    <span>›</span>
+    <a href="{% url 'products:list' %}" style="color:var(--secondary);text-decoration:none;">Products</a>
+    <span>›</span>
+    <a href="{% url 'products:list' %}?category={{ product.category.slug }}" style="color:var(--secondary);text-decoration:none;">{{ product.category.name }}</a>
+    <span>›</span>
+    <span style="color:var(--on-surface);font-weight:600;">{{ product.name }}</span>
+  </div>
+</div>
+
+<!-- ── PRODUCT HERO ── -->
+<section class="section-pad surface-base">
+  <div class="container">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-8);align-items:start;">
+
+      <!-- Image -->
+      <div class="anim-slide-left" style="position:relative;">
+        <div style="display:grid;grid-template-columns:100px minmax(0,1fr);gap:1rem;align-items:start;">
+          <div style="display:flex;flex-direction:column;gap:0.75rem;max-height:540px;overflow:auto;padding-right:0.15rem;">
+            {% if product_images %}
+              {% for image in product_images %}
+              <button type="button" class="product-thumb-button{% if forloop.first %} active{% endif %}" data-product-thumb="{{ forloop.counter0 }}" style="border:none;background:none;padding:0;cursor:pointer;">
+                <img src="{{ image.image.url }}" alt="{{ image.caption|default:product.name }}" loading="lazy" width="160" height="160" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:var(--radius-sm);display:block;opacity:{% if forloop.first %}1{% else %}.65{% endif %};border:2px solid {% if forloop.first %}var(--primary-container){% else %}transparent{% endif %};"/>
+              </button>
+              {% endfor %}
+            {% elif product.image %}
+              <button type="button" class="product-thumb-button active" data-product-thumb="0" style="border:none;background:none;padding:0;cursor:pointer;">
+                <img src="{{ product.image.url }}" alt="{{ product.name }}" width="160" height="160" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:var(--radius-sm);display:block;border:2px solid var(--primary-container);"/>
+              </button>
+            {% endif %}
+          </div>
+
+          <div style="background:var(--gradient-dark);border-radius:var(--radius-sm);aspect-ratio:4/3;overflow:hidden;position:relative;">
+            {% if product_images %}
+              {% for image in product_images %}
+              <figure class="product-main-slide{% if forloop.first %} active{% endif %}" data-product-slide="{{ forloop.counter0 }}" style="position:absolute;inset:0;margin:0;opacity:{% if forloop.first %}1{% else %}0{% endif %};transition:opacity .35s ease;">
+                <img src="{{ image.image.url }}" alt="{{ image.caption|default:product.name }}" loading="{% if forloop.first %}eager{% else %}lazy{% endif %}" decoding="async" width="800" height="800" style="width:100%;height:100%;object-fit:cover;"/>
+              </figure>
+              {% endfor %}
+            {% elif product.image %}
+            <figure class="product-main-slide active" data-product-slide="0" style="position:absolute;inset:0;margin:0;opacity:1;">
+              <img src="{{ product.image.url }}" alt="{{ product.name }}" width="800" height="800" style="width:100%;height:100%;object-fit:cover;"/>
+            </figure>
+            {% else %}
+            <div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;">
+              <div style="font-size:8rem;opacity:.35;">{{ product.category.icon }}</div>
+            </div>
+            {% endif %}
+
+            <div style="position:absolute;top:1rem;left:1rem;background:var(--gradient-primary);color:#fff;padding:.35rem .875rem;border-radius:var(--radius-full);font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;z-index:2;">
+              {{ product.category.name }}
+            </div>
+            {% if product.is_featured %}
+            <div style="position:absolute;top:1rem;right:1rem;background:rgba(255,200,0,.15);border:1px solid rgba(255,200,0,.3);color:#f5c518;padding:.3rem .75rem;border-radius:var(--radius-full);font-size:.7rem;font-weight:700;z-index:2;">
+              ⭐ Featured
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Info -->
+      <div class="anim-slide-right">
+        <p class="section-label">{{ product.category.name }}</p>
+        <h1 style="font-family:var(--font-display);font-size:2.25rem;font-weight:700;letter-spacing:-.02em;margin:.5rem 0 1.25rem;">
+          {{ product.name }}
+        </h1>
+        <p class="body-lg" style="color:var(--secondary);margin-bottom:2rem;">{{ product.description }}</p>
+
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:2.5rem;">
+          <button class="btn-primary"
+                  data-enquire="{{ product.id }}"
+                  data-name="{{ product.name }}"
+                  style="font-size:1rem;padding:1rem 2rem;">
+            📋 Enquire Now
+          </button>
+          <a href="tel:+919884400741" class="btn-ghost" style="font-size:1rem;padding:1rem 2rem;">
+            📞 Call Us
+          </a>
+        </div>
+
+        <!-- Quick contact info -->
+        <div style="background:var(--surface-container-low);border-radius:var(--radius-sm);padding:var(--sp-3);">
+          <div class="label-sm" style="color:var(--secondary);margin-bottom:.75rem;">Get a Quote</div>
+          <div style="display:flex;flex-direction:column;gap:.5rem;font-size:.85rem;">
+            <a href="mailto:sales@anupambearings.com" style="color:var(--primary-container);text-decoration:none;">✉ sales@anupambearings.com</a>
+            <a href="tel:+919884400741"  style="color:var(--on-surface);text-decoration:none;">📞 +91-98844-00741 (Bengaluru)</a>
+            <a href="tel:04446912265"    style="color:var(--on-surface);text-decoration:none;">📞 044-4691-2265 (Chennai)</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── SPECS ── -->
+{% if product.specifications %}
+<section class="section-pad surface-low">
+  <div class="container">
+    <p class="section-label anim-fade-up">Technical Specifications</p>
+    <h2 class="headline-md anim-fade-up" style="margin-bottom:2rem;">
+      Product <span class="gradient-text">Details</span>
+    </h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;" class="anim-stagger-group">
+      {% for key, value in product.specifications.items %}
+      <div class="anim-stagger-child anim-fade-up" style="background:var(--surface-container-highest);border-radius:var(--radius-sm);padding:var(--sp-3);">
+        <div class="label-sm" style="color:var(--secondary);margin-bottom:.3rem;">{{ key }}</div>
+        <div style="font-family:var(--font-display);font-size:1.05rem;font-weight:600;color:var(--on-surface);">{{ value }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- ── EXCEL SPEC TABLE ── -->
+{% if excel_table_enabled %}
+<section class="section-pad surface-low excel-spec-section" data-excel-table-root data-table-url="{% url 'products:excel_table_data' product.slug %}">
+  <div class="container">
+    <p class="section-label anim-fade-up">Premium Specification Table</p>
+    <h2 class="headline-md anim-fade-up" style="margin-bottom:1rem;">
+      Dynamic <span class="gradient-text">Excel Table</span>
+    </h2>
+    <p class="body-lg anim-fade-up" style="max-width:720px;color:var(--secondary);margin-bottom:var(--sp-3);">
+      Filter and sort the uploaded table for {{ product.name }}.
+    </p>
+
+    <div class="excel-spec-shell anim-fade-up" data-excel-shell data-table-url="{% url 'products:excel_table_data' product.slug %}">
+      <div class="excel-spec-toolbar">
+        <div class="excel-spec-toolbar-row">
+          <div class="excel-spec-toolbar-title">Filters</div>
+          <div class="excel-spec-toolbar-actions">
+            <button type="button" class="excel-spec-apply" data-excel-apply aria-label="Apply filter changes">Apply Filters</button>
+            <button type="button" class="excel-spec-reset" data-excel-reset>Reset all</button>
+          </div>
+        </div>
+
+        <div class="excel-spec-status" data-excel-status role="status" aria-live="polite">
+          Adjust the filters, then apply the changes.
+        </div>
+
+        <div class="excel-spec-filters" data-excel-filters>
+          {% if excel_table_initial %}
+            {% for filter in excel_table_initial.filters %}
+            <label class="excel-spec-filter">
+              <span class="excel-spec-label">{{ filter.label }}</span>
+              {% if filter.type == 'range' %}
+              <div class="excel-spec-range" data-filter-key="{{ filter.key }}">
+                <input class="form-input" type="number" step="any" inputmode="decimal" placeholder="Min" value="{{ filter.selected_min }}" aria-label="{{ filter.label }} minimum" data-range-role="min" />
+                <span class="excel-spec-range-separator">to</span>
+                <input class="form-input" type="number" step="any" inputmode="decimal" placeholder="Max" value="{{ filter.selected_max }}" aria-label="{{ filter.label }} maximum" data-range-role="max" />
+              </div>
+              <div class="excel-spec-range-hint">Range: {{ filter.min }} to {{ filter.max }}</div>
+              {% else %}
+              <select class="form-input" data-filter-key="{{ filter.key }}" aria-label="{{ filter.label }}">
+                <option value="">All values</option>
+                {% for option in filter.options %}
+                <option value="{{ option.value }}"{% if filter.selected == option.value %} selected{% endif %}>{{ option.label }}{% if option.count > 1 %} ({{ option.count }}){% endif %}</option>
+                {% endfor %}
+              </select>
+              {% endif %}
+            </label>
+            {% endfor %}
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="excel-spec-table-wrap">
+        <table class="excel-spec-table" aria-label="Dynamic product specification table">
+          <thead data-excel-head>
+            {% if excel_table_initial %}
+            <tr>
+              {% for column in excel_table_initial.columns %}
+              <th>{{ column.label }}</th>
+              {% endfor %}
+            </tr>
+            {% endif %}
+          </thead>
+          <tbody data-excel-body>
+            {% if excel_table_initial %}
+              {% for row in excel_table_initial.rows %}
+              <tr>
+                {% for column in excel_table_initial.columns %}
+                <td class="excel-spec-cell">{% with value=row.values|get_item:column.key %}{% if value %}{{ value }}{% else %}—{% endif %}{% endwith %}</td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            {% else %}
+            <tr>
+              <td class="excel-spec-loading" colspan="1">Loading specification table…</td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="excel-spec-pagination" data-excel-pagination>
+        {% if excel_table_initial %}
+          {% with pager=excel_table_initial.pagination %}
+            <div class="excel-spec-pagination-info">
+              Page {{ pager.page }} of {{ pager.total_pages }}
+            </div>
+            <div class="excel-spec-pagination-actions">
+              {% if pager.has_previous %}
+              <a class="btn btn-ghost btn-sm" href="?page={{ pager.page|add:'-1' }}">Previous</a>
+              {% else %}
+              <span class="btn btn-ghost btn-sm" aria-disabled="true">Previous</span>
+              {% endif %}
+              {% for page_number in pager.page_numbers %}
+              {% if page_number == pager.page %}
+              <span class="btn btn-primary btn-sm" aria-current="page">{{ page_number }}</span>
+              {% else %}
+              <a class="btn btn-ghost btn-sm" href="?page={{ page_number }}">{{ page_number }}</a>
+              {% endif %}
+              {% endfor %}
+              {% if pager.has_next %}
+              <a class="btn btn-primary btn-sm" href="?page={{ pager.page|add:'1' }}">Next</a>
+              {% else %}
+              <span class="btn btn-primary btn-sm" aria-disabled="true">Next</span>
+              {% endif %}
+            </div>
+          {% endwith %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- ── RELATED PRODUCTS ── -->
+{% if related %}
+<section class="section-pad surface-base">
+  <div class="container">
+    <p class="section-label anim-fade-up">More in {{ product.category.name }}</p>
+    <h2 class="headline-md anim-fade-up" style="margin-bottom:2rem;">Related <span class="gradient-text">Products</span></h2>
+    <div class="products-grid anim-stagger-group">
+      {% for rel in related %}
+      <article class="product-card anim-stagger-child anim-fade-up">
+        <a href="{% url 'products:detail' rel.slug %}" style="text-decoration:none;color:inherit;">
+          <div class="product-card-img">
+            {% if rel.image %}
+            <img src="{{ rel.image.url }}" alt="{{ rel.name }}" loading="lazy" width="800" height="800" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;"/>
+            {% else %}
+            <span class="product-card-icon">{{ rel.category.icon }}</span>
+            {% endif %}
+          </div>
+          <div class="product-card-body">
+            <p class="product-card-cat">{{ rel.category.name }}</p>
+            <h3 class="product-card-name">{{ rel.name }}</h3>
+            <p class="product-card-desc">{{ rel.description|truncatewords:16 }}</p>
+            <span class="product-card-cta">View Details →</span>
+          </div>
+        </a>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- ── CTA ── -->
+<section class="cta-banner">
+  <div class="container">
+    <div class="cta-banner-inner">
+      <div>
+        <h2 class="cta-title anim-slide-left">Need this <span class="accent">{{ product.name }}?</span></h2>
+        <p class="anim-fade-up" style="color:rgba(255,255,255,.55);margin-top:.75rem;">Contact our specialists for pricing, availability and lead times.</p>
+      </div>
+      <div class="anim-slide-right" style="display:flex;gap:1rem;flex-wrap:wrap;">
+        <button class="btn-primary"
+                data-enquire="{{ product.id }}"
+                data-name="{{ product.name }}">
+          Get a Quote ›
+        </button>
+        <a href="{% url 'products:list' %}" class="btn-ghost btn-ghost-white">Browse All Products</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const slides = Array.from(document.querySelectorAll('[data-product-slide]'));
+  const thumbs = Array.from(document.querySelectorAll('[data-product-thumb]'));
+  if (!slides.length) return;
+
+  let activeIndex = 0;
+  let timer = null;
+
+  function setActive(index) {
+    activeIndex = index;
+    slides.forEach((slide, slideIndex) => {
+      const isActive = slideIndex === index;
+      slide.style.opacity = isActive ? '1' : '0';
+      slide.style.zIndex = isActive ? '1' : '0';
+    });
+    thumbs.forEach((thumb, thumbIndex) => {
+      const img = thumb.querySelector('img');
+      const isActive = thumbIndex === index;
+      thumb.classList.toggle('active', isActive);
+      if (img) {
+        img.style.opacity = isActive ? '1' : '.65';
+        img.style.borderColor = isActive ? 'var(--primary-container)' : 'transparent';
+      }
+    });
+  }
+
+  function nextSlide() {
+    setActive((activeIndex + 1) % slides.length);
+  }
+
+  thumbs.forEach((thumb, index) => {
+    thumb.addEventListener('click', function () {
+      setActive(index);
+      if (timer) window.clearInterval(timer);
+      timer = window.setInterval(nextSlide, 4500);
+    });
+  });
+
+  if (slides.length > 1) {
+    timer = window.setInterval(nextSlide, 4500);
+  }
+
+  setActive(0);
+}());
+</script>
+{% if excel_table_enabled %}
+<script>
+(function () {
+  fetch('{% static 'js/product-table.js' %}?v=20260525', { cache: 'no-store' })
+    .then(function (response) { return response.text(); })
+    .then(function (code) { new Function(code)(); })
+    .catch(function (error) { console.error('Excel table bootstrap failed', error); });
+}());
+</script>
+{% endif %}
+{% endblock %}
+
+ 

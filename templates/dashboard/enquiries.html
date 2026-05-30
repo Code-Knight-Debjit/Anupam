@@ -1,0 +1,121 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Enquiries{% endblock %}
+{% block page_title %}Product Enquiries{% endblock %}
+{% block nav_enq %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>Enquiries</h1>
+    <p>{{ enquiries|length }} total enquir{{ enquiries|length|pluralize:"y,ies" }}</p>
+  </div>
+</div>
+
+<!-- Filter -->
+<div class="filter-bar">
+  <a href="{% url 'dashboard:enquiries' %}" class="btn {% if not status_filter %}btn-primary{% else %}btn-ghost{% endif %} btn-sm">All</a>
+  <a href="?status=new" class="btn {% if status_filter == 'new' %}btn-primary{% else %}btn-ghost{% endif %} btn-sm">🔴 New</a>
+  <a href="?status=in_progress" class="btn {% if status_filter == 'in_progress' %}btn-primary{% else %}btn-ghost{% endif %} btn-sm">🔵 In Progress</a>
+  <a href="?status=resolved" class="btn {% if status_filter == 'resolved' %}btn-primary{% else %}btn-ghost{% endif %} btn-sm">🟢 Resolved</a>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Contact</th>
+        <th>Product</th>
+        <th>Message</th>
+        <th>Status</th>
+        <th>Received</th>
+        <th style="text-align:right;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for enq in enquiries %}
+      <tr id="enq-row-{{ enq.pk }}" style="{% if enq.status == 'new' %}background:rgba(255,106,0,0.02);{% endif %}">
+        <td>
+          <div>
+            <div class="td-name" style="display:flex;align-items:center;gap:0.4rem;">
+              {% if enq.status == 'new' %}<span style="width:7px;height:7px;border-radius:50%;background:var(--orange);display:inline-block;flex-shrink:0;"></span>{% endif %}
+              {{ enq.name }}
+            </div>
+            <div class="td-sub"><a href="mailto:{{ enq.email }}" style="color:var(--muted);text-decoration:none;">{{ enq.email }}</a></div>
+            {% if enq.phone %}<div class="td-sub"><a href="tel:{{ enq.phone }}" style="color:var(--muted);text-decoration:none;">{{ enq.phone }}</a></div>{% endif %}
+            {% if enq.company %}<div class="td-sub">🏢 {{ enq.company }}</div>{% endif %}
+          </div>
+        </td>
+        <td>
+          {% if enq.product %}
+          <div class="td-name" style="font-size:0.83rem;">{{ enq.product.name }}</div>
+          <div class="td-sub">{{ enq.product.category.name }}</div>
+          {% else %}
+          <span style="color:var(--muted);font-size:0.83rem;">General</span>
+          {% endif %}
+        </td>
+        <td style="max-width:240px;">
+          <div style="font-size:0.83rem;color:var(--muted);white-space:normal;line-height:1.5;">{{ enq.message|truncatechars:90 }}</div>
+          {% if enq.message|length > 90 %}
+          <button onclick="showEnqDetail('{{ enq.name|escapejs }}', `{{ enq.message|escapejs }}`)" class="btn btn-ghost btn-sm" style="margin-top:0.35rem;font-size:0.72rem;">Read more</button>
+          {% endif %}
+        </td>
+        <td>
+          <select
+            class="form-input"
+            style="padding:0.35rem 0.5rem;font-size:0.78rem;width:auto;min-width:120px;"
+            onchange="updateStatus({{ enq.pk }}, this.value)"
+          >
+            <option value="new"         {% if enq.status == 'new' %}selected{% endif %}>🔴 New</option>
+            <option value="in_progress" {% if enq.status == 'in_progress' %}selected{% endif %}>🔵 In Progress</option>
+            <option value="resolved"    {% if enq.status == 'resolved' %}selected{% endif %}>🟢 Resolved</option>
+          </select>
+        </td>
+        <td style="color:var(--muted);font-size:0.78rem;white-space:nowrap;">{{ enq.created_at|date:"d M Y" }}<br/>{{ enq.created_at|time:"H:i" }}</td>
+        <td style="text-align:right;">
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.4rem;">
+            <a href="mailto:{{ enq.email }}?subject=Re: {{ enq.product.name|default:'Enquiry' }}" class="btn btn-ghost btn-sm btn-icon" title="Reply">✉</a>
+            <button class="btn btn-danger btn-sm btn-icon" title="Delete"
+              onclick="confirmDelete('{% url 'dashboard:enquiry_delete' enq.pk %}', '{{ enq.name|escapejs }}', () => document.getElementById('enq-row-{{ enq.pk }}').remove())">🗑</button>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6"><div class="empty-state"><div class="empty-state-icon">📭</div><h3>No enquiries yet</h3><p>Product enquiries from your website will appear here.</p></div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Detail modal -->
+<div class="dash-modal-overlay" id="enq-detail-modal">
+  <div class="dash-modal" style="max-width:480px;">
+    <button class="dash-modal-close" onclick="document.getElementById('enq-detail-modal').classList.remove('open')">✕</button>
+    <div class="dash-modal-title" id="enq-detail-name"></div>
+    <p id="enq-detail-msg" style="font-size:0.9rem;line-height:1.7;color:var(--muted);white-space:pre-wrap;"></p>
+  </div>
+</div>
+{% if page_obj %}{% include "includes/pagination.html" %}{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function updateStatus(pk, status) {
+  const res = await fetch(`/dashboard/enquiries/${pk}/status/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+    body: JSON.stringify({ status })
+  });
+  const d = await res.json();
+  if (d.success) showToast('Status updated', 'success');
+  else showToast('Update failed', 'error');
+}
+function showEnqDetail(name, msg) {
+  document.getElementById('enq-detail-name').textContent = name + ' — Full Message';
+  document.getElementById('enq-detail-msg').textContent = msg;
+  document.getElementById('enq-detail-modal').classList.add('open');
+}
+document.getElementById('enq-detail-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+});
+</script>
+{% endblock %}

@@ -1,0 +1,52 @@
+[
+  {
+    "title": "How to select the right bearing",
+    "content": "Selecting the right bearing involves considering: 1) Load type - radial loads use cylindrical or ball bearings; axial loads use thrust bearings; combined loads use tapered roller or angular contact bearings. 2) Speed - high speeds favour ball bearings; heavy loads at moderate speeds favour roller bearings. 3) Misalignment - use spherical roller or self-aligning ball bearings when shaft deflection is expected. 4) Environment - sealed bearings (2RS) for contaminated environments; open bearings for clean, well-lubricated conditions. 5) Temperature - standard bearings for -20°C to +120°C; special greases and materials for extreme temperatures. Contact Anupam Bearings at info@anupambearings.com for technical selection assistance.",
+    "metadata": { "source": "technical_faq", "tags": ["selection", "technical", "FAQ"] }
+  },
+  {
+    "title": "Bearing designation system explained",
+    "content": "Timken and standard bearing designations follow this pattern: first digits indicate bore size code (e.g., 06 = 30mm bore), then series width (0-4, narrow to wide), then series diameter (0-4, light to heavy). Suffixes: 2RS = rubber sealed both sides; ZZ or 2Z = metal shielded both sides; C3 = increased radial clearance; P6 = precision class 6; M = brass cage. Example: 6308-2RS-C3 = deep groove ball bearing, bore 40mm, medium series, rubber sealed, C3 clearance. Timken tapered bearings use their own numbering system - contact Anupam Bearings for cross-reference assistance.",
+    "metadata": { "source": "technical_faq", "tags": ["designation", "technical", "FAQ", "numbering"] }
+  },
+  {
+    "title": "Bearing installation best practices",
+    "content": "Correct bearing installation is critical for long service life. Key rules: 1) Always use an induction heater to mount bearings - never use direct flame; heat to 80-110°C maximum. 2) Never strike the bearing races with a hammer; use a proper mounting sleeve that contacts the ring being pressed. 3) Always push force through the ring being seated (inner ring on shaft, outer ring in housing). 4) Clean all mounting surfaces before installation. 5) Check shaft and housing tolerances with a micrometer before mounting. 6) Apply correct amount of grease (1/3 to 1/2 fill of bearing cavity). Anupam Bearings provides mounting assistance and training programmes.",
+    "metadata": { "source": "technical_faq", "tags": ["installation", "mounting", "technical", "FAQ"] }
+  },
+  {
+    "title": "Bearing failure analysis and diagnosis",
+    "content": "Common bearing failure modes and causes: 1) Fatigue spalling - normal end-of-life or overloading; check load calculations. 2) Wear - insufficient lubrication or contamination; improve sealing and lubrication intervals. 3) Corrosion - moisture ingress; use sealed bearings or better sealing. 4) Fretting corrosion (false brinelling) - vibration during storage or transport; use anti-fretting grease. 5) Electric current damage (fluting) - stray electrical currents; use insulated bearings or grounded shaft. 6) Overheating - over-greasing, insufficient clearance, or overload; check clearance and lubrication. Anupam Bearings offers bearing clinics and failure analysis consultations.",
+    "metadata": { "source": "technical_faq", "tags": ["failure", "diagnosis", "technical", "FAQ", "maintenance"] }
+  },
+  {
+    "title": "Lubrication intervals and grease quantities",
+    "content": "Grease quantity formula: G = 0.005 x D x B (grams), where D = bearing OD in mm, B = bearing width in mm. Over-greasing is the most common lubrication mistake - it causes overheating and premature failure. Regreasing intervals depend on speed (N) and bore diameter (d): interval hours = 14,000,000 / (n x sqrt(d)) - 4d. For sealed bearings (2RS), no regreasing is needed for life. For open bearings in normal conditions, regreasing every 2,000 to 4,000 hours is typical. High temperature or contaminated environments require more frequent regreasing. Contact Anupam Bearings for application-specific lubrication advice.",
+    "metadata": { "source": "technical_faq", "tags": ["lubrication", "grease", "technical", "FAQ", "maintenance"] }
+  },
+  {
+    "title": "Delivery, lead times and availability",
+    "content": "Anupam Bearings maintains comprehensive stock of Timken bearings and related products at both Bengaluru and Chennai locations. Standard items from stock are available for immediate dispatch with same-day shipping for orders placed before 2pm. Lead times for non-stock items: standard Timken products 3-7 working days; special or large bore products 2-4 weeks. Annual rate contracts and bearing banks ensure priority access to critical spares. Just-in-time (JIT) delivery arrangements available for high-volume customers. Contact sales@anupambearings.com or call +91-98844-00741 for stock availability and lead times.",
+    "metadata": { "source": "technical_faq", "tags": ["delivery", "lead time", "stock", "availability", "FAQ"] }
+  },
+  {
+    "title": "How to request a quote",
+    "content": "To request a quotation from Anupam Bearings, provide: 1) Bearing part number or drawing dimensions (bore, OD, width, type). 2) Quantity required. 3) Delivery location. 4) Application details (speed, load, temperature, environment). Contact methods: Email sales@anupambearings.com for detailed quote requests; call +91-98844-00741 (Bengaluru) or 044-4691-2265 (Chennai) for urgent enquiries; use the website enquiry form at www.anupambearings.com; visit either office directly. Annual rate contracts are available for customers with regular requirements - contact the sales team to discuss.",
+    "metadata": { "source": "technical_faq", "tags": ["quote", "enquiry", "pricing", "FAQ"] }
+  },
+  {
+    "title": "Timken India manufacturing footprint",
+    "content": "Timken India operates multiple manufacturing facilities: Jamshedpur plant produces 0-8 inch tapered roller bearings and rail cartridge bearings, and performs rail and large bore bearing repair; Bangalore facility (Timken India HQ) produces 8-24 inch tapered roller bearings and high-precision cylindrical roller bearings, and is the centre for global product technology, manufacturing technology, shared services and IT; Chennai plant (located in Special Economic Zone) produces 0-8 inch TRBs and CRBs; Bharuch plant produces TRBs, SRBs and CRBs for industrial applications from 10 to 32 inches, and slewing bearings from 12 to 100 inches. As an authorized Timken partner, Anupam Bearings supplies products from all these facilities across India.",
+    "metadata": { "source": "technical_faq", "tags": ["timken", "manufacturing", "india", "FAQ"] }
+  },
+  {
+    "title": "Comparing bearing types for applications",
+    "content": "Quick application guide: Conveyor systems - use tapered roller or spherical roller bearings in plummer block housings. Electric motors - deep groove ball bearings for light loads; cylindrical roller for heavier radial loads; angular contact for axial loads. Gearboxes - cylindrical roller (sun gear shafts), tapered roller (high axial loads), needle roller (space-constrained). Pumps - deep groove ball bearings for light duty; cylindrical or spherical roller for heavy duty. Fans and blowers - cylindrical roller bearings for high radial loads. Machine tool spindles - angular contact or cylindrical roller, precision class P5 or P4. Agricultural equipment - taper roller or spherical roller in sealed housings. Mining crushers - spherical roller in heavy-duty plummer blocks.",
+    "metadata": { "source": "technical_faq", "tags": ["application guide", "selection", "technical", "FAQ"] }
+  },
+  {
+    "title": "Bearing storage and handling guidelines",
+    "content": "Proper storage of bearings: store in original packaging in a dry, cool environment (10-25°C), away from direct sunlight and vibration. Bearings should be stored horizontally (not standing on edge). Maximum storage life: 3 years for bearings with standard grease; 5 years with special storage grease; check manufacturer recommendations. Handling: never remove bearings from packaging until ready to install; use clean gloves to prevent corrosion from fingerprints; do not spin dry bearings - always lubricate first; avoid dropping or striking bearings. Anupam Bearings provides pre-dispatch inspection to ensure all products are in perfect condition before shipping.",
+    "metadata": { "source": "technical_faq", "tags": ["storage", "handling", "technical", "FAQ"] }
+  }
+]

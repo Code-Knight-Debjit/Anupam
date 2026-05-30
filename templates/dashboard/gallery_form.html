@@ -1,0 +1,78 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{% if gallery_image %}Edit{% else %}Add{% endif %} Gallery Image{% endblock %}
+{% block page_title %}{% if gallery_image %}Edit Gallery Image{% else %}Add Gallery Image{% endif %}{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ <a href="{% url 'dashboard:gallery_items' %}" style="color:var(--muted);text-decoration:none;">Gallery</a> / {% if gallery_image %}Edit{% else %}New{% endif %}</span>{% endblock %}
+{% block nav_gallery %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>{% if gallery_image %}Edit "{{ gallery_image.title }}"{% else %}Add New Gallery Image{% endif %}</h1>
+  </div>
+  <a href="{% url 'dashboard:gallery_items' %}" class="btn btn-ghost">← Back</a>
+</div>
+
+<form method="POST" enctype="multipart/form-data">
+  {% csrf_token %}
+  <div style="display:grid;grid-template-columns:1fr 320px;gap:1.5rem;align-items:start;">
+    <div class="card card-pad">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Title *</label>
+          <input class="form-input" type="text" name="title" required value="{{ gallery_image.title|default:'' }}" placeholder="e.g. Bearing Installation"/>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Category</label>
+            <select class="form-input" name="category_select">
+              <option value="">-- Select existing category --</option>
+              {% for c in gallery_categories %}
+              <option value="{{ c }}" {% if gallery_image and gallery_image.category == c %}selected{% endif %}>{{ c }}</option>
+              {% endfor %}
+            </select>
+            <input class="form-input" type="text" name="new_category" value="" placeholder="Or enter new category (e.g. facility)" style="margin-top:0.5rem;" />
+            {% if not gallery_categories %}
+              <div style="font-size:0.85rem;color:var(--muted);margin-top:0.35rem;">No existing categories — enter a new one above.</div>
+            {% endif %}
+          </div>
+          <div class="form-group">
+            <label>Order</label>
+            <input class="form-input" type="number" name="order" value="{{ gallery_image.order|default:0 }}" min="0"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Caption</label>
+          <textarea class="form-input" name="caption" style="min-height:150px;" placeholder="Short caption for the public gallery…">{{ gallery_image.caption|default:'' }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:1.25rem;">
+      <div class="card card-pad">
+        <label class="form-check" style="margin-bottom:1rem;">
+          <input type="checkbox" name="is_active" {% if not gallery_image or gallery_image.is_active %}checked{% endif %}/>
+          <div>
+            <div class="form-check-label">Visible</div>
+            <div style="font-size:0.75rem;color:var(--muted);">Show this image on the public site.</div>
+          </div>
+        </label>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.875rem;">{% if gallery_image %}Save Changes{% else %}Add Image{% endif %}</button>
+        <a href="{% url 'dashboard:gallery_items' %}" class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:0.5rem;">Cancel</a>
+      </div>
+
+      <div class="card card-pad">
+        <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">Gallery Image</h3>
+        {% if gallery_image and gallery_image.image %}
+        <img src="{{ gallery_image.image.url }}" alt="Current image" style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;margin-bottom:0.85rem;"/>
+        {% endif %}
+        <div style="border:2px dashed var(--border);border-radius:8px;padding:1.25rem;text-align:center;cursor:pointer;" onclick="document.getElementById('gallery-image').click()">
+          <div style="font-size:1.8rem;margin-bottom:0.35rem;">🖼</div>
+          <div style="font-size:0.83rem;font-weight:600;">Click to upload image</div>
+          <p id="gallery-image-name" style="font-size:0.75rem;color:var(--orange);margin-top:0.35rem;"></p>
+        </div>
+        <input type="file" id="gallery-image" name="image" accept="image/*" style="display:none;" onchange="document.getElementById('gallery-image-name').textContent = this.files[0]?.name || ''"/>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}

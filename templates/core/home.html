@@ -1,0 +1,563 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+<link rel="preload" as="image" href="{% static 'images/hero/hero-bearings.png' %}" fetchpriority="high" />
+{% endblock %}
+
+{% block intro %}
+<!-- ══ CINEMATIC INTRO ══ -->
+<div id="intro-overlay" role="presentation" aria-hidden="true">
+  <div class="dot-grid"></div>
+  <div class="intro-bearing">
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="100" cy="100" r="90" fill="none" stroke="#3a3a3a" stroke-width="12"/>
+      <circle cx="100" cy="100" r="52" fill="none" stroke="#3a3a3a" stroke-width="10"/>
+      <circle cx="100" cy="100" r="30" fill="none" stroke="#ff6a00" stroke-width="6"/>
+      <circle cx="100" cy="14"  r="10" fill="#ff6a00"/>
+      <circle cx="100" cy="186" r="10" fill="#ff6a00"/>
+      <circle cx="14"  cy="100" r="10" fill="#a14000"/>
+      <circle cx="186" cy="100" r="10" fill="#a14000"/>
+      <circle cx="36"  cy="36"  r="10" fill="#ff6a00" opacity="0.8"/>
+      <circle cx="164" cy="164" r="10" fill="#ff6a00" opacity="0.8"/>
+      <circle cx="164" cy="36"  r="10" fill="#a14000" opacity="0.8"/>
+      <circle cx="36"  cy="164" r="10" fill="#a14000" opacity="0.8"/>
+      <circle cx="100" cy="100" r="72" fill="none" stroke="#2a2a2a" stroke-width="4" stroke-dasharray="8 4"/>
+    </svg>
+  </div>
+  <div class="intro-title">Anupam <span>Bearings</span></div>
+  <div class="intro-subtitle">Driving Excellence with Precision</div>
+  <div class="intro-bar"></div>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- ══ HERO SECTION ══ -->
+<section class="hero-section" aria-label="Hero">
+
+  <div class="hero-slide active">
+    <div class="hero-slide-img-wrap">
+      <img src="{% static 'images/hero/hero-bearings.png' %}" alt="Timken precision roller bearings" class="hero-slide-img" loading="eager" fetchpriority="high" width="1200" height="900" />
+    </div>
+    <div class="hero-content">
+      <div class="timken-mark timken-mark--hero">
+        <img src="{% static 'images/Timken.png' %}" alt="Timken logo" loading="eager" width="240" height="96" />
+      </div>
+      <div class="partner-badge">✦ Certified Timken Partner</div><br>
+      <div class="hero-label">Rolling Bearing</div>
+      <h1 class="hero-title">Precision <span class="accent">Bearings</span><br/>Built to Last</h1>
+      <p class="hero-desc">Smooth motion. Relentless performance. Rolling bearings keep your machinery moving — with precision that never compromises.</p>
+      <div class="hero-actions">
+        <a href="{% url 'products:list' %}" class="btn-primary">Explore Products ›</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-slide">
+    <div class="hero-slide-img-wrap">
+      <img src="{% static 'images/hero/hero-housings.png' %}" alt="Timken bearing housings and plummer blocks" class="hero-slide-img" loading="lazy" width="1200" height="900" />
+    </div>
+    <div class="hero-content">
+      <div class="hero-label">Housings</div>
+      <h1 class="hero-title">UC Pillow, <span class="accent">SNT Plummer Block</span><br/>&amp; Split Housings</h1>
+      <p class="hero-desc">From pillow block to SNT Plummer block and Timken split bearing housings — engineered for heavy-duty industrial reliability across India.</p>
+      <div class="hero-actions">
+        <a href="{% url 'products:list' %}#bearing-housings" class="btn-primary">View Housings ›</a>
+        <a href="{% url 'contact:contact' %}" class="btn-ghost btn-ghost-white">Contact Us</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-slide">
+    <div class="hero-slide-img-wrap">
+      <img src="{% static 'images/hero/hero-lubrication.png' %}" alt="Groeneveld-BEKA automatic lubrication systems" class="hero-slide-img" loading="lazy" width="1200" height="900" />
+    </div>
+    <div class="hero-content">
+      <div class="hero-label">Automatic Lubrication &amp; Lubrications</div>
+      <h1 class="hero-title">Automatic <br/>&amp; <span class="accent">Lubrication Pumps </span> &amp; Speciality Lubrications.</h1>
+      <p class="hero-desc">Roller chains, sprockets, timing belts, V-belts, and Groeneveld-BEKA auto-lubrication systems for construction, mining, and transport industries.</p>
+      <div class="hero-actions">
+        <a href="{% url 'products:list' %}#power-transmission" class="btn-primary">View Products ›</a>
+        <a href="{% url 'core:about' %}" class="btn-ghost btn-ghost-white">Our Story</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-slide">
+    <div class="hero-slide-img-wrap">
+      <img src="{% static 'images/hero/hero-linear.png' %}" alt="Rollon linear guides and motion rails" class="hero-slide-img" loading="lazy" width="1200" height="900" />
+    </div>
+    <div class="hero-content">
+      <div class="hero-label">Linear Motion System</div>
+      <h1 class="hero-title">Linear Guides<br/>&amp; <span class="accent">Motion Rails</span></h1>
+      <p class="hero-desc">High-precision linear guides, ball screws, telescopic rails, and curved track systems engineered for demanding industrial automation and heavy-load applications.</p>
+      <div class="hero-actions">
+        <a href="{% url 'products:list' %}#linear-motion" class="btn-primary">View Products ›</a>
+        <a href="{% url 'contact:contact' %}" class="btn-ghost btn-ghost-white">Get a Quote</a>
+      </div>
+    </div>
+  </div>
+
+  <button class="slider-arrow prev" aria-label="Previous slide">‹</button>
+  <button class="slider-arrow next" aria-label="Next slide">›</button>
+  <div class="slider-controls" role="tablist" aria-label="Slide controls">
+    <button class="slider-dot active" role="tab" aria-label="Slide 1"></button>
+    <button class="slider-dot" role="tab" aria-label="Slide 2"></button>
+    <button class="slider-dot" role="tab" aria-label="Slide 3"></button>
+    <button class="slider-dot" role="tab" aria-label="Slide 4"></button>
+  </div>
+</section>
+
+
+<!-- ══ ABOUT PREVIEW ══ -->
+<section class="section-pad surface-base" aria-labelledby="about-heading">
+  <div class="container">
+    <div class="about-split">
+      <div class="anim-slide-left">
+        <div class="about-img-wrap">
+          <img src="{% static 'images/hero/hero-bearings.png' %}" alt="Industrial bearing manufacturing facility" loading="lazy" width="1200" height="900" />
+          <div class="about-badge"><span>Certified</span>Timken Partner</div>
+        </div>
+      </div>
+      <div class="anim-slide-right">
+        <div class="timken-mark timken-mark--inline">
+          <img src="{% static 'images/Timken.png' %}" alt="Timken logo" loading="lazy" width="180" height="72" />
+        </div>
+        <p class="section-label anim-fade-up">About Us</p>
+        <h2 class="headline-md anim-fade-up" id="about-heading">Precision in every revolution.<br/><span class="gradient-text">Trust in every bearing.</span></h2>
+        <p class="body-lg anim-fade-up" style="color:var(--secondary);margin-top:1rem;margin-bottom:1.5rem;">
+          Anupam Bearings is one of India's most trusted names in industrial bearing supply and distribution — delivering world-class products, technical expertise, and unmatched service to thousands of customers across the country.
+        </p>
+        <p class="body-lg anim-fade-up" style="color:var(--secondary);margin-bottom:2rem;">
+          From mapping customer requirements to just-in-time deliveries and annual service contracts — we go beyond supplying parts. We deliver comprehensive bearing solutions.
+        </p>
+        <div class="stats-row anim-stagger-group">
+          <div class="stat-item anim-stagger-child anim-fade-up" style="background:linear-gradient(135deg,#a14000 0%, #ff6a00 100%);color:#fff;box-shadow:0 18px 32px rgba(161,64,0,0.28);">
+            <div class="stat-number" data-count="5000" data-suffix="+">5000+</div>
+            <div class="stat-label" style="color:rgba(255,255,255,0.8);">Customers served nationwide</div>
+          </div>
+          <div class="stat-item anim-stagger-child anim-fade-up" style="background:linear-gradient(135deg,#a14000 0%, #ff6a00 100%);color:#fff;box-shadow:0 18px 32px rgba(161,64,0,0.28);">
+            <div class="stat-number" data-count="150000" data-suffix="+">150000+</div>
+            <div class="stat-label" style="color:rgba(255,255,255,0.8);">Bearing types in inventory</div>
+          </div>
+          <div class="stat-item anim-stagger-child anim-fade-up" style="background:linear-gradient(135deg,#a14000 0%, #ff6a00 100%);color:#fff;box-shadow:0 18px 32px rgba(161,64,0,0.28);">
+            <div class="stat-number">Decades</div>
+            <div class="stat-label" style="color:rgba(255,255,255,0.8);">of industry experience</div>
+          </div>
+          <div class="stat-item anim-stagger-child anim-fade-up" style="background:linear-gradient(135deg,#a14000 0%, #ff6a00 100%);color:#fff;box-shadow:0 18px 32px rgba(161,64,0,0.28);">
+            <div class="stat-number">Pan India</div>
+            <div class="stat-label" style="color:rgba(255,255,255,0.8);">Reach &amp; Delivery network</div>
+          </div>
+        </div>
+        <div style="margin-top:2rem;">
+          <a href="{% url 'core:about' %}" class="btn-primary">Our Story ›</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══ FEATURED PRODUCTS ══ -->
+<section class="section-pad surface-low" aria-labelledby="products-heading">
+  <div class="container">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:var(--sp-6);flex-wrap:wrap;gap:var(--sp-2);">
+      <div>
+        <p class="section-label anim-fade-up">Our Products</p>
+        <h2 class="headline-md anim-fade-up" id="products-heading" style="max-width:440px;">Complete Motion<br/><span class="gradient-text">Solutions</span></h2>
+      </div>
+      <a href="{% url 'products:list' %}" class="btn-ghost anim-fade-up" style="flex-shrink:0;">View All Products ›</a>
+    </div>
+    <div class="category-grid anim-stagger-group">
+      {% for cat in categories %}
+      <a href="{% url 'products:list' %}?category={{ cat.slug }}" class="category-card-link anim-stagger-child anim-fade-up">
+        <article class="category-card"{% if cat.image %} style="--category-card-bg:url('{{ cat.image.url }}');"{% elif cat.slug == 'rolling-bearings' %} style="--category-card-bg:url('{% static 'images/hero/hero-bearings.png' %}');"{% elif cat.slug == 'bearing-housings' %} style="--category-card-bg:url('{% static 'images/hero/hero-housings.png' %}');"{% elif cat.slug == 'linear-motion' %} style="--category-card-bg:url('{% static 'images/hero/hero-linear.png' %}');"{% elif cat.slug == 'power-transmission' %} style="--category-card-bg:url('{% static 'images/hero/hero-power-transmission.png' %}');"{% elif cat.slug == 'lubrication-maintenance' %} style="--category-card-bg:url('{% static 'images/hero/hero-lubrication.png' %}');"{% else %} style="--category-card-bg:url('{% static 'images/hero/hero-bearings.png' %}');"{% endif %}>
+          <div class="category-card-body">
+            <p class="category-card-cat"></p>
+            <h3 class="category-card-name">{{ cat.name }}</h3>
+            <p class="category-card-desc">{{ cat.description|truncatewords:18 }}</p>
+            <span class="category-card-cta">Explore →</span>
+          </div>
+        </article>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+
+<!-- ══ WHY CHOOSE US — REDESIGNED ══ -->
+<section class="section-pad surface-base why-section" aria-labelledby="why-heading">
+  <div class="container">
+
+    <!-- Section header -->
+    <div class="why-header-v2 anim-fade-up">
+      <div>
+        <p class="section-label">Why Anupam Bearings</p>
+        <h2 class="headline-md" id="why-heading">
+          Reasons Industries<br/><span class="gradient-text">Trust Us</span>
+        </h2>
+      </div>
+      <p class="body-lg" style="color:var(--secondary);max-width:400px;align-self:flex-end;">
+        Thousands of businesses across India rely on us for precision, speed, and uncompromising quality.
+      </p>
+    </div>
+
+    <!-- 4-card grid -->
+    <div class="why-cards-v2 anim-stagger-group">
+
+      <!-- Card 1 -->
+      <div class="why-card-v2 anim-stagger-child anim-fade-up" style="--why-card-bg:url('{% static 'images/Largest-Inventory.jpeg' %}');">
+        <div class="why-card-v2-top">
+          <div class="why-card-v2-num">01</div>
+          <div class="why-card-v2-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          </div>
+        </div>
+        <h3 class="why-card-v2-title">Largest Inventory</h3>
+        <p class="why-card-v2-desc">Over 1,50,000 bearing types in stock across every specification — any application, fulfilled without delay from our Bengaluru and Chennai warehouses.</p>
+        <div class="why-card-v2-footer">
+          <span class="why-card-v2-stat">150,000+</span>
+          <span class="why-card-v2-stat-label">bearing types</span>
+        </div>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="why-card-v2 anim-stagger-child anim-fade-up" style="--why-card-bg:url('{% static 'images/Fastest-Delivery.jpeg' %}');">
+        <div class="why-card-v2-top">
+          <div class="why-card-v2-num">02</div>
+          <div class="why-card-v2-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </div>
+        </div>
+        <h3 class="why-card-v2-title">Fastest Delivery</h3>
+        <p class="why-card-v2-desc">Any bearing, anywhere in India — shipped in the industry's shortest lead times. Just-in-time delivery contracts available to eliminate production downtime.</p>
+        <div class="why-card-v2-footer">
+          <span class="why-card-v2-stat">Pan-India</span>
+          <span class="why-card-v2-stat-label">logistics network</span>
+        </div>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="why-card-v2 anim-stagger-child anim-fade-up" style="--why-card-bg:url('{% static 'images/Expert-Technical-Support.jpeg' %}');">
+        <div class="why-card-v2-top">
+          <div class="why-card-v2-num">03</div>
+          <div class="why-card-v2-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+        </div>
+        <h3 class="why-card-v2-title">Expert Technical Support</h3>
+        <p class="why-card-v2-desc">Our specialists guide you to the exact right bearing — not the nearest match. On-site bearing clinics, mounting assistance, and preventive maintenance included.</p>
+        <div class="why-card-v2-footer">
+          <span class="why-card-v2-stat">Decades</span>
+          <span class="why-card-v2-stat-label">of expertise</span>
+        </div>
+      </div>
+
+      <!-- Card 4 -->
+      <div class="why-card-v2 anim-stagger-child anim-fade-up" style="--why-card-bg:url('{% static 'images/Certified-Timken-Partner.png' %}');">
+        <div class="why-card-v2-top">
+          <div class="why-card-v2-num">04</div>
+          <div class="why-card-v2-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+        </div>
+        <h3 class="why-card-v2-title">Certified Timken Partner</h3>
+        <p class="why-card-v2-desc">As an officially certified Timken supplier, every product is 100% genuine, fully warranted, and backed by Timken's global quality standards.</p>
+        <div class="why-card-v2-footer">
+          <span class="why-card-v2-stat">Certified</span>
+          <span class="why-card-v2-stat-label">partner</span>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ══ INDUSTRIES WE SERVE — SWIPER CAROUSEL ══ -->
+{% if industries %}
+<section class="section-pad surface-low industries-section" aria-labelledby="industries-heading">
+  <div class="container">
+    <div class="industries-header anim-fade-up">
+      <div>
+        <p class="section-label">Industries We Serve</p>
+        <h2 class="headline-md" id="industries-heading" style="margin-top:0.5rem;">
+          Powering India's<br/><span class="gradient-text">Industrial Backbone</span>
+        </h2>
+      </div>
+      <p class="body-lg" style="color:var(--secondary);max-width:400px;align-self:flex-end;">
+        Our customers span a wide cross-section of India's industrial landscape — from heavy engineering giants to growing SMEs.
+      </p>
+    </div>
+
+    <div class="swiper industries-swiper anim-fade-up">
+      <div class="swiper-wrapper">
+        {% for industry in industries %}
+        <div class="swiper-slide">
+          <div class="industry-card-v2">
+            <div class="industry-card-v2-img">
+              {% if industry.image %}
+              <img src="{{ industry.image.url }}" alt="{{ industry.title }}" loading="lazy" />
+              {% else %}
+              <img src="https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=700&q=80" alt="{{ industry.title }}" loading="lazy" />
+              {% endif %}
+              <div class="industry-card-v2-gradient"></div>
+              <div class="industry-card-v2-tag">{{ industry.cta_label|default:'Industry' }}</div>
+            </div>
+            <div class="industry-card-v2-body">
+              <h3 class="industry-card-v2-title">{{ industry.title }}</h3>
+              <p class="industry-card-v2-desc">{{ industry.description }}</p>
+              <div class="industry-card-v2-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <button class="swiper-button-prev industries-prev" aria-label="Previous industry"></button>
+      <button class="swiper-button-next industries-next" aria-label="Next industry"></button>
+      <div class="swiper-pagination industries-pagination"></div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="section-pad surface-low industries-section" aria-labelledby="industries-heading" {% if industries %}style="display:none;"{% endif %}>
+  <div class="container">
+    <div class="industries-header anim-fade-up">
+      <div>
+        <p class="section-label">Industries We Serve</p>
+        <h2 class="headline-md" id="industries-heading" style="margin-top:0.5rem;">
+          Powering India's<br/><span class="gradient-text">Industrial Backbone</span>
+        </h2>
+      </div>
+      <p class="body-lg" style="color:var(--secondary);max-width:400px;align-self:flex-end;">
+        Our customers span a wide cross-section of India's industrial landscape — from heavy engineering giants to growing SMEs.
+      </p>
+    </div>
+
+    <div class="swiper industries-swiper anim-fade-up">
+      <div class="swiper-wrapper">
+
+        <div class="swiper-slide">
+          <div class="industry-card-v2">
+            <div class="industry-card-v2-img">
+              <img src="https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=700&q=80" alt="Heavy Engineering" loading="lazy" />
+              <div class="industry-card-v2-gradient"></div>
+              <div class="industry-card-v2-tag">Heavy Engineering</div>
+            </div>
+            <div class="industry-card-v2-body">
+              <h3 class="industry-card-v2-title">Heavy Engineering</h3>
+              <p class="industry-card-v2-desc">Precision bearings for large-scale machinery, presses, and heavy-load industrial equipment.</p>
+              <div class="industry-card-v2-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="swiper-slide">
+          <div class="industry-card-v2">
+            <div class="industry-card-v2-img">
+              <img src="https://images.unsplash.com/photo-1565514158740-064f34bd6cfd?w=700&q=80" alt="Oil & Sugar Mills" loading="lazy" />
+              <div class="industry-card-v2-gradient"></div>
+              <div class="industry-card-v2-tag">Processing</div>
+            </div>
+            <div class="industry-card-v2-body">
+              <h3 class="industry-card-v2-title">Oil &amp; Sugar Mills</h3>
+              <p class="industry-card-v2-desc">High-load, corrosion-resistant bearings for continuous processing environments.</p>
+              <div class="industry-card-v2-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="swiper-slide">
+          <div class="industry-card-v2">
+            <div class="industry-card-v2-img">
+              <img src="https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?w=700&q=80" alt="Power Projects" loading="lazy" />
+              <div class="industry-card-v2-gradient"></div>
+              <div class="industry-card-v2-tag">Energy</div>
+            </div>
+            <div class="industry-card-v2-body">
+              <h3 class="industry-card-v2-title">Power Projects</h3>
+              <p class="industry-card-v2-desc">Reliable bearings for turbines, generators, and critical power plant infrastructure.</p>
+              <div class="industry-card-v2-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="swiper-slide">
+          <div class="industry-card-v2">
+            <div class="industry-card-v2-img">
+              <img src="https://images.unsplash.com/photo-1519003722824-194d4455a60c?w=700&q=80" alt="Railways & Shipping" loading="lazy" />
+              <div class="industry-card-v2-gradient"></div>
+              <div class="industry-card-v2-tag">Transport</div>
+            </div>
+            <div class="industry-card-v2-body">
+              <h3 class="industry-card-v2-title">Railways &amp; Shipping</h3>
+              <p class="industry-card-v2-desc">Certified bearings for axle boxes, bogies, and marine propulsion systems.</p>
+              <div class="industry-card-v2-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="swiper-slide">
+          <div class="industry-card-v2">
+            <div class="industry-card-v2-img">
+              <img src="https://images.unsplash.com/photo-1548783831-3f2deedb4430?w=700&q=80" alt="Water Treatment" loading="lazy" />
+              <div class="industry-card-v2-gradient"></div>
+              <div class="industry-card-v2-tag">Water</div>
+            </div>
+            <div class="industry-card-v2-body">
+              <h3 class="industry-card-v2-title">Water &amp; Sewage Treatment</h3>
+              <p class="industry-card-v2-desc">Sealed, corrosion-resistant bearings for pumps, aerators, and treatment systems.</p>
+              <div class="industry-card-v2-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="swiper-slide">
+          <div class="industry-card-v2">
+            <div class="industry-card-v2-img">
+              <img src="https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=700&q=80" alt="Stone Crushers" loading="lazy" />
+              <div class="industry-card-v2-gradient"></div>
+              <div class="industry-card-v2-tag">Mining</div>
+            </div>
+            <div class="industry-card-v2-body">
+              <h3 class="industry-card-v2-title">Stone Crushers</h3>
+              <p class="industry-card-v2-desc">Heavy-duty spherical roller bearings built for extreme impact and vibration loads.</p>
+              <div class="industry-card-v2-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="swiper-slide">
+          <div class="industry-card-v2">
+            <div class="industry-card-v2-img">
+              <img src="https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=700&q=80" alt="Automotive" loading="lazy" />
+              <div class="industry-card-v2-gradient"></div>
+              <div class="industry-card-v2-tag">Automotive</div>
+            </div>
+            <div class="industry-card-v2-body">
+              <h3 class="industry-card-v2-title">Automotive</h3>
+              <p class="industry-card-v2-desc">Precision wheel hub, gearbox, and engine bearings for passenger and commercial vehicles.</p>
+              <div class="industry-card-v2-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="swiper-slide">
+          <div class="industry-card-v2">
+            <div class="industry-card-v2-img">
+              <img src="https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=700&q=80" alt="Paper Mills" loading="lazy" />
+              <div class="industry-card-v2-gradient"></div>
+              <div class="industry-card-v2-tag">Paper</div>
+            </div>
+            <div class="industry-card-v2-body">
+              <h3 class="industry-card-v2-title">Paper Mills</h3>
+              <p class="industry-card-v2-desc">Self-aligning bearings that handle misalignment and moisture in paper manufacturing lines.</p>
+              <div class="industry-card-v2-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="swiper-slide">
+          <div class="industry-card-v2">
+            <div class="industry-card-v2-img">
+              <img src="https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=700&q=80" alt="Steel Rolling Mills" loading="lazy" />
+              <div class="industry-card-v2-gradient"></div>
+              <div class="industry-card-v2-tag">Steel</div>
+            </div>
+            <div class="industry-card-v2-body">
+              <h3 class="industry-card-v2-title">Steel Rolling Mills</h3>
+              <p class="industry-card-v2-desc">Four-row cylindrical and tapered roller bearings for hot and cold rolling applications.</p>
+              <div class="industry-card-v2-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="swiper-slide">
+          <div class="industry-card-v2">
+            <div class="industry-card-v2-img">
+              <img src="https://images.unsplash.com/photo-1565043589221-1a6fd9ae45c7?w=700&q=80" alt="Machine Tools" loading="lazy" />
+              <div class="industry-card-v2-gradient"></div>
+              <div class="industry-card-v2-tag">Precision</div>
+            </div>
+            <div class="industry-card-v2-body">
+              <h3 class="industry-card-v2-title">Machine Tools</h3>
+              <p class="industry-card-v2-desc">High-precision angular contact and spindle bearings for CNC and precision machining centres.</p>
+              <div class="industry-card-v2-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <button class="swiper-button-prev industries-prev" aria-label="Previous industry"></button>
+      <button class="swiper-button-next industries-next" aria-label="Next industry"></button>
+      <div class="swiper-pagination industries-pagination"></div>
+    </div>
+  </div>
+ </section>
+
+
+<!-- ══ CTA BANNER ══ -->
+<section class="cta-banner" aria-labelledby="cta-heading">
+  <div class="container">
+    <div class="cta-banner-inner">
+      <div>
+        <h2 class="cta-title anim-slide-left" id="cta-heading">Ready to optimize your<br/><span class="accent">industrial operations?</span></h2>
+        <p class="anim-fade-up" style="color:rgba(255,255,255,0.55);margin-top:0.75rem;font-size:1.05rem;">Talk to our bearing specialists today — Bengaluru &amp; Chennai offices available.</p>
+      </div>
+      <div class="anim-slide-right" style="display:flex;gap:1rem;flex-wrap:wrap;">
+        <a href="{% url 'contact:contact' %}" class="btn-primary">Contact Us ›</a>
+        <a href="tel:+919884400741" class="btn-ghost btn-ghost-white">📞 Call Now</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+<script>
+  new Swiper('.industries-swiper', {
+    slidesPerView: 1,
+    spaceBetween: 24,
+    loop: true,
+    autoplay: { delay: 3500, disableOnInteraction: false },
+    pagination: { el: '.industries-pagination', clickable: true },
+    navigation: { prevEl: '.industries-prev', nextEl: '.industries-next' },
+    grabCursor: true,
+    breakpoints: {
+      640:  { slidesPerView: 2 },
+      1024: { slidesPerView: 3 }
+    }
+  });
+</script>
+{% endblock %}

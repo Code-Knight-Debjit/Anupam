@@ -1,0 +1,8 @@
+User-agent: *
+Disallow:
+
+# Crawl delay is optional; keep low for search engines
+# Crawl-delay: 10
+
+Sitemap: {{ request.scheme }}://{{ request.get_host }}/sitemap.xml
+Host: {{ request.get_host }}

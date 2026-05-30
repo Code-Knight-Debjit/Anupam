@@ -1,0 +1,66 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{% if category %}Edit{% else %}Add{% endif %} Category{% endblock %}
+{% block page_title %}{% if category %}Edit Category{% else %}Add Category{% endif %}{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ <a href="{% url 'dashboard:categories' %}" style="color:var(--muted);text-decoration:none;">Categories</a> / {% if category %}Edit{% else %}New{% endif %}</span>{% endblock %}
+{% block nav_cats %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>{% if category %}Edit "{{ category.name }}"{% else %}Add New Category{% endif %}</h1>
+  </div>
+  <a href="{% url 'dashboard:categories' %}" class="btn btn-ghost">← Back</a>
+</div>
+
+<form method="POST" enctype="multipart/form-data">
+  {% csrf_token %}
+  <div style="display:grid;grid-template-columns:1fr 320px;gap:1.5rem;align-items:start;">
+
+    <div class="card card-pad">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Category Name *</label>
+          <input class="form-input" type="text" name="name" required value="{{ category.name|default:'' }}" placeholder="e.g. Rolling Bearings"/>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Icon (emoji or text)</label>
+            <input class="form-input" type="text" name="icon" value="{{ category.icon|default:'' }}" placeholder="e.g. ⚙️"/>
+          </div>
+          <div class="form-group">
+            <label>Display Order</label>
+            <input class="form-input" type="number" name="order" value="{{ category.order|default:0 }}" min="0" max="100"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea class="form-input" name="description" placeholder="Describe this product category…" style="min-height:120px;">{{ category.description|default:'' }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:1.25rem;">
+      <div class="card card-pad">
+        <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1.25rem;">Actions</h3>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.875rem;">
+          {% if category %}Save Changes{% else %}Add Category{% endif %}
+        </button>
+        <a href="{% url 'dashboard:categories' %}" class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:0.5rem;">Cancel</a>
+      </div>
+
+      <div class="card card-pad">
+        <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1rem;padding-bottom:0.75rem;border-bottom:1px solid var(--border);">Category Image</h3>
+        {% if category and category.image %}
+        <img src="{{ category.image.url }}" style="width:100%;border-radius:8px;margin-bottom:0.75rem;object-fit:cover;max-height:160px;" alt="Current"/>
+        {% endif %}
+        <div style="border:2px dashed var(--border);border-radius:8px;padding:1.25rem;text-align:center;cursor:pointer;" onclick="document.getElementById('cat-img').click()">
+          <div style="font-size:1.5rem;margin-bottom:0.35rem;">🖼</div>
+          <div style="font-size:0.8rem;font-weight:600;">Click to upload</div>
+          <p id="cat-img-name" style="font-size:0.72rem;color:var(--orange);margin-top:0.35rem;"></p>
+        </div>
+        <input type="file" id="cat-img" name="image" accept="image/*" style="display:none;" onchange="document.getElementById('cat-img-name').textContent = this.files[0]?.name || ''"/>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,216 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Anupam Bearings — Driving Excellence with Precision{% endblock %}</title>
+  <meta name="description" content="{% block meta_desc %}Anupam Bearings is a certified Timken parts supplier based in Bengaluru and Chennai, India. Premium bearings, bearing housings, linear motion, and power transmission solutions.{% endblock %}" />
+  <link rel="canonical" href="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}" />
+
+  <!-- Open Graph / Twitter -->
+  <meta property="og:type" content="{% block og_type %}website{% endblock %}" />
+  <meta property="og:title" content="{% block og_title %}Anupam Bearings — Driving Excellence with Precision{% endblock %}" />
+  <meta property="og:description" content="{% block og_desc %}Anupam Bearings is a certified Timken parts supplier based in Bengaluru and Chennai, India. Premium bearings, bearing housings, linear motion, and power transmission solutions.{% endblock %}" />
+  <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}" />
+  <meta property="og:image" content="{% block og_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/onlylogo.png' %}{% endblock %}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{% block twitter_title %}Anupam Bearings — Driving Excellence with Precision{% endblock %}" />
+  <meta name="twitter:description" content="{% block twitter_desc %}Anupam Bearings is a certified Timken parts supplier based in Bengaluru and Chennai, India. Premium bearings, bearing housings, linear motion, and power transmission solutions.{% endblock %}" />
+  <meta name="twitter:image" content="{% block twitter_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/onlylogo.png' %}{% endblock %}" />
+
+  <!-- Organization JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "Anupam Bearings",
+    "url": "{{ request.scheme }}://{{ request.get_host }}",
+    "logo": "{{ request.scheme }}://{{ request.get_host }}{% static 'images/onlylogo.png' %}",
+    "contactPoint": [{"@type": "ContactPoint", "telephone": "+91-98844-00741", "contactType": "customer service", "areaServed": "IN"}],
+    "sameAs": ["https://www.linkedin.com/company/anupam-bearings","https://twitter.com/anupambearings"]
+  }
+  </script>
+  <link rel="icon" type="image/png" href="{% static 'images/onlylogo.png' %}" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- GSAP -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" defer></script>
+
+  <!-- Main CSS -->
+  <link rel="stylesheet" href="{% static 'css/main.css' %}" />
+
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<!-- ── SCROLL PROGRESS ── -->
+<div id="scroll-progress"></div>
+
+
+<!-- ── NAVIGATION ── -->
+<nav id="navbar" role="navigation" aria-label="Main navigation">
+  <div class="nav-inner">
+    <a href="{% url 'core:home' %}" class="nav-logo" aria-label="Anupam Bearings Home">
+      <img src="{% static 'images/logo.png' %}" alt="Anupam Bearings" width="180" height="80" />
+    </a>
+    
+    <ul class="nav-links" role="list">
+      <li><a href="{% url 'core:home' %}">Home</a></li>
+      <li><a href="{% url 'core:about' %}">About</a></li>
+      <li><a href="{% url 'products:list' %}">Products</a></li>
+      <li><a href="{% url 'core:gallery' %}">Gallery</a></li>
+      <li><a href="{% url 'contact:contact' %}">Contact</a></li>
+    </ul>
+    
+    {% comment %} <a href="{% url 'contact:contact' %}" class="btn-primary nav-cta">Get a Quote</a> {% endcomment %}
+    
+    <button class="nav-hamburger" id="hamburger" aria-label="Toggle menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+{% block intro %}{% endblock %}
+
+<!-- ── MOBILE NAV OVERLAY ── -->
+<div class="nav-mobile" id="mobile-nav" role="dialog" aria-label="Mobile navigation">
+  <button class="nav-mobile-close" id="mobile-close" aria-label="Close menu">✕</button>
+  <a href="{% url 'core:home' %}">Home</a>
+  <a href="{% url 'core:about' %}">About</a>
+  <a href="{% url 'products:list' %}">Products</a>
+  <a href="{% url 'core:gallery' %}">Gallery</a>
+  <a href="{% url 'contact:contact' %}">Contact</a>
+  {% comment %} <a href="{% url 'contact:contact' %}" class="btn-primary" style="margin-top:1rem;">Get a Quote</a> {% endcomment %}
+</div>
+
+<!-- ── MAIN CONTENT ── -->
+<main id="main-content">
+  {% block content %}{% endblock %}
+</main>
+
+<!-- ── FOOTER ── -->
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-logo">
+          <img src="{% static 'images/logo.png' %}" alt="Anupam Bearings" width="180" height="80" />
+        </div>
+        <p class="footer-desc">Certified Timken Parts Supplier driving industrial excellence across India. Headquartered in Bengaluru with offices in Chennai.</p>
+        <div class="footer-social">
+          <a href="#" aria-label="LinkedIn">in</a>
+          <a href="#" aria-label="Twitter">𝕏</a>
+          <a href="mailto:info@anupambearings.com" aria-label="Email">✉</a>
+        </div>
+      </div>
+      <div>
+        <p class="footer-heading">Products</p>
+        <ul class="footer-links">
+          <li><a href="{% url 'products:list' %}?category=rolling-bearings">Rolling Bearings</a></li>
+          <li><a href="{% url 'products:list' %}?category=bearing-housings">Bearing Housings</a></li>
+          <li><a href="{% url 'products:list' %}?category=linear-motion">Linear Motion</a></li>
+          <li><a href="{% url 'products:list' %}?category=power-transmission">Power Transmission</a></li>
+          <li><a href="{% url 'products:list' %}?category=lubrication-maintenance">Lubrication</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="footer-heading">Company</p>
+        <ul class="footer-links">
+          <li><a href="{% url 'core:about' %}">About Us</a></li>
+          <li><a href="{% url 'core:gallery' %}">Gallery</a></li>
+          <li><a href="{% url 'contact:contact' %}">Contact</a></li>
+          {% comment %} <li><a href="{% url 'contact:contact' %}">Get a Quote</a></li> {% endcomment %}
+        </ul>
+      </div>
+      <div>
+        <p class="footer-heading">Contact</p>
+        <ul class="footer-links">
+          <li><a href="tel:+919884400741">+91-98844-00741</a></li>
+          <li><a href="mailto:info@anupambearings.com">info@anupambearings.com</a></li>
+          <li><a href="mailto:sales@anupambearings.com">sales@anupambearings.com</a></li>
+          <li style="color:rgba(255,255,255,0.35);font-size:0.8rem;margin-top:0.5rem;">Bengaluru · Chennai</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2025 Anupam Bearings. All rights reserved.</span>
+      <span>Certified Timken Partner · India</span>
+    </div>
+  </div>
+</footer>
+
+<!-- ── CHATBOT ── -->
+<div class="chatbot-fab">
+  <div class="chatbot-bubble">Hi, I'm Anupam Assistant 👋</div>
+
+  <div class="chatbot-panel" id="chatbot-panel" role="dialog" aria-label="Anupam Assistant Chat">
+    <div class="chatbot-header">
+      <div class="chatbot-avatar">🤖</div>
+      <div class="chatbot-header-info">
+        <div class="chatbot-name">Anupam Assistant</div>
+        <div class="chatbot-status">● Online — Ask me anything</div>
+      </div>
+      <button class="chatbot-close" id="chatbot-close" aria-label="Close chat">✕</button>
+    </div>
+    <div class="chatbot-messages" id="chatbot-messages" role="log" aria-live="polite"></div>
+    <div class="chatbot-input-row">
+      <input
+        type="text"
+        class="chatbot-input"
+        id="chatbot-input"
+        placeholder="Ask about products, specs…"
+        maxlength="500"
+        aria-label="Chat message"
+      />
+      <button class="chatbot-send" id="chatbot-send" aria-label="Send message">➤</button>
+    </div>
+  </div>
+
+  <button class="chatbot-btn" id="chatbot-btn" aria-label="Open chat assistant">💬</button>
+</div>
+
+<!-- ── ENQUIRY MODAL ── -->
+<div class="modal-overlay" id="enquiry-modal" role="dialog" aria-modal="true" aria-label="Product Enquiry">
+  <div class="modal-box">
+    <button class="modal-close" aria-label="Close">✕</button>
+    <p class="label-sm" style="color:var(--primary-container);margin-bottom:0.25rem;">Product Enquiry</p>
+    <h3 class="modal-title" id="modal-product-name">Product Name</h3>
+    <form id="enquiry-form" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="product_id" value="" />
+      <div class="form-group">
+        <label class="form-label">Your Name *</label>
+        <input class="form-input" type="text" name="name" required placeholder="John Doe" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email *</label>
+        <input class="form-input" type="email" name="email" required placeholder="john@company.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Phone</label>
+        <input class="form-input" type="tel" name="phone" placeholder="+91 98000 00000" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Company</label>
+        <input class="form-input" type="text" name="company" placeholder="Company Name" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Message *</label>
+        <textarea class="form-input" name="message" required placeholder="Describe your requirements, quantity, specifications…"></textarea>
+      </div>
+      <button type="submit" class="btn-primary" style="width:100%;justify-content:center;">Send Enquiry</button>
+    </form>
+  </div>
+</div>
+
+<!-- Main JS -->
+<script src="{% static 'js/main.js' %}" defer></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

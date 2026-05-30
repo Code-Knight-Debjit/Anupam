@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Products — Anupam Bearings{% endblock %}
+
+{% block extra_head %}
+<link rel="canonical" href="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}" />
+{% if page_obj and page_obj.has_previous %}
+<link rel="prev" href="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}?{% for k,v in request.GET.items %}{% if k != 'page' %}{{ k }}={{ v }}&{% endif %}{% endfor %}page={{ page_obj.previous_page_number }}" />
+{% endif %}
+{% if page_obj and page_obj.has_next %}
+<link rel="next" href="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}?{% for k,v in request.GET.items %}{% if k != 'page' %}{{ k }}={{ v }}&{% endif %}{% endfor %}page={{ page_obj.next_page_number }}" />
+{% endif %}
+{% endblock %}
+
+{% block content %}
+
+<!-- ── PAGE HERO ── -->
+<section style="background:var(--gradient-hero);padding:9rem 0 4rem;position:relative;overflow:hidden;" aria-label="Products hero">
+  <div class="dot-grid"></div>
+  <div class="container" style="position:relative;z-index:1;">
+    <p class="section-label anim-fade-up" style="color:rgba(255,255,255,.5);">Our Catalogue</p>
+    <h1 class="display-lg anim-fade-up" style="color:#fff;max-width:580px;margin-top:.5rem;">
+      Precision Products.<br/><span class="gradient-text">Infinite Applications.</span>
+    </h1>
+    <p class="body-lg anim-fade-up" style="color:rgba(255,255,255,.55);max-width:500px;margin-top:1.5rem;">
+      500+ genuine Timken bearing products for every industrial application.
+    </p>
+  </div>
+</section>
+
+<!-- ── SEARCH + FILTERS ── -->
+<section class="section-pad surface-base">
+  <div class="container">
+
+    <!-- Search + filter bar -->
+    <form method="GET" action="" style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-bottom:var(--sp-4);" class="anim-fade-up">
+      <div style="position:relative;flex:1;min-width:220px;">
+        <input
+          class="form-input"
+          type="text"
+          name="q"
+          value="{{ q }}"
+          placeholder="🔍  Search products by name, type or application…"
+          style="padding-left:1rem;"
+        />
+      </div>
+      <select class="form-input" name="category" style="max-width:200px;" onchange="this.form.submit()">
+        <option value="">All Categories</option>
+        {% for cat in categories %}
+        <option value="{{ cat.slug }}" {% if active_category == cat.slug %}selected{% endif %}>
+          {{ cat.icon }} {{ cat.name }}
+        </option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn-primary">Search</button>
+      {% if q or active_category %}
+      <a href="{% url 'products:list' %}" class="btn-ghost">✕ Clear</a>
+      {% endif %}
+    </form>
+
+    <!-- Result count -->
+    {% if q or active_category %}
+    <p class="anim-fade-up" style="font-size:.85rem;color:var(--secondary);margin-bottom:var(--sp-3);">
+      {{ total_count }} product{{ total_count|pluralize }} found
+      {% if q %}for "<strong>{{ q }}</strong>"{% endif %}
+      {% if active_category %}in <strong>{{ active_category }}</strong>{% endif %}
+    </p>
+    {% endif %}
+
+    <!-- DESKTOP CATEGORY TABS (hidden when search active) -->
+    {% if not q %}
+    <div class="category-tabs anim-fade-up" id="desktop-tabs">
+      <button class="cat-tab {% if not active_category %}active{% endif %}" onclick="window.location='{% url 'products:list' %}'">All</button>
+      {% for cat in categories %}
+      <button class="cat-tab {% if active_category == cat.slug %}active{% endif %}"
+              onclick="window.location='{% url 'products:list' %}?category={{ cat.slug }}'">
+        {{ cat.icon }} {{ cat.name }}
+      </button>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- PRODUCTS GRID -->
+    {% if products %}
+    <div class="products-grid anim-stagger-group" style="margin-top:var(--sp-4);">
+      {% for product in products %}
+      <article class="product-card anim-stagger-child anim-fade-up">
+        <a href="{% url 'products:detail' product.slug %}" style="display:block;color:inherit;text-decoration:none;">
+          <div class="product-card-img">
+            {% if product.image %}
+            <img src="{{ product.image.url }}" alt="{{ product.name }}" loading="lazy"
+                 style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;"/>
+            {% else %}
+            <span class="product-card-icon">{{ product.category.icon }}</span>
+            {% endif %}
+          </div>
+          <div class="product-card-body">
+            <p class="product-card-cat">{{ product.category.name }}</p>
+            <h3 class="product-card-name">{{ product.name }}</h3>
+            <p class="product-card-desc">{{ product.description|truncatewords:18 }}</p>
+            <!-- <span class="product-card-cta">View Details →</span> -->
+          </div>
+        </a>
+        <div class="product-card-footer">
+          <a href="#" class="btn-primary product-card-enquire" data-enquire="{{ product.id }}" data-name="{{ product.name }}">Enquire Now →</a>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+
+    <!-- PAGINATION -->
+    {% include "includes/pagination.html" %}
+
+    {% else %}
+    <div style="text-align:center;padding:4rem 0;color:var(--secondary);">
+      <p style="font-size:3rem;margin-bottom:1rem;">🔍</p>
+      <h3 style="font-family:var(--font-display);margin-bottom:.5rem;">No products found</h3>
+      {% if q %}<p>Try a different search term, or <a href="{% url 'products:list' %}" style="color:var(--primary-container);">browse all products</a>.</p>
+      {% else %}<p>Run <code style="background:var(--surface-container-highest);padding:2px 6px;border-radius:4px;">python manage.py seed_data</code> to load products.</p>{% endif %}
+    </div>
+    {% endif %}
+
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-banner">
+  <div class="container">
+    <div class="cta-banner-inner">
+      <div>
+        <h2 class="cta-title anim-slide-left">Can't find what you need?<br/><span class="accent">We source any bearing.</span></h2>
+      </div>
+      <div class="anim-slide-right" style="display:flex;gap:1rem;flex-wrap:wrap;">
+        <a href="{% url 'contact:contact' %}" class="btn-primary">Contact Specialists ›</a>
+        <a href="tel:+919884400741" class="btn-ghost btn-ghost-white">📞 Call Now</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+

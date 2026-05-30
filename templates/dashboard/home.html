@@ -1,0 +1,254 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Overview{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block nav_home %}active{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── STAT CARDS ── -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value">{{ stats.total_products }}</div>
+      <div class="stat-card-label">Total Products</div>
+      <span class="stat-card-badge badge-ok">{{ stats.total_categories }} categories</span>
+    </div>
+    <div class="stat-card-icon orange">📦</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value">{{ stats.new_enquiries }}</div>
+      <div class="stat-card-label">New Enquiries</div>
+      {% if stats.new_enquiries > 0 %}
+      <span class="stat-card-badge badge-new">Needs action</span>
+      {% else %}
+      <span class="stat-card-badge badge-ok">All clear</span>
+      {% endif %}
+    </div>
+    <div class="stat-card-icon blue">📋</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value">{{ stats.unread_messages }}</div>
+      <div class="stat-card-label">Unread Messages</div>
+      {% if stats.unread_messages > 0 %}
+      <span class="stat-card-badge badge-new">{{ stats.total_messages }} total</span>
+      {% else %}
+      <span class="stat-card-badge badge-ok">Inbox clear</span>
+      {% endif %}
+    </div>
+    <div class="stat-card-icon red">✉️</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value">{{ stats.chats_this_week }}</div>
+      <div class="stat-card-label">Chats This Week</div>
+      <span class="stat-card-badge badge-ok">{{ stats.total_chats }} total</span>
+    </div>
+    <div class="stat-card-icon purple">💬</div>
+  </div>
+</div>
+
+<!-- ── CONTENT SHORTCUTS ── -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem;">
+  <a href="{% url 'dashboard:industries' %}" class="card card-pad" style="text-decoration:none;color:inherit;display:block;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;">
+      <div>
+        <div class="card-title">Industries We Serve</div>
+        <div style="font-family:var(--font-d);font-size:1.9rem;font-weight:700;margin-top:0.35rem;">{{ stats.total_industries }}</div>
+        <p style="color:var(--muted);font-size:0.85rem;margin-top:0.25rem;">Manage the image-backed industry cards shown on the site.</p>
+      </div>
+      <div class="stat-card-icon orange">🏭</div>
+    </div>
+  </a>
+  <a href="{% url 'dashboard:gallery_items' %}" class="card card-pad" style="text-decoration:none;color:inherit;display:block;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;">
+      <div>
+        <div class="card-title">Gallery Images</div>
+        <div style="font-family:var(--font-d);font-size:1.9rem;font-weight:700;margin-top:0.35rem;">{{ stats.total_gallery }}</div>
+        <p style="color:var(--muted);font-size:0.85rem;margin-top:0.25rem;">Add, edit, reorder, and delete public gallery photos.</p>
+      </div>
+      <div class="stat-card-icon blue">🖼️</div>
+    </div>
+  </a>
+</div>
+
+{% comment %} <!-- ── CONTENT SHORTCUTS ── -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem;">
+  <a href="{% url 'dashboard:industries' %}" class="card card-pad" style="text-decoration:none;color:inherit;display:block;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;">
+      <div>
+        <div class="card-title">Industries We Serve</div>
+        <div style="font-family:var(--font-d);font-size:1.9rem;font-weight:700;margin-top:0.35rem;">{{ stats.total_industries }}</div>
+        <p style="color:var(--muted);font-size:0.85rem;margin-top:0.25rem;">Manage the image-backed industry cards shown on the site.</p>
+      </div>
+      <div class="stat-card-icon orange">🏭</div>
+    </div>
+  </a>
+  <a href="{% url 'dashboard:gallery_items' %}" class="card card-pad" style="text-decoration:none;color:inherit;display:block;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;">
+      <div>
+        <div class="card-title">Gallery Images</div>
+        <div style="font-family:var(--font-d);font-size:1.9rem;font-weight:700;margin-top:0.35rem;">{{ stats.total_gallery }}</div>
+        <p style="color:var(--muted);font-size:0.85rem;margin-top:0.25rem;">Add, edit, reorder, and delete public gallery photos.</p>
+      </div>
+      <div class="stat-card-icon blue">🖼️</div>
+    </div>
+  </a>
+</div> {% endcomment %}
+
+
+<!-- ── CHART + RECENT ENQUIRIES ── -->
+<div style="display:grid;grid-template-columns:1fr 1.4fr;gap:1.25rem;margin-bottom:1.25rem;">
+
+  <!-- Chart -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Activity (Last 7 Days)</span>
+    </div>
+    <div class="card-pad">
+      <div class="chart-wrap">
+        <canvas id="activityChart"></canvas>
+      </div>
+      <div style="display:flex;gap:1.25rem;margin-top:0.75rem;">
+        <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;color:var(--muted);">
+          <span style="width:12px;height:12px;border-radius:3px;background:#ff6a00;display:inline-block;"></span> Enquiries
+        </div>
+        <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;color:var(--muted);">
+          <span style="width:12px;height:12px;border-radius:3px;background:#3b82f6;display:inline-block;"></span> Messages
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Enquiries -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Recent Enquiries</span>
+      <a href="{% url 'dashboard:enquiries' %}" class="btn btn-ghost btn-sm">View All</a>
+    </div>
+    {% if recent_enquiries %}
+    <div style="overflow:hidden;">
+      {% for enq in recent_enquiries %}
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1.5rem;border-bottom:1px solid var(--border);gap:1rem;">
+        <div style="display:flex;align-items:center;gap:0.75rem;min-width:0;">
+          <div style="width:36px;height:36px;border-radius:8px;background:rgba(255,106,0,0.1);display:flex;align-items:center;justify-content:center;font-size:0.9rem;flex-shrink:0;">📋</div>
+          <div style="min-width:0;">
+            <div class="td-name" style="font-size:0.83rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ enq.name }}</div>
+            <div class="td-sub">{{ enq.product.name|default:"General enquiry"|truncatechars:28 }}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;flex-shrink:0;">
+          <span class="pill pill-{{ enq.status|slugify }}">{{ enq.get_status_display }}</span>
+          <span style="font-size:0.7rem;color:var(--muted);">{{ enq.created_at|timesince }} ago</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="empty-state-icon">📭</div><p>No enquiries yet.</p></div>
+    {% endif %}
+  </div>
+</div>
+
+
+<!-- ── RECENT MESSAGES + CHAT SESSIONS ── -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;">
+
+  <!-- Recent Messages -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Recent Messages</span>
+      <a href="{% url 'dashboard:messages' %}" class="btn btn-ghost btn-sm">View All</a>
+    </div>
+    {% if recent_messages %}
+    <div>
+      {% for msg in recent_messages %}
+      <div style="display:flex;gap:0.75rem;padding:0.875rem 1.5rem;border-bottom:1px solid var(--border);align-items:flex-start;">
+        <div style="width:36px;height:36px;border-radius:50%;background:{% if not msg.is_read %}rgba(239,68,68,0.12){% else %}var(--surface){% endif %};display:flex;align-items:center;justify-content:center;font-size:0.85rem;flex-shrink:0;">
+          {% if not msg.is_read %}🔴{% else %}✉{% endif %}
+        </div>
+        <div style="min-width:0;flex:1;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;">
+            <span class="td-name" style="font-size:0.83rem;">{{ msg.name }}</span>
+            <span style="font-size:0.7rem;color:var(--muted);flex-shrink:0;">{{ msg.created_at|timesince }} ago</span>
+          </div>
+          <div class="td-sub">{{ msg.subject|truncatechars:40 }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="empty-state-icon">📭</div><p>No messages yet.</p></div>
+    {% endif %}
+  </div>
+
+  <!-- Recent Chat Sessions -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Recent Chat Sessions</span>
+      <a href="{% url 'dashboard:chats' %}" class="btn btn-ghost btn-sm">View All</a>
+    </div>
+    {% if recent_chats %}
+    <div>
+      {% for chat in recent_chats %}
+      <div style="display:flex;gap:0.75rem;padding:0.875rem 1.5rem;border-bottom:1px solid var(--border);align-items:flex-start;">
+        <div style="width:36px;height:36px;border-radius:50%;background:rgba(168,85,247,0.1);display:flex;align-items:center;justify-content:center;font-size:0.85rem;flex-shrink:0;">💬</div>
+        <div style="min-width:0;flex:1;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span class="td-name" style="font-size:0.83rem;">Session #{{ chat.session_id|truncatechars:12 }}</span>
+            <span style="font-size:0.7rem;color:var(--muted);">{{ chat.created_at|timesince }} ago</span>
+          </div>
+          <div class="td-sub">{{ chat.content|truncatechars:45 }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="empty-state-icon">🤖</div><p>No chat sessions yet.</p></div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ctx = document.getElementById('activityChart');
+if (ctx) {
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: {{ chart_labels|safe }},
+      datasets: [
+        {
+          label: 'Enquiries',
+          data: {{ chart_enquiries|safe }},
+          backgroundColor: 'rgba(255,106,0,0.75)',
+          borderRadius: 5,
+        },
+        {
+          label: 'Messages',
+          data: {{ chart_messages|safe }},
+          backgroundColor: 'rgba(59,130,246,0.65)',
+          borderRadius: 5,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { font: { size: 11 }, stepSize: 1 }, beginAtZero: true }
+      }
+    }
+  });
+}
+</script>
+{% endblock %}

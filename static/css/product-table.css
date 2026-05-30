@@ -1,0 +1,432 @@
+.excel-spec-section {
+  position: relative;
+}
+
+.excel-spec-shell {
+  background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(247,244,249,0.92));
+  border: 1px solid rgba(226,191,176,0.32);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 20px 44px rgba(27, 27, 31, 0.09), inset 0 1px 0 rgba(255,255,255,0.7);
+  overflow: hidden;
+}
+
+.excel-spec-shell.is-loading {
+  opacity: 0.72;
+}
+
+.excel-spec-toolbar {
+  position: relative;
+  z-index: 2;
+  background:
+    radial-gradient(circle at top right, rgba(255,171,84,0.15), transparent 34%),
+    linear-gradient(180deg, rgba(255,252,249,0.99), rgba(246,242,248,0.96));
+  border-bottom: 1px solid rgba(226,191,176,0.28);
+  padding: var(--sp-4);
+  display: grid;
+  gap: var(--sp-3);
+  box-shadow: inset 0 -1px 0 rgba(255,255,255,0.75);
+}
+
+.excel-spec-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.excel-spec-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--secondary);
+}
+
+.excel-spec-toolbar-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--secondary);
+}
+
+.excel-spec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: var(--radius-full);
+  background: rgba(255,106,0,0.08);
+  color: var(--primary-container);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.excel-spec-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.excel-spec-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.78);
+  border: 1px solid rgba(226,191,176,0.26);
+  color: var(--secondary);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.excel-spec-status::before {
+  content: '';
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.35;
+  flex: 0 0 auto;
+}
+
+.excel-spec-status[data-tone='warning'] {
+  color: var(--primary-container);
+  border-color: rgba(255,106,0,0.2);
+  background: rgba(255,106,0,0.08);
+}
+
+.excel-spec-status[data-tone='success'] {
+  color: #116b3a;
+  border-color: rgba(17,107,58,0.2);
+  background: rgba(17,107,58,0.08);
+}
+
+.excel-spec-status[data-tone='error'] {
+  color: #b42318;
+  border-color: rgba(180,35,24,0.2);
+  background: rgba(180,35,24,0.08);
+}
+
+.excel-spec-status[data-tone='loading'] {
+  color: var(--secondary);
+  background: rgba(255,255,255,0.86);
+}
+
+.excel-spec-reset {
+  appearance: none;
+  border: 1px solid rgba(226,191,176,0.45);
+  background: rgba(255,255,255,0.72);
+  color: var(--secondary);
+  border-radius: var(--radius-full);
+  padding: 0.55rem 0.95rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+
+.excel-spec-reset:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255,106,0,0.35);
+  color: var(--primary-container);
+  background: rgba(255,106,0,0.06);
+}
+
+.excel-spec-apply {
+  appearance: none;
+  border: 1px solid rgba(255,106,0,0.72);
+  background: linear-gradient(135deg, #ff7a18, #ff9d1a 52%, #ffb347);
+  color: #fff;
+  border-radius: var(--radius-full);
+  padding: 0.9rem 1.2rem;
+  min-height: 3rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  box-shadow: 0 14px 28px rgba(255,106,0,0.22), inset 0 1px 0 rgba(255,255,255,0.22);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease, border-color 0.18s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.excel-spec-apply.has-pending-changes {
+  border-color: rgba(255,106,0,0.92);
+  box-shadow: 0 18px 40px rgba(255,106,0,0.3), 0 0 0 4px rgba(255,106,0,0.1), inset 0 1px 0 rgba(255,255,255,0.24);
+  animation: excel-apply-pulse 1.8s ease-in-out infinite;
+}
+
+.excel-spec-apply::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.22) 18%, transparent 38%);
+  transform: translateX(-130%);
+  transition: transform 0.5s ease;
+  pointer-events: none;
+}
+
+.excel-spec-apply:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 34px rgba(255,106,0,0.28), inset 0 1px 0 rgba(255,255,255,0.25);
+  filter: saturate(1.02);
+}
+
+.excel-spec-apply:hover::after {
+  transform: translateX(130%);
+}
+
+.excel-spec-apply:focus-visible {
+  outline: 3px solid rgba(255,106,0,0.24);
+  outline-offset: 2px;
+}
+
+.excel-spec-apply:disabled {
+  opacity: 1;
+}
+
+@keyframes excel-apply-pulse {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1px); }
+}
+
+.excel-spec-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.85rem;
+}
+
+.excel-spec-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.8rem 0.85rem;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: rgba(255,255,255,0.72);
+  border: 1px solid rgba(226,191,176,0.3);
+}
+
+.excel-spec-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.excel-spec-range-separator {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--secondary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.excel-spec-range-hint {
+  font-size: 0.72rem;
+  color: var(--secondary);
+}
+
+.excel-spec-filter select,
+.excel-spec-page-size select {
+  width: 100%;
+}
+
+.excel-spec-table-wrap {
+  overflow-x: auto;
+  background: linear-gradient(180deg, rgba(255,255,255,0.45), rgba(255,255,255,0));
+  border-top: 1px solid rgba(226,191,176,0.14);
+}
+
+.excel-spec-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+/* ── STICKY HEADER FIX ──
+   Uses a CSS variable --table-header-top so each page can set the correct
+   offset. On the product detail page the navbar (80px) + breadcrumb bar (~44px)
+   = 124px total. Falls back to 124px if the variable is not set. */
+.excel-spec-table thead th {
+  position: sticky;
+  /* top: var(--table-header-top, 124px); */
+  z-index: 2;
+  background: linear-gradient(180deg, rgba(255,255,255,0.997), rgba(248,246,250,0.995));
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(226,191,176,0.5);
+  box-shadow: inset 0 -1px 0 rgba(255,255,255,0.8), 0 1px 0 rgba(27,27,31,0.02);
+}
+
+.excel-spec-table th,
+.excel-spec-table td {
+  padding: 0.95rem 1rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(226,191,176,0.22);
+}
+
+.excel-spec-table th {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--secondary);
+}
+
+.excel-spec-table tbody tr:nth-child(even) {
+  background: rgba(245,243,248,0.72);
+}
+
+.excel-spec-table tbody tr:hover {
+  background: rgba(255,106,0,0.06);
+}
+
+.excel-spec-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.excel-spec-sort-indicator {
+  color: var(--primary-container);
+  font-size: 0.85rem;
+}
+
+.excel-spec-cell {
+  font-size: 0.9rem;
+  color: var(--on-surface);
+}
+
+.excel-spec-cell-muted {
+  color: var(--secondary);
+}
+
+.excel-spec-empty,
+.excel-spec-loading,
+.excel-spec-error {
+  padding: 3.5rem 1.5rem;
+  text-align: center;
+  color: var(--secondary);
+}
+
+.excel-spec-empty strong,
+.excel-spec-error strong {
+  display: block;
+  font-family: var(--font-display);
+  color: var(--on-surface);
+  font-size: 1.05rem;
+  margin-bottom: 0.5rem;
+}
+
+.excel-spec-pagination {
+  padding: var(--sp-3) var(--sp-4);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(226,191,176,0.22);
+  background: linear-gradient(180deg, rgba(255,255,255,0.75), rgba(247,244,249,0.92));
+}
+
+.excel-spec-pagination-info {
+  font-size: 0.8rem;
+  color: var(--secondary);
+}
+
+.excel-spec-pagination-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.excel-spec-pagination-ellipsis {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.25rem;
+  color: var(--secondary);
+  font-weight: 700;
+}
+
+.excel-spec-pagination .btn-ghost,
+.excel-spec-pagination .btn-primary {
+  padding: 0.7rem 1rem;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .excel-spec-toolbar-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .excel-spec-toolbar-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+}
+
+@media (max-width: 640px) {
+  .excel-spec-toolbar {
+    padding: 1rem;
+  }
+
+  .excel-spec-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .excel-spec-toolbar-actions {
+    justify-content: flex-start;
+  }
+
+  .excel-spec-range {
+    grid-template-columns: 1fr;
+  }
+
+  .excel-spec-range-separator {
+
+  .excel-spec-status {
+    padding: 0.8rem 0.9rem;
+  }
+
+  .excel-spec-apply,
+  .excel-spec-reset {
+    width: 100%;
+  }
+    display: none;
+  }
+
+  .excel-spec-table th,
+  .excel-spec-table td {
+    padding: 0.8rem 0.85rem;
+  }
+
+  .excel-spec-pagination {
+    padding: 1rem;
+  }
+}

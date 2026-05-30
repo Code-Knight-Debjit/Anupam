@@ -1,0 +1,331 @@
+{% extends "dashboard/base.html" %}
+{% block title %}RAG System{% endblock %}
+{% block page_title %}RAG Knowledge Base{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ AI System</span>{% endblock %}
+{% block nav_rag %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>RAG Knowledge Base</h1>
+    <p>Upload documents, manage the FAISS index, and monitor AI health</p>
+  </div>
+  <div style="display:flex;gap:.75rem;">
+    <button class="btn btn-ghost btn-sm" onclick="runHealthCheck()">🔄 Refresh</button>
+    <a href="/api/chat/health/" target="_blank" class="btn btn-ghost btn-sm">↗ Health JSON</a>
+  </div>
+</div>
+
+<!-- STATUS CARDS -->
+<div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:1.5rem;">
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value" style="font-size:1.5rem;">{% if index_stats.exists %}{{ index_stats.total_vectors }}{% else %}0{% endif %}</div>
+      <div class="stat-card-label">Vectors in FAISS</div>
+      {% if index_stats.exists %}<span class="stat-card-badge badge-ok">Index ready</span>
+      {% else %}<span class="stat-card-badge badge-new">Not built</span>{% endif %}
+    </div>
+    <div class="stat-card-icon orange" style="font-size:1.6rem;">🗃</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value" style="font-size:1.5rem;">{% if ollama_health.healthy %}Online{% else %}Offline{% endif %}</div>
+      <div class="stat-card-label">LLM — {{ ollama_health.model }}</div>
+      {% if ollama_health.healthy %}<span class="stat-card-badge badge-ok">Connected</span>
+      {% else %}<span class="stat-card-badge badge-new">Unreachable</span>{% endif %}
+    </div>
+    <div class="stat-card-icon blue" style="font-size:1.6rem;">🤖</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value" style="font-size:1.5rem;">{% if redis_ok %}Online{% else %}Offline{% endif %}</div>
+      <div class="stat-card-label">Redis Cache + Broker</div>
+      {% if redis_ok %}<span class="stat-card-badge badge-ok">Connected</span>
+      {% else %}<span class="stat-card-badge badge-new">Unreachable</span>{% endif %}
+    </div>
+    <div class="stat-card-icon purple" style="font-size:1.6rem;">⚡</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;align-items:start;">
+
+  <!-- LEFT COLUMN: Upload + Reindex -->
+  <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+    <!-- Upload -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">📤 Upload Document</span></div>
+      <div class="card-pad">
+        <p style="font-size:.83rem;color:var(--muted);margin-bottom:1rem;">Upload a .json, .txt, or .pdf file (max 5MB). It will be chunked, embedded, and added to the FAISS index immediately.</p>
+        <div id="drop-zone"
+          style="border:2px dashed var(--border);border-radius:8px;padding:1.75rem;text-align:center;cursor:pointer;transition:all .2s;"
+          onclick="document.getElementById('doc-upload').click()"
+          ondragover="event.preventDefault();this.style.borderColor='var(--orange)'"
+          ondragleave="this.style.borderColor='var(--border)'"
+          ondrop="handleDrop(event)">
+          <div style="font-size:2rem;margin-bottom:.4rem;">📎</div>
+          <div style="font-weight:600;font-size:.875rem;">Drop file or click to browse</div>
+          <div style="font-size:.73rem;color:var(--muted);margin-top:.25rem;">.json · .txt · .pdf</div>
+          <div id="file-name" style="margin-top:.6rem;font-size:.78rem;color:var(--orange);font-weight:600;"></div>
+        </div>
+        <input type="file" id="doc-upload" accept=".json,.txt,.pdf" style="display:none;" onchange="onFileSelected(this)"/>
+        <label class="form-check" style="margin-top:.875rem;">
+          <input type="checkbox" id="upload-include-products" checked/>
+          <span class="form-check-label" style="font-size:.82rem;">Also re-index DB products</span>
+        </label>
+        <button id="upload-btn" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:.875rem;" onclick="uploadDocument()" disabled>
+          📤 Upload &amp; Index
+        </button>
+        <div id="upload-result" style="display:none;margin-top:.875rem;padding:.75rem;border-radius:8px;font-size:.82rem;"></div>
+      </div>
+    </div>
+
+    <!-- Reindex -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">🔄 Reindex Actions</span></div>
+      <div class="card-pad" style="display:flex;flex-direction:column;gap:.875rem;">
+
+        <div style="background:var(--surface);border-radius:8px;padding:.875rem;">
+          <div style="font-family:var(--font-d);font-size:.875rem;font-weight:700;margin-bottom:.25rem;">Append Mode <span style="font-size:.68rem;color:var(--muted);font-weight:400;">(safe)</span></div>
+          <p style="font-size:.78rem;color:var(--muted);margin-bottom:.625rem;">Adds new chunks without removing existing vectors.</p>
+          <label class="form-check" style="margin-bottom:.625rem;">
+            <input type="checkbox" id="append-products" checked/>
+            <span class="form-check-label" style="font-size:.8rem;">Include DB products</span>
+          </label>
+          <button class="btn btn-ghost" style="width:100%;justify-content:center;" onclick="triggerReindex('append')">➕ Append to Index</button>
+        </div>
+
+        <div style="background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.12);border-radius:8px;padding:.875rem;">
+          <div style="font-family:var(--font-d);font-size:.875rem;font-weight:700;margin-bottom:.25rem;color:#dc2626;">Full Rebuild <span style="font-size:.68rem;color:var(--muted);font-weight:400;">⚠ wipes existing</span></div>
+          <p style="font-size:.78rem;color:var(--muted);margin-bottom:.625rem;">Deletes all vectors and rebuilds from scratch.</p>
+          <label class="form-check" style="margin-bottom:.625rem;">
+            <input type="checkbox" id="rebuild-products" checked/>
+            <span class="form-check-label" style="font-size:.8rem;">Include DB products</span>
+          </label>
+          <button class="btn btn-danger" style="width:100%;justify-content:center;" onclick="triggerReindex('rebuild')">🔄 Full Rebuild</button>
+        </div>
+
+        <div id="reindex-result" style="display:none;padding:.75rem;border-radius:8px;font-size:.82rem;"></div>
+      </div>
+    </div>
+
+    <!-- JSON format -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">📋 JSON Document Format</span></div>
+      <div class="card-pad">
+        <div style="background:var(--sidebar-bg);color:#e2e8f0;font-family:monospace;font-size:.73rem;padding:.875rem;border-radius:8px;white-space:pre;overflow-x:auto;">[
+  {
+    "title": "Product Name",
+    "content": "Full description...",
+    "metadata": {
+      "source": "catalogue",
+      "tags": ["product", "bearing"]
+    }
+  }
+]</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT COLUMN: Stats + Models + CLI -->
+  <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+    <!-- Index stats -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🗃 Index Details</span>
+        {% if index_stats.exists %}<span class="pill badge-ok">{{ index_stats.total_vectors }} vectors</span>{% endif %}
+      </div>
+      <div class="card-pad">
+        {% if index_stats.exists %}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:.875rem;">
+          <div style="background:var(--surface);padding:.75rem;border-radius:8px;text-align:center;">
+            <div style="font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Vectors</div>
+            <div style="font-family:var(--font-d);font-size:1.75rem;font-weight:700;">{{ index_stats.total_vectors }}</div>
+          </div>
+          <div style="background:var(--surface);padding:.75rem;border-radius:8px;text-align:center;">
+            <div style="font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Documents</div>
+            <div style="font-family:var(--font-d);font-size:1.75rem;font-weight:700;">{{ index_stats.total_documents }}</div>
+          </div>
+        </div>
+        {% if index_stats.sources %}
+        <div style="margin-bottom:.75rem;">
+          <div style="font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.35rem;">Sources</div>
+          <div style="display:flex;flex-wrap:wrap;gap:.3rem;">
+            {% for src in index_stats.sources %}<span class="pill" style="background:rgba(255,106,0,.1);color:var(--orange-dk);">{{ src }}</span>{% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        <div style="background:var(--surface);padding:.5rem .75rem;border-radius:6px;font-size:.7rem;color:var(--muted);word-break:break-all;"><strong>Path:</strong> {{ index_stats.index_path }}</div>
+        {% else %}
+        <div style="text-align:center;padding:1.25rem;background:rgba(255,106,0,.05);border:1px dashed rgba(255,106,0,.2);border-radius:8px;">
+          <div style="font-size:1.75rem;margin-bottom:.4rem;">🗃</div>
+          <div style="font-weight:700;font-size:.875rem;margin-bottom:.25rem;">No Index Built</div>
+          <p style="font-size:.77rem;color:var(--muted);">Upload a document or run Full Rebuild.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Ollama -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🤖 Ollama LLM</span>
+        {% if ollama_health.healthy %}<span class="pill badge-ok">Online</span>
+        {% else %}<span class="pill pill-unread">Offline</span>{% endif %}
+      </div>
+      <div class="card-pad">
+        <div style="display:flex;flex-direction:column;gap:.4rem;">
+          <div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid var(--border);">
+            <span style="font-size:.82rem;color:var(--muted);">Active model</span>
+            <code style="font-size:.82rem;font-weight:600;">{{ ollama_health.model }}</code>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid var(--border);">
+            <span style="font-size:.82rem;color:var(--muted);">Model pulled</span>
+            <span style="font-size:.82rem;">{% if ollama_health.model_available %}✓{% else %}✗ Run: ollama pull {{ ollama_health.model }}{% endif %}</span>
+          </div>
+          {% if ollama_health.available_models %}
+          <div style="padding:.4rem 0;">
+            <div style="font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.35rem;">Available</div>
+            <div style="display:flex;flex-wrap:wrap;gap:.3rem;">
+              {% for m in ollama_health.available_models %}
+              <span class="pill" style="background:var(--surface);color:var(--on);font-family:monospace;font-size:.7rem;">{{ m }}</span>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+          {% if ollama_health.error %}
+          <div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.12);border-radius:6px;padding:.625rem;font-size:.77rem;color:#dc2626;">⚠ {{ ollama_health.error }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Model swap -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">🔀 Swap Model</span></div>
+      <div class="card-pad">
+        <p style="font-size:.78rem;color:var(--muted);margin-bottom:.75rem;">Change <code>OLLAMA_MODEL</code> in <code>.env</code>, pull, restart.</p>
+        <div style="display:flex;flex-direction:column;gap:.3rem;">
+          {% for m in llm_models %}
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:.4rem .75rem;background:{% if m.name == ollama_health.model %}rgba(255,106,0,.08){% else %}var(--surface){% endif %};border-radius:6px;{% if m.name == ollama_health.model %}border:1px solid rgba(255,106,0,.2);{% endif %}">
+            <code style="font-size:.8rem;">{{ m.name }}</code>
+            <div style="display:flex;gap:.3rem;align-items:center;">
+              {% if m.badge %}<span class="pill {{ m.badge_class }}" style="font-size:.63rem;">{{ m.badge }}</span>{% endif %}
+              {% if m.name == ollama_health.model %}<span style="font-size:.63rem;color:var(--orange-dk);font-weight:700;">active</span>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- CLI quick ref -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">⚡ CLI Reference</span></div>
+      <div class="card-pad" style="display:flex;flex-direction:column;gap:.5rem;">
+        {% for cmd in cli_commands %}
+        <div>
+          <div style="font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.2rem;">{{ cmd.label }}</div>
+          <div style="background:var(--sidebar-bg);color:#4ade80;font-family:monospace;font-size:.72rem;padding:.5rem .75rem;border-radius:6px;display:flex;align-items:center;justify-content:space-between;gap:.4rem;">
+            <span>{{ cmd.cmd }}</span>
+            <button onclick="navigator.clipboard.writeText('{{ cmd.cmd }}').then(()=>{this.textContent='✓';setTimeout(()=>this.textContent='copy',1500)})" style="background:rgba(255,255,255,.1);border:none;color:#fff;font-size:.62rem;padding:1px 6px;border-radius:4px;cursor:pointer;flex-shrink:0;">copy</button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let selectedFile = null;
+
+function onFileSelected(input) {
+  selectedFile = input.files[0] || null;
+  document.getElementById('file-name').textContent = selectedFile ? selectedFile.name : '';
+  document.getElementById('upload-btn').disabled = !selectedFile;
+  if (selectedFile) {
+    document.getElementById('drop-zone').style.borderColor = 'var(--orange)';
+    document.getElementById('drop-zone').style.background = 'rgba(255,106,0,.04)';
+  }
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['json','txt','pdf'].includes(ext)) { showResult('upload-result',false,'Only .json, .txt, .pdf supported.'); return; }
+  selectedFile = file;
+  document.getElementById('file-name').textContent = file.name;
+  document.getElementById('upload-btn').disabled = false;
+}
+
+async function uploadDocument() {
+  if (!selectedFile) return;
+  const btn = document.getElementById('upload-btn');
+  btn.disabled = true; btn.textContent = '⏳ Uploading…';
+  const fd = new FormData();
+  fd.append('document', selectedFile);
+  if (document.getElementById('upload-include-products').checked) fd.append('include_products','1');
+  try {
+    const res  = await fetch('{% url "dashboard:rag_upload" %}', { method:'POST', headers:{'X-CSRFToken':getCsrf()}, body:fd });
+    const data = await res.json();
+    showResult('upload-result', data.success, data.message);
+    if (data.success) { selectedFile = null; document.getElementById('file-name').textContent=''; setTimeout(()=>location.reload(),2500); }
+  } catch(e) { showResult('upload-result',false,'Upload failed: '+e.message); }
+  finally { btn.disabled=false; btn.textContent='📤 Upload & Index'; }
+}
+
+async function triggerReindex(mode) {
+  if (mode==='rebuild' && !confirm('⚠ Full Rebuild will wipe ALL existing vectors.\n\nContinue?')) return;
+  const inclId = mode==='rebuild' ? 'rebuild-products' : 'append-products';
+  const fd = new FormData();
+  fd.append('mode', mode);
+  if (document.getElementById(inclId).checked) fd.append('include_products','1');
+  showResult('reindex-result', null, '⏳ Starting reindex task…');
+  try {
+    const res  = await fetch('{% url "dashboard:rag_reindex" %}', { method:'POST', headers:{'X-CSRFToken':getCsrf()}, body:fd });
+    const data = await res.json();
+    showResult('reindex-result', data.success, data.message);
+    if (data.success && data.task_id) pollTask(data.task_id);
+  } catch(e) { showResult('reindex-result',false,'Error: '+e.message); }
+}
+
+function pollTask(taskId) {
+  let n=0;
+  const iv = setInterval(async()=>{
+    n++;
+    try {
+      const r = await fetch('/api/chat/result/'+taskId+'/');
+      const d = await r.json();
+      if (d.status==='success') { clearInterval(iv); showToast('Reindex complete!','success'); setTimeout(()=>location.reload(),1500); }
+      else if (d.status==='failure') { clearInterval(iv); showResult('reindex-result',false,'Task failed. Check Celery worker logs.'); }
+    } catch {}
+    if (n>60) clearInterval(iv);
+  }, 2000);
+}
+
+async function runHealthCheck() {
+  try {
+    const r = await fetch('/api/chat/health/');
+    const d = await r.json();
+    showToast(d.overall==='healthy'?'All systems healthy':'System '+d.overall, d.overall==='healthy'?'success':'error');
+    setTimeout(()=>location.reload(),1200);
+  } catch { showToast('Health check failed','error'); }
+}
+
+function showResult(id, ok, msg) {
+  const el = document.getElementById(id);
+  el.style.display = 'block';
+  el.style.background = ok===null?'rgba(59,130,246,.06)':ok?'rgba(34,197,94,.08)':'rgba(239,68,68,.08)';
+  el.style.border = '1px solid '+(ok===null?'rgba(59,130,246,.15)':ok?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)');
+  el.style.color  = ok===null?'#1d4ed8':ok?'#16a34a':'#dc2626';
+  el.textContent  = msg;
+}
+</script>
+{% endblock %}
