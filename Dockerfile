@@ -21,9 +21,6 @@ ENV PATH="/venv/bin:$PATH"
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Preload embedding model
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
-
 # ──────────────────────────────────────────────
 # Stage 2 – Runtime
 # ──────────────────────────────────────────────
@@ -55,11 +52,6 @@ staticfiles \
 media/products \
 media/categories
 
-# Ensure database tables exist so we can create the admin user in-image
-# WARNING: This requires the DB to be reachable during build (works for in-image SQLite).
-RUN python manage.py migrate --noinput || true
-
-
 # 🔥 CLEAN STATIC BUILD
 RUN rm -rf staticfiles/* && \
     python manage.py collectstatic --noinput
@@ -72,12 +64,5 @@ USER appuser
 
 EXPOSE 8000
 
-# 🚀 Runtime: makemigrations + migrate + start server
-CMD ["sh", "-c", "\
-python manage.py makemigrations --noinput && \
-python manage.py migrate --noinput && \
-python manage.py seed_data && \
-gunicorn anupam_bearings.wsgi:application \
-  --bind 0.0.0.0:8000 \
-  --workers 3 \
-  --timeout 120"]
+# 🚀 Runtime: start Gunicorn
+CMD ["gunicorn", "anupam_bearings.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120"]

@@ -98,7 +98,6 @@ docker compose up -d
 docker compose exec web python manage.py migrate
 docker compose exec web python manage.py seed_data
 docker compose exec web python manage.py createsuperuser
-docker compose exec ollama ollama pull llama3
 docker compose exec web python manage.py ingest_rag_data --also-seed-products
 
 curl http://localhost/api/chat/health/
@@ -106,9 +105,9 @@ curl http://localhost/api/chat/health/
 
 ---
 
-## VPS + Cloudflare Deployment
+## VPS + Direct Domain Deployment
 
-This project can run on a VPS behind Cloudflare using the existing Docker stack and nginx reverse proxy.
+This project can run on a VPS directly behind nginx using the existing Docker stack and reverse proxy.
 
 ### 1. Provision the VPS
 
@@ -122,21 +121,18 @@ Create `.env` from `.env.example` and set production values:
 
 ```bash
 DEBUG=False
-ALLOWED_HOSTS=anupambearings.com,www.anupambearings.com
-CSRF_TRUSTED_ORIGINS=https://anupambearings.com,https://www.anupambearings.com
+ALLOWED_HOSTS=anupambearings.com
+CSRF_TRUSTED_ORIGINS=https://anupambearings.com
 USE_X_FORWARDED_HOST=True
 SECRET_KEY=your-production-secret
 DB_PASSWORD=your-strong-database-password
 ```
 
-If you use a single domain, keep only that host in `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS`.
+### 3. Point the domain at the VPS
 
-### 3. Point Cloudflare at the VPS
-
-- Add an `A` record for your domain to the VPS public IP.
-- Turn on the Cloudflare proxy so the record is orange-clouded.
-- Set SSL/TLS mode to `Full (strict)`.
-- Prefer a Cloudflare Origin Certificate or another valid certificate on the VPS.
+- Add an `A` record for `anupambearings.com` to the VPS public IP.
+- Add a `CNAME` record for `www` if you want the `www` subdomain to work, or skip it if you only want the apex domain.
+- Open port 80 on the server firewall and ensure the VPS provider firewall allows inbound HTTP.
 
 ### 4. Start the stack
 
@@ -148,68 +144,17 @@ docker compose exec web python manage.py createsuperuser
 docker compose exec web python manage.py collectstatic --noinput
 ```
 
-If you want one of the Cloudflare-specific modes, use a compose profile:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml --profile cloudflare-tunnel up -d
-docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml --profile cloudflare-origin up -d
-```
-
 ### 5. Check the site
 
-- Visit `https://anupambearings.com`
+- Visit `http://anupambearings.com`
 - Verify `/about/`, `/products/`, and `/contact/`
-- Confirm the admin dashboard works behind HTTPS
+- Confirm the admin dashboard loads correctly
 
 ### 6. Optional hardening
 
-- Restrict firewall access on ports 80 and 443 to Cloudflare IP ranges.
+- Add HTTPS with a certificate issued for `anupambearings.com`.
 - Enable HSTS after confirming HTTPS works end to end.
 - Keep `DEBUG=False` in production.
-
-### Option A: Cloudflare Tunnel
-
-Use a tunnel if you do not want to expose ports 80/443 on the VPS.
-
-1. Install `cloudflared` on the VPS.
-2. Create a tunnel in the Cloudflare dashboard.
-3. Save the tunnel credentials under `deploy/cloudflared/creds/`.
-4. Update `deploy/cloudflared/config.yml` with the tunnel UUID and hostname.
-5. Use `deploy/cloudflared/run-tunnel.sh` as the container command.
-6. Route your hostname to the internal nginx service.
-
-Example tunnel config: [deploy/cloudflared-config.yml.example](deploy/cloudflared-config.yml.example)
-
-Compose service: `cloudflared` in [docker-compose.yml](docker-compose.yml)
-Compose override: [docker-compose.cloudflare.yml](docker-compose.cloudflare.yml)
-
-Suggested origin target:
-
-```bash
-http://nginx:80
-```
-
-### Option B: Full HTTPS on the origin
-
-Use this if you want nginx to terminate TLS with a Cloudflare Origin Certificate.
-
-1. Generate an Origin Certificate in Cloudflare.
-2. Place the cert and key at `deploy/certs/origin.pem` and `deploy/certs/origin.key`.
-3. Use `listen 443 ssl http2` in nginx.
-4. Set Cloudflare SSL/TLS mode to `Full (strict)`.
-5. Use [deploy/nginx-origin-https.conf](deploy/nginx-origin-https.conf) with the origin cert mounts.
-
-Example nginx config: [deploy/nginx-origin-https.conf.example](deploy/nginx-origin-https.conf.example)
-
-Production nginx config used by compose: [deploy/nginx-origin-https.conf](deploy/nginx-origin-https.conf)
-
-Recommended proxy headers:
-
-```nginx
-proxy_set_header Host $host;
-proxy_set_header X-Forwarded-Host $host;
-proxy_set_header X-Forwarded-Proto https;
-```
 
 ---
 

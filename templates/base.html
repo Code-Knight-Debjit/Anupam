@@ -4,34 +4,34 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}Anupam Bearings — Driving Excellence with Precision{% endblock %}</title>
-  <meta name="description" content="{% block meta_desc %}Anupam Bearings is a certified Timken parts supplier based in Bengaluru and Chennai, India. Premium bearings, bearing housings, linear motion, and power transmission solutions.{% endblock %}" />
-  <link rel="canonical" href="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}" />
+  <title>{% block title %}{{ seo_title|default:seo_site_name }}{% endblock %}</title>
+  <meta name="description" content="{% block meta_desc %}{{ seo_meta_description|default:'Industrial bearings, bearing housings, linear motion products, power transmission products, Timken products, and engineering solutions.' }}{% endblock %}" />
+  <meta name="robots" content="{{ seo_meta_robots|default:'index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1' }}" />
+  <meta name="application-name" content="{{ seo_site_name|default:'Anupam Bearings' }}" />
+  <meta name="apple-mobile-web-app-title" content="{{ seo_site_name|default:'Anupam Bearings' }}" />
+  <link rel="canonical" href="{{ seo_canonical_url|default:seo_site_url }}" />
 
   <!-- Open Graph / Twitter -->
   <meta property="og:type" content="{% block og_type %}website{% endblock %}" />
-  <meta property="og:title" content="{% block og_title %}Anupam Bearings — Driving Excellence with Precision{% endblock %}" />
-  <meta property="og:description" content="{% block og_desc %}Anupam Bearings is a certified Timken parts supplier based in Bengaluru and Chennai, India. Premium bearings, bearing housings, linear motion, and power transmission solutions.{% endblock %}" />
-  <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}" />
-  <meta property="og:image" content="{% block og_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/onlylogo.png' %}{% endblock %}" />
+  <meta property="og:site_name" content="{{ seo_site_name|default:'Anupam Bearings' }}" />
+  <meta property="og:title" content="{% block og_title %}{{ seo_og_title|default:seo_title|default:seo_site_name }}{% endblock %}" />
+  <meta property="og:description" content="{% block og_desc %}{{ seo_og_description|default:seo_meta_description }}{% endblock %}" />
+  <meta property="og:url" content="{{ seo_canonical_url|default:seo_site_url }}" />
+  <meta property="og:image" content="{% block og_image %}{{ seo_og_image }}{% endblock %}" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="{% block twitter_title %}Anupam Bearings — Driving Excellence with Precision{% endblock %}" />
-  <meta name="twitter:description" content="{% block twitter_desc %}Anupam Bearings is a certified Timken parts supplier based in Bengaluru and Chennai, India. Premium bearings, bearing housings, linear motion, and power transmission solutions.{% endblock %}" />
-  <meta name="twitter:image" content="{% block twitter_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/onlylogo.png' %}{% endblock %}" />
+  <meta name="twitter:site" content="@anupambearings" />
+  <meta name="twitter:title" content="{% block twitter_title %}{{ seo_twitter_title|default:seo_title|default:seo_site_name }}{% endblock %}" />
+  <meta name="twitter:description" content="{% block twitter_desc %}{{ seo_twitter_description|default:seo_meta_description }}{% endblock %}" />
+  <meta name="twitter:image" content="{% block twitter_image %}{{ seo_twitter_image }}{% endblock %}" />
 
-  <!-- Organization JSON-LD -->
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    "name": "Anupam Bearings",
-    "url": "{{ request.scheme }}://{{ request.get_host }}",
-    "logo": "{{ request.scheme }}://{{ request.get_host }}{% static 'images/onlylogo.png' %}",
-    "contactPoint": [{"@type": "ContactPoint", "telephone": "+91-98844-00741", "contactType": "customer service", "areaServed": "IN"}],
-    "sameAs": ["https://www.linkedin.com/company/anupam-bearings","https://twitter.com/anupambearings"]
-  }
-  </script>
-  <link rel="icon" type="image/png" href="{% static 'images/onlylogo.png' %}" />
+  {% if seo_json_ld %}
+  {% for schema in seo_json_ld %}
+  <script type="application/ld+json">{{ schema|safe }}</script>
+  {% endfor %}
+  {% endif %}
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" href="{% static 'images/onlylogo.png' %}" />
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />

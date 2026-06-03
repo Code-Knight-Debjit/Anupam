@@ -89,24 +89,10 @@
             alt="Anupam Bearings — industrial heritage"
             loading="lazy"
           />
-          <!-- Overlay badge -->
-          <div class="about-story-badge about-story-badge--logo">
-            <img
-              src="{% static 'images/Timken.png' %}"
-              alt="Timken logo"
-              class="about-story-badge-logo"
-              loading="lazy"
-              width="240"
-              height="96"
-            />
-            <div class="about-story-badge-text">Certified Partner</div>
-          </div>
+
         </div>
         <!-- Secondary decorative tile -->
-        <div class="about-story-tile">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary-container);"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <div class="about-story-tile-label">Genuine Products Only</div>
-        </div>
+
       </div>
 
       <!-- Right: content -->
@@ -153,6 +139,7 @@
   <div class="container">
     <div class="about-cert-banner anim-fade-up">
       <div class="about-cert-banner-left">
+        <p class="section-label" style="margin-bottom:0.25rem;">Official Partner</p>
         <div class="timken-mark timken-mark--banner">
           <img src="{% static 'images/Timken.png' %}" alt="Timken logo" loading="lazy" width="180" height="72" />
         </div>
@@ -161,7 +148,6 @@
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </div>
           <div>
-            <p class="section-label" style="margin-bottom:0.25rem;">Official Partner</p>
             <h2 class="headline-md" id="cert-heading" style="margin:0;">
               Certified Timken Parts Supplier<br/>
             </h2>
@@ -169,8 +155,11 @@
         </div>
       </div>
       <div class="about-cert-banner-right">
-        <p class="body-lg" style="color:var(--secondary);">
-          Every Timken product you source through us is 100% genuine, fully warranted, and backed by Timken's global quality standards. When precision matters most, you can count on us to deliver the real thing.
+        <p class="body-lg" style="color:var(--secondary);margin-bottom:1rem;width:min(100%,560px);">
+          Anupam Bearings is proud to be associated with Timken, a globally recognized leader in engineered bearings and industrial motion products. This partnership reflects our shared commitment to delivering world-class bearing solutions that meet the highest standards of quality, reliability, and performance.
+        </p>
+        <p class="body-lg" style="color:var(--secondary);width:min(100%,560px);">
+          With Timken's advanced engineering expertise and innovative product portfolio, combined with Anupam Bearings' strong market presence and customer-focused service, we provide industries across diverse sectors with access to premium bearing technologies and technical support.
         </p>
         <a href="{% url 'products:list' %}" class="btn-primary" style="margin-top:1.5rem;display:inline-flex;">Explore Timken Products ›</a>
       </div>

@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Products — Anupam Bearings{% endblock %}
+{% block title %}Industrial Bearings, Housings, and Motion Products | Anupam Bearings{% endblock %}
+{% block meta_desc %}Browse industrial bearings, bearing housings, linear motion products, and power transmission products from Anupam Bearings in Bengaluru, Chennai, and across India.{% endblock %}
 
 {% block extra_head %}
-<link rel="canonical" href="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}" />
 {% if page_obj and page_obj.has_previous %}
 <link rel="prev" href="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}?{% for k,v in request.GET.items %}{% if k != 'page' %}{{ k }}={{ v }}&{% endif %}{% endfor %}page={{ page_obj.previous_page_number }}" />
 {% endif %}

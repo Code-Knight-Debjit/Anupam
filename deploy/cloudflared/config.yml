@@ -1,9 +1,0 @@
-tunnel: your-tunnel-uuid
-credentials-file: /etc/cloudflared/creds/your-tunnel-uuid.json
-
-ingress:
-  - hostname: anupambearings.com
-    service: http://nginx:80
-  - hostname: www.anupambearings.com
-    service: http://nginx:80
-  - service: http_status:404

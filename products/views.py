@@ -13,6 +13,7 @@ from django.conf        import settings
 from .excel_table import build_excel_table_payload, ExcelTableError
 from .models            import Category, Product, Enquiry
 from core.validators    import validate_enquiry
+from core.seo import breadcrumb_schema, build_seo_context, product_schema
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,16 @@ def product_list(request):
     page_num   = request.GET.get('page', 1)
     page_obj   = paginator.get_page(page_num)
 
-    return render(request, 'products/product_list.html', {
+    filtered = bool(q or active_category)
+    seo_context = build_seo_context(
+        request,
+        title='Industrial Bearings and Motion Products | Anupam Bearings',
+        description='Browse industrial bearings, bearing housings, linear motion products, and power transmission products from Anupam Bearings.',
+        canonical_url=f"{settings.SITE_URL.rstrip('/')}/products/",
+        robots='noindex,follow' if filtered else None,
+    )
+
+    return render(request, 'products/product_list.html', seo_context | {
         'categories':     categories,
         'page_obj':       page_obj,
         'products':       page_obj.object_list,
@@ -63,7 +73,33 @@ def product_detail(request, slug):
             excel_table_initial = build_excel_table_payload(product, request.GET)
         except ExcelTableError:
             excel_table_initial = None
-    return render(request, 'products/product_detail.html', {
+
+    canonical_url = f"{settings.SITE_URL.rstrip('/')}/products/{product.slug}/"
+    image_urls = []
+    for image in list(product.images.all()):
+        if getattr(image.image, 'url', None):
+            image_urls.append(f"{settings.SITE_URL.rstrip('/')}{image.image.url}")
+    if product.image and getattr(product.image, 'url', None):
+        image_urls.append(f"{settings.SITE_URL.rstrip('/')}{product.image.url}")
+
+    seo_context = build_seo_context(
+        request,
+        title=f'{product.name} | Anupam Bearings',
+        description=(product.description or '')[:300] or f'{product.name} from Anupam Bearings.',
+        canonical_url=canonical_url,
+        og_type='product',
+        json_ld=[
+            breadcrumb_schema([
+                {'name': 'Home', 'item': '/'},
+                {'name': 'Products', 'item': '/products/'},
+                {'name': product.category.name, 'item': f"/products/?category={product.category.slug}"},
+                {'name': product.name, 'item': f"/products/{product.slug}/"},
+            ]),
+            product_schema(product, image_urls, canonical_url),
+        ],
+    )
+
+    return render(request, 'products/product_detail.html', seo_context | {
         'product': product,
         'related': related,
         'product_images': list(product.images.all()),

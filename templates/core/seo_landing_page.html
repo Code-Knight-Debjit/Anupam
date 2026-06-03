@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_head %}
+{% if landing_page.faq %}
+<script type="application/ld+json">
+{{ faq_schema_json|safe }}
+</script>
+{% endif %}
+<script type="application/ld+json">
+{{ breadcrumb_schema_json|safe }}
+</script>
+{% if local_business_schema_json %}
+<script type="application/ld+json">
+{{ local_business_schema_json|safe }}
+</script>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<section style="background:var(--gradient-hero);padding:9rem 0 4rem;position:relative;overflow:hidden;" aria-label="SEO landing hero">
+  <div class="dot-grid"></div>
+  <div class="container" style="position:relative;z-index:1;max-width:960px;">
+    <p class="section-label anim-fade-up" style="color:rgba(255,255,255,.5);">Industrial SEO Landing Page</p>
+    <h1 class="display-lg anim-fade-up" style="color:#fff;max-width:780px;margin-top:.5rem;">
+      {{ landing_page.headline }}
+    </h1>
+    <p class="body-lg anim-fade-up" style="color:rgba(255,255,255,.65);max-width:760px;margin-top:1.5rem;">
+      {{ landing_page.intro }}
+    </p>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:2rem;">
+      <a href="{% url 'contact:contact' %}" class="btn-primary">Request a Quote</a>
+      <a href="tel:+919884400741" class="btn-ghost btn-ghost-white">Call Bengaluru</a>
+    </div>
+  </div>
+</section>
+
+<section class="section-pad surface-base">
+  <div class="container" style="max-width:980px;">
+    <div style="display:grid;grid-template-columns:1.2fr .8fr;gap:2rem;align-items:start;">
+      <div>
+        {% for section in landing_page.sections %}
+        <article style="padding:1.25rem 0;border-bottom:1px solid rgba(226,191,176,0.12);">
+          <p class="section-label" style="margin-bottom:.4rem;">{{ section.heading }}</p>
+          <p class="body-lg" style="color:var(--secondary);margin:0;">{{ section.body }}</p>
+        </article>
+        {% endfor %}
+      </div>
+      <aside style="background:var(--surface-container-low);border-radius:var(--radius-sm);padding:1.5rem;position:sticky;top:110px;">
+        <p class="section-label">Keyword Targets</p>
+        <ul style="margin:0;padding-left:1.2rem;color:var(--secondary);line-height:1.8;">
+          {% for keyword in keyword_targets %}
+          <li>{{ keyword }}</li>
+          {% endfor %}
+        </ul>
+      </aside>
+    </div>
+
+    {% if landing_page.faq %}
+    <section style="margin-top:4rem;">
+      <p class="section-label">FAQ</p>
+      <h2 class="headline-md" style="margin-bottom:1rem;">Common buyer questions</h2>
+      <div style="display:grid;gap:1rem;">
+        {% for item in landing_page.faq %}
+        <details style="background:var(--surface-container-low);border-radius:var(--radius-sm);padding:1rem 1.25rem;">
+          <summary style="cursor:pointer;font-weight:600;">{{ item.question }}</summary>
+          <p style="margin:0.75rem 0 0;color:var(--secondary);">{{ item.answer }}</p>
+        </details>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% if related_links %}
+    <section style="margin-top:4rem;">
+      <p class="section-label">Related Pages</p>
+      <div style="display:flex;flex-wrap:wrap;gap:.75rem;">
+        {% for link in related_links %}
+        <a href="{{ link.url }}" class="btn-ghost">{{ link.label }}</a>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+  </div>
+</section>
+
+<section class="cta-banner">
+  <div class="container">
+    <div class="cta-banner-inner">
+      <div>
+        <h2 class="cta-title anim-slide-left">Need a technical match?<br/><span class="accent">We can source it.</span></h2>
+      </div>
+      <div class="anim-slide-right" style="display:flex;gap:1rem;flex-wrap:wrap;">
+        <a href="{% url 'contact:contact' %}" class="btn-primary">Talk to Sales</a>
+        <a href="tel:+919884400741" class="btn-ghost btn-ghost-white">Call Now</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

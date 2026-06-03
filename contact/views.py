@@ -10,6 +10,7 @@ from django.conf import settings
 
 from .models import ContactMessage
 from core.validators import validate_contact
+from core.seo import PRIMARY_LOCATIONS, build_seo_context, local_business_schema
 
 logger = logging.getLogger(__name__)
 
@@ -19,15 +20,23 @@ def _rate_limited(request, limit=5, window=300):
     ip  = (request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
            or request.META.get('REMOTE_ADDR', 'unknown'))
     key = f'contact_rl:{ip}'
-    count = cache.get(key, 0)
-    if count >= limit:
-        return True
-    cache.set(key, count + 1, timeout=window)
+    try:
+        count = cache.get(key, 0)
+        if count >= limit:
+            return True
+        cache.set(key, count + 1, timeout=window)
+    except Exception as exc:
+        logger.warning(f'Contact rate-limit cache unavailable, allowing request: {exc}')
     return False
 
 
 def contact(request):
-    return render(request, 'contact/contact.html')
+    return render(request, 'contact/contact.html', build_seo_context(
+        request,
+        title='Contact Anupam Bearings | Bengaluru and Chennai Industrial Supply',
+        description='Contact Anupam Bearings for industrial bearing supply, product sourcing, and technical support in Bengaluru, Chennai, Karnataka, Tamil Nadu, and across India.',
+        json_ld=[local_business_schema(PRIMARY_LOCATIONS[0]), local_business_schema(PRIMARY_LOCATIONS[1])],
+    ))
 
 
 @require_POST
