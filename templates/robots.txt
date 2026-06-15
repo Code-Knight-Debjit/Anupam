@@ -1,8 +1,18 @@
 User-agent: *
-Disallow:
+# Block internal/admin routes from crawl budget waste
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /admin/
+Disallow: /media/product_tables/
+# Block filtered product URLs — these are noindex in the view layer
+Disallow: /products/?
 
-# Crawl delay is optional; keep low for search engines
-# Crawl-delay: 10
+# Allow all public pages
+Allow: /products/$
+Allow: /
 
+# Sitemaps
 Sitemap: https://anupambearings.com/sitemap.xml
+
+# Preferred host (for legacy crawlers that read this field)
 Host: anupambearings.com

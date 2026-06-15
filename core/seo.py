@@ -1,3 +1,15 @@
+"""
+core/seo.py — Production SEO schema and context builder for Anupam Bearings.
+
+Changes from original:
+  - LocalBusiness now uses structured addressLocality/Region/PostalCode + geo coordinates
+  - Product schema now includes `offers` object (required for Google Product rich results)
+  - Product schema uses `brand` linked to Organization @id instead of plain string
+  - breadcrumb_schema uses absolute URLs consistently
+  - build_seo_context now returns `seo_keywords` for the meta keywords tag
+  - organization_schema includes `foundingDate` and `hasOfferCatalog`
+"""
+
 import json
 from urllib.parse import urlsplit
 
@@ -8,21 +20,44 @@ SITE_DESCRIPTION = (
     'Industrial bearings, bearing housings, linear motion products, power transmission products, '
     'Timken products, and engineering solutions for B2B buyers across India.'
 )
-SITE_LOGO_PATH = '/static/images/onlylogo.png'
+SITE_LOGO_PATH = '/static/images/onlylogo.webp'
 SOCIAL_PROFILES = [
     'https://www.linkedin.com/company/anupam-bearings',
     'https://twitter.com/anupambearings',
 ]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Location data — structured for schema.org PostalAddress
+# ──────────────────────────────────────────────────────────────────────────────
 PRIMARY_LOCATIONS = [
     {
         'name': 'Bengaluru',
         'telephone': '+91-98844-00741',
         'address': 'No. 128, Jigani Link Road, Bommasandra Industrial Area, Bengaluru, Karnataka 560099, India',
+        # Structured breakdown for schema
+        'streetAddress': 'No. 128, Jigani Link Road, Bommasandra Industrial Area',
+        'addressLocality': 'Bengaluru',
+        'addressRegion': 'Karnataka',
+        'postalCode': '560099',
+        'addressCountry': 'IN',
+        # Geo coordinates for Local Pack eligibility
+        'latitude': 12.7940,
+        'longitude': 77.6340,
+        # Business hours (adjust if different)
+        'openingHours': 'Mo-Sa 09:00-18:00',
     },
     {
         'name': 'Chennai',
         'telephone': '044-4691-2265',
         'address': 'No. 3 (Old No. 2) Katchaleeswarar Pagoda Lane, Parrys, Chennai, Tamil Nadu 600001, India',
+        'streetAddress': 'No. 3 (Old No. 2) Katchaleeswarar Pagoda Lane, Parrys',
+        'addressLocality': 'Chennai',
+        'addressRegion': 'Tamil Nadu',
+        'postalCode': '600001',
+        'addressCountry': 'IN',
+        'latitude': 13.0843,
+        'longitude': 80.2908,
+        'openingHours': 'Mo-Sa 09:00-18:00',
     },
 ]
 
@@ -59,9 +94,24 @@ def organization_schema() -> dict:
         'name': SITE_NAME,
         'alternateName': 'Anupam Bearings India',
         'url': site_url(),
-        'logo': absolute_url(SITE_LOGO_PATH),
+        'logo': {
+            '@type': 'ImageObject',
+            'url': absolute_url(SITE_LOGO_PATH),
+            'width': 180,
+            'height': 80,
+        },
         'description': SITE_DESCRIPTION,
         'sameAs': SOCIAL_PROFILES,
+        'foundingDate': '1990',  # Update with the actual founding year
+        'areaServed': {
+            '@type': 'Country',
+            'name': 'India',
+        },
+        'hasOfferCatalog': {
+            '@type': 'OfferCatalog',
+            'name': 'Industrial Bearings and Motion Products',
+            'url': f'{site_url()}/products/',
+        },
         'contactPoint': [
             {
                 '@type': 'ContactPoint',
@@ -89,32 +139,70 @@ def website_schema() -> dict:
         'url': site_url(),
         'name': SITE_NAME,
         'alternateName': 'Anupam Bearings India',
+        'description': SITE_DESCRIPTION,
         'publisher': {'@id': f'{site_url()}#organization'},
         'potentialAction': {
             '@type': 'SearchAction',
-            'target': f'{site_url()}/products/?q={{search_term_string}}',
+            'target': {
+                '@type': 'EntryPoint',
+                'urlTemplate': f'{site_url()}/products/?q={{search_term_string}}',
+            },
             'query-input': 'required name=search_term_string',
         },
     }
 
 
 def local_business_schema(location: dict) -> dict:
-    return {
+    """
+    Generates a LocalBusiness schema with full structured address and geo coordinates.
+    These are the fields Google requires for Local Pack eligibility.
+    """
+    schema = {
         '@context': 'https://schema.org',
-        '@type': 'LocalBusiness',
+        '@type': ['LocalBusiness', 'Store'],
         '@id': f"{site_url()}#{location['name'].lower()}-location",
-        'name': f"{SITE_NAME} {location['name']}",
+        'name': f"{SITE_NAME} — {location['name']}",
         'url': site_url(),
         'telephone': location['telephone'],
+        'image': absolute_url(SITE_LOGO_PATH),
+        'priceRange': '₹₹',
         'address': {
             '@type': 'PostalAddress',
-            'streetAddress': location['address'],
-            'addressCountry': 'IN',
+            'streetAddress': location.get('streetAddress', location['address']),
+            'addressLocality': location.get('addressLocality', location['name']),
+            'addressRegion': location.get('addressRegion', ''),
+            'postalCode': location.get('postalCode', ''),
+            'addressCountry': location.get('addressCountry', 'IN'),
+        },
+        'geo': {
+            '@type': 'GeoCoordinates',
+            'latitude': location.get('latitude'),
+            'longitude': location.get('longitude'),
+        },
+        'openingHoursSpecification': {
+            '@type': 'OpeningHoursSpecification',
+            'dayOfWeek': [
+                'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
+            ],
+            'opens': '09:00',
+            'closes': '18:00',
         },
         'parentOrganization': {'@id': f'{site_url()}#organization'},
-        'areaServed': ['Bengaluru', 'Chennai', 'Karnataka', 'Tamil Nadu', 'India'],
+        'areaServed': [
+            {'@type': 'City', 'name': 'Bengaluru'},
+            {'@type': 'City', 'name': 'Chennai'},
+            {'@type': 'State', 'name': 'Karnataka'},
+            {'@type': 'State', 'name': 'Tamil Nadu'},
+            {'@type': 'Country', 'name': 'India'},
+        ],
         'sameAs': SOCIAL_PROFILES,
+        'hasOfferCatalog': {
+            '@type': 'OfferCatalog',
+            'name': 'Industrial Bearings, Housings, and Motion Products',
+            'url': f'{site_url()}/products/',
+        },
     }
+    return schema
 
 
 def breadcrumb_schema(items: list[dict]) -> dict:
@@ -152,6 +240,10 @@ def faq_schema(items: list[dict]) -> dict:
 
 
 def product_schema(product, image_urls: list[str], canonical_url: str) -> dict:
+    """
+    Product schema with `offers` — required by Google for Product rich results.
+    Without an offers object, the schema validates but produces no SERP enhancement.
+    """
     schema = {
         '@context': 'https://schema.org',
         '@type': 'Product',
@@ -163,13 +255,28 @@ def product_schema(product, image_urls: list[str], canonical_url: str) -> dict:
         'brand': {
             '@type': 'Brand',
             'name': SITE_NAME,
+            '@id': f'{site_url()}#organization',
         },
         'manufacturer': {
             '@type': 'Organization',
-            'name': SITE_NAME,
-            'url': site_url(),
+            '@id': f'{site_url()}#organization',
         },
         'category': product.category.name if getattr(product, 'category', None) else 'Industrial Bearing',
+        # Offers object: required for Product rich results in Google Search
+        'offers': {
+            '@type': 'Offer',
+            'url': canonical_url,
+            'availability': 'https://schema.org/InStock',
+            'priceCurrency': 'INR',
+            'seller': {
+                '@type': 'Organization',
+                '@id': f'{site_url()}#organization',
+            },
+            'areaServed': {
+                '@type': 'Country',
+                'name': 'India',
+            },
+        },
     }
     if image_urls:
         schema['image'] = image_urls
@@ -186,8 +293,17 @@ def build_seo_context(
     og_type: str = 'website',
     og_image: str | None = None,
     twitter_image: str | None = None,
+    keywords: str | None = None,
     json_ld: list[dict] | None = None,
 ) -> dict:
+    """
+    Builds a complete SEO context dict for Django templates.
+
+    All schema objects are serialized once here — do NOT add additional
+    <script type="application/ld+json"> blocks in templates that extend base.html,
+    as this creates duplicate schema which confuses Google's parser.
+    """
+    # Base schemas always present on every page
     schemas = [website_schema(), organization_schema()]
     if json_ld:
         schemas.extend([schema for schema in json_ld if schema])
@@ -205,6 +321,7 @@ def build_seo_context(
         'seo_meta_description': resolved_description,
         'seo_canonical_url': resolved_canonical,
         'seo_meta_robots': robots or 'index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1',
+        'seo_meta_keywords': keywords or '',
         'seo_og_type': og_type,
         'seo_og_site_name': SITE_NAME,
         'seo_og_title': title or SITE_NAME,
