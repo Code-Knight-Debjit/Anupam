@@ -1,0 +1,58 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Brands{% endblock %}
+{% block page_title %}Brands{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ Catalogue</span>{% endblock %}
+{% block nav_brands %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>Brands</h1>
+    <p>{{ brands|length }} brand{{ brands|length|pluralize }}</p>
+  </div>
+  <a href="{% url 'dashboard:brand_add' %}" class="btn btn-primary">+ Add Brand</a>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Brand</th>
+        <th>Products</th>
+        <th>Status</th>
+        <th>Order</th>
+        <th style="text-align:right;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for brand in brands %}
+      <tr id="brand-row-{{ brand.pk }}">
+        <td><div class="td-name">{{ brand.name }}</div></td>
+        <td>
+          <span class="pill" style="background:rgba(255,106,0,0.1);color:var(--orange-dk);">
+            {{ brand.product_count }} product{{ brand.product_count|pluralize }}
+          </span>
+        </td>
+        <td>
+          {% if brand.is_active %}<span class="pill pill-resolved">Active</span>
+          {% else %}<span class="pill pill-read">Inactive</span>{% endif %}
+        </td>
+        <td style="color:var(--muted);font-size:0.875rem;">{{ brand.order }}</td>
+        <td style="text-align:right;">
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.4rem;">
+            <a href="{% url 'dashboard:brand_edit' brand.pk %}" class="btn btn-ghost btn-sm btn-icon" title="Edit">✏️</a>
+            <button
+              class="btn btn-danger btn-sm btn-icon"
+              title="Delete"
+              onclick="confirmDelete('{% url 'dashboard:brand_delete' brand.pk %}', '{{ brand.name|escapejs }}', () => document.getElementById('brand-row-{{ brand.pk }}').remove())"
+            >🗑</button>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon">🏷️</div><h3>No brands</h3><p><a href="{% url 'dashboard:brand_add' %}">Add your first brand</a></p></div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

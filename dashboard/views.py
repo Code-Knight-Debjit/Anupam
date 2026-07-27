@@ -10,16 +10,25 @@ from datetime import timedelta
 import json
 
 from products.excel_table import ExcelTableError, clear_excel_table_file, parse_excel_table_file, store_excel_table_file
-from products.models import Category, Product, ProductImage, Enquiry
+from products.models import Brand, Category, Product, ProductImage, Enquiry
 from contact.models import ContactMessage, ChatMessage
 from core.models import GalleryImage, IndustryCard
+from stock_ledger.models import StockTransfer, UserProfile
+from stock_ledger.permissions import role_required
 
 staff_required = user_passes_test(lambda u: u.is_staff, login_url='/dashboard/login/')
 
 
+def _post_login_redirect(user, next_url=None):
+    profile = getattr(user, 'stock_profile', None)
+    if profile and profile.role != UserProfile.ADMIN:
+        return redirect('dashboard:stock_ledger:overview')
+    return redirect(next_url or '/dashboard/')
+
+
 def dashboard_login(request):
     if request.user.is_authenticated and request.user.is_staff:
-        return redirect('dashboard:home')
+        return _post_login_redirect(request.user)
     error = None
     if request.method == 'POST':
         username = request.POST.get('username', '')
@@ -27,7 +36,7 @@ def dashboard_login(request):
         user = authenticate(request, username=username, password=password)
         if user and user.is_staff:
             login(request, user)
-            return redirect(request.GET.get('next', '/dashboard/'))
+            return _post_login_redirect(user, request.GET.get('next'))
         error = 'Invalid credentials or insufficient permissions.'
     return render(request, 'dashboard/login.html', {'error': error})
 
@@ -39,9 +48,14 @@ def dashboard_logout(request):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def dashboard_home(request):
     now = timezone.now()
     week_ago = now - timedelta(days=7)
+
+    from django.db.models import Sum
+    from stock_ledger.models import BranchStock
+    from stock_ledger.services import total_inventory_value
 
     stats = {
         'total_products':    Product.objects.count(),
@@ -54,6 +68,8 @@ def dashboard_home(request):
         'total_messages':    ContactMessage.objects.count(),
         'total_chats':       ChatMessage.objects.filter(role='user').count(),
         'chats_this_week':   ChatMessage.objects.filter(role='user', created_at__gte=week_ago).count(),
+        'total_stock_qty':      BranchStock.objects.aggregate(total=Sum('quantity'))['total'] or 0,
+        'total_inventory_value': total_inventory_value(),
     }
 
     recent_enquiries = Enquiry.objects.select_related('product').order_by('-created_at')[:6]
@@ -89,33 +105,43 @@ def dashboard_home(request):
 # ── PRODUCTS ──────────────────────────────────────────────
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def product_list(request):
     q = request.GET.get('q', '')
     cat_filter = request.GET.get('category', '')
-    products = Product.objects.select_related('category').order_by('-created_at')
+    brand_filter = request.GET.get('brand', '')
+    products = Product.objects.select_related('category', 'brand').order_by('-created_at')
     if q:
         products = products.filter(Q(name__icontains=q) | Q(description__icontains=q))
     if cat_filter:
         products = products.filter(category__slug=cat_filter)
+    if brand_filter:
+        products = products.filter(brand__slug=brand_filter)
     categories = Category.objects.all()
+    brands = Brand.objects.filter(is_active=True)
     page_size = getattr(__import__("django.conf", fromlist=["settings"]).settings, "DASHBOARD_PAGE_SIZE", 20)
     from django.core.paginator import Paginator
     paginator = Paginator(products, page_size)
     page_obj  = paginator.get_page(request.GET.get("page", 1))
     return render(request, "dashboard/products.html", {
-        "products":    page_obj.object_list,
-        "page_obj":    page_obj,
-        "categories":  categories,
-        "q":           q,
-        "cat_filter":  cat_filter,
+        "products":     page_obj.object_list,
+        "page_obj":     page_obj,
+        "categories":   categories,
+        "brands":       brands,
+        "q":            q,
+        "cat_filter":   cat_filter,
+        "brand_filter": brand_filter,
     })
 
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def product_add(request):
     categories = Category.objects.all()
+    brands = Brand.objects.filter(is_active=True)
     excel_error = None
+    brand_error = None
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
         slug = slugify(name)
@@ -137,10 +163,16 @@ def product_add(request):
             finally:
                 uploaded_excel.seek(0)
 
+        brand_id = request.POST.get('brand')
+        if not brand_id:
+            brand_error = 'Brand is required.'
+
         product = Product(
             name=name,
             slug=slug,
             category_id=request.POST.get('category'),
+            brand_id=brand_id or None,
+            sku=request.POST.get('sku', '').strip(),
             description=request.POST.get('description', ''),
             is_featured=request.POST.get('is_featured') == 'on',
             needs_excel_table=wants_excel_table,
@@ -149,11 +181,13 @@ def product_add(request):
         if wants_excel_table and not uploaded_excel:
             excel_error = 'Upload an .xlsx file when Needs Excel Table is enabled.'
 
-        if excel_error:
+        if excel_error or brand_error:
             return render(request, 'dashboard/product_form.html', {
                 'categories': categories,
+                'brands': brands,
                 'product': product,
                 'excel_error': excel_error,
+                'brand_error': brand_error,
             })
 
         if request.FILES.get('image'):
@@ -185,21 +219,32 @@ def product_add(request):
         return redirect('dashboard:products')
     return render(request, 'dashboard/product_form.html', {
         'categories': categories,
+        'brands': brands,
         'product': None,
     })
 
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def product_edit(request, pk):
     product = get_object_or_404(Product, pk=pk)
     categories = Category.objects.all()
+    brands = Brand.objects.filter(is_active=True)
     excel_error = None
+    brand_error = None
     if request.method == 'POST':
         product.name = request.POST.get('name', product.name).strip()
         product.category_id = request.POST.get('category', product.category_id)
+        product.sku = request.POST.get('sku', product.sku).strip()
         product.description = request.POST.get('description', '')
         product.is_featured = request.POST.get('is_featured') == 'on'
+
+        brand_id = request.POST.get('brand')
+        if not brand_id:
+            brand_error = 'Brand is required.'
+        else:
+            product.brand_id = brand_id
 
         uploaded_excel = request.FILES.get('excel_table_file')
         parsed_excel = None
@@ -220,11 +265,13 @@ def product_edit(request, pk):
         if product.needs_excel_table and not uploaded_excel and not product.excel_table_file:
             excel_error = 'Upload an .xlsx file when Needs Excel Table is enabled.'
 
-        if excel_error:
+        if excel_error or brand_error:
             return render(request, 'dashboard/product_form.html', {
                 'categories': categories,
+                'brands': brands,
                 'product': product,
                 'excel_error': excel_error,
+                'brand_error': brand_error,
             })
 
         spec_keys   = request.POST.getlist('spec_key')
@@ -250,12 +297,69 @@ def product_edit(request, pk):
         return redirect('dashboard:products')
     return render(request, 'dashboard/product_form.html', {
         'categories': categories,
+        'brands': brands,
         'product': product,
     })
 
 
+# ── BRANDS ────────────────────────────────────────────────
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
+def brand_list(request):
+    brands = Brand.objects.annotate(product_count=Count('products')).order_by('order', 'name')
+    return render(request, 'dashboard/brands.html', {'brands': brands})
+
+
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN)
+def brand_add(request):
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        slug = slugify(name)
+        base = slug; i = 1
+        while Brand.objects.filter(slug=slug).exists():
+            slug = f"{base}-{i}"; i += 1
+        brand = Brand(
+            name=name, slug=slug,
+            is_active=request.POST.get('is_active') == 'on',
+            order=int(request.POST.get('order', 0) or 0),
+        )
+        brand.save()
+        return redirect('dashboard:brands')
+    return render(request, 'dashboard/brand_form.html', {'brand': None})
+
+
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN)
+def brand_edit(request, pk):
+    brand = get_object_or_404(Brand, pk=pk)
+    if request.method == 'POST':
+        brand.name = request.POST.get('name', brand.name).strip()
+        brand.is_active = request.POST.get('is_active') == 'on'
+        brand.order = int(request.POST.get('order', 0) or 0)
+        brand.save()
+        return redirect('dashboard:brands')
+    return render(request, 'dashboard/brand_form.html', {'brand': brand})
+
+
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN)
+@require_POST
+def brand_delete(request, pk):
+    brand = get_object_or_404(Brand, pk=pk)
+    if brand.products.exists():
+        return JsonResponse({'success': False, 'message': 'Cannot delete a brand that still has products assigned.'})
+    brand.delete()
+    return JsonResponse({'success': True})
+
+
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN)
 @require_POST
 def product_delete(request, pk):
     get_object_or_404(Product, pk=pk).delete()
@@ -264,6 +368,7 @@ def product_delete(request, pk):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 @require_POST
 def product_toggle_featured(request, pk):
     product = get_object_or_404(Product, pk=pk)
@@ -274,6 +379,7 @@ def product_toggle_featured(request, pk):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 @require_POST
 def product_image_delete(request, pk):
     image = get_object_or_404(ProductImage, pk=pk)
@@ -284,6 +390,7 @@ def product_image_delete(request, pk):
 # ── CATEGORIES ────────────────────────────────────────────
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def category_list(request):
     categories = Category.objects.annotate(product_count=Count('products')).order_by('order', 'name')
     return render(request, 'dashboard/categories.html', {'categories': categories})
@@ -291,6 +398,7 @@ def category_list(request):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def category_add(request):
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
@@ -313,6 +421,7 @@ def category_add(request):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def category_edit(request, pk):
     category = get_object_or_404(Category, pk=pk)
     if request.method == 'POST':
@@ -329,6 +438,7 @@ def category_edit(request, pk):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 @require_POST
 def category_delete(request, pk):
     get_object_or_404(Category, pk=pk).delete()
@@ -338,6 +448,7 @@ def category_delete(request, pk):
 # ── INDUSTRIES ────────────────────────────────────────────
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def industry_list(request):
     industries = IndustryCard.objects.all().order_by('order', 'title')
     return render(request, 'dashboard/industries.html', {'industries': industries})
@@ -345,6 +456,7 @@ def industry_list(request):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def industry_add(request):
     if request.method == 'POST':
         industry = IndustryCard(
@@ -363,6 +475,7 @@ def industry_add(request):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def industry_edit(request, pk):
     industry = get_object_or_404(IndustryCard, pk=pk)
     if request.method == 'POST':
@@ -380,6 +493,7 @@ def industry_edit(request, pk):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 @require_POST
 def industry_delete(request, pk):
     get_object_or_404(IndustryCard, pk=pk).delete()
@@ -389,6 +503,7 @@ def industry_delete(request, pk):
 # ── GALLERY ───────────────────────────────────────────────
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def gallery_list(request):
     gallery_images = GalleryImage.objects.all().order_by('order', '-created_at')
     return render(request, 'dashboard/gallery.html', {'gallery_images': gallery_images})
@@ -396,6 +511,7 @@ def gallery_list(request):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def gallery_add(request):
     # existing categories for select dropdown
     raw_categories = (
@@ -422,6 +538,7 @@ def gallery_add(request):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def gallery_edit(request, pk):
     gallery_image = get_object_or_404(GalleryImage, pk=pk)
     raw_categories = (
@@ -445,6 +562,7 @@ def gallery_edit(request, pk):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 @require_POST
 def gallery_delete(request, pk):
     get_object_or_404(GalleryImage, pk=pk).delete()
@@ -454,6 +572,7 @@ def gallery_delete(request, pk):
 # ── ENQUIRIES ─────────────────────────────────────────────
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def enquiry_list(request):
     status_filter = request.GET.get('status', '')
     enquiries = Enquiry.objects.select_related('product__category').order_by('-created_at')
@@ -472,6 +591,7 @@ def enquiry_list(request):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 @require_POST
 def enquiry_update_status(request, pk):
     enquiry = get_object_or_404(Enquiry, pk=pk)
@@ -483,6 +603,7 @@ def enquiry_update_status(request, pk):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 @require_POST
 def enquiry_delete(request, pk):
     get_object_or_404(Enquiry, pk=pk).delete()
@@ -492,6 +613,7 @@ def enquiry_delete(request, pk):
 # ── CONTACT MESSAGES ──────────────────────────────────────
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def message_list(request):
     read_filter = request.GET.get('read', '')
     messages = ContactMessage.objects.order_by('-created_at')
@@ -512,6 +634,7 @@ def message_list(request):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 @require_POST
 def message_mark_read(request, pk):
     msg = get_object_or_404(ContactMessage, pk=pk)
@@ -522,6 +645,7 @@ def message_mark_read(request, pk):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 @require_POST
 def message_delete(request, pk):
     get_object_or_404(ContactMessage, pk=pk).delete()
@@ -530,6 +654,7 @@ def message_delete(request, pk):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 @require_POST
 def message_mark_all_read(request):
     ContactMessage.objects.filter(is_read=False).update(is_read=True)
@@ -539,6 +664,7 @@ def message_mark_all_read(request):
 # ── CHAT MESSAGES ─────────────────────────────────────────
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def chat_list(request):
     sessions = (
         ChatMessage.objects
@@ -562,6 +688,7 @@ def chat_list(request):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def chat_detail(request, session_id):
     messages = ChatMessage.objects.filter(session_id=session_id).order_by('created_at')
     return render(request, 'dashboard/chat_detail.html', {
@@ -572,6 +699,7 @@ def chat_detail(request, session_id):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 @require_POST
 def chat_delete_session(request, session_id):
     ChatMessage.objects.filter(session_id=session_id).delete()
@@ -583,19 +711,43 @@ def chat_delete_session(request, session_id):
 @staff_required
 @require_GET
 def notifications_api(request):
+    profile = getattr(request.user, 'stock_profile', None)
+    is_admin = bool(profile and profile.role == UserProfile.ADMIN)
+    is_branch_staff = bool(profile and profile.role == UserProfile.BRANCH_STAFF)
+
+    new_enquiries = Enquiry.objects.filter(status='new').count() if is_admin else 0
+    unread_messages = ContactMessage.objects.filter(is_read=False).count() if is_admin else 0
+
+    awaiting_receipt = [StockTransfer.DISPATCHED, StockTransfer.PARTIALLY_RECEIVED]
+    pending_dispatches = 0
+    pending_receipts = 0
+    pending_issues = 0
+    if is_admin:
+        pending_dispatches = StockTransfer.objects.filter(status=StockTransfer.PENDING).count()
+        pending_receipts = StockTransfer.objects.filter(status__in=awaiting_receipt).count()
+        pending_issues = StockTransfer.objects.filter(status=StockTransfer.ISSUE_REPORTED).count()
+    elif is_branch_staff:
+        pending_dispatches = StockTransfer.objects.filter(
+            status=StockTransfer.PENDING, from_branch_id=profile.branch_id
+        ).count()
+        pending_receipts = StockTransfer.objects.filter(
+            status__in=awaiting_receipt, to_branch_id=profile.branch_id
+        ).count()
+
     return JsonResponse({
-        'new_enquiries':   Enquiry.objects.filter(status='new').count(),
-        'unread_messages': ContactMessage.objects.filter(is_read=False).count(),
-        'total_unread':    (
-            Enquiry.objects.filter(status='new').count() +
-            ContactMessage.objects.filter(is_read=False).count()
-        ),
+        'new_enquiries':      new_enquiries,
+        'unread_messages':    unread_messages,
+        'pending_dispatches': pending_dispatches,
+        'pending_receipts':   pending_receipts,
+        'pending_issues':     pending_issues,
+        'total_unread':       new_enquiries + unread_messages + pending_dispatches + pending_receipts + pending_issues,
     })
 
 
 # ── RAG MANAGEMENT ────────────────────────────────────────
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 def rag_status(request):
     """RAG system status and management page."""
     from rag.retriever import get_index_stats
@@ -641,6 +793,7 @@ def rag_status(request):
 # ── RAG ADMIN ACTIONS ─────────────────────────────────────
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 @require_POST
 def rag_reindex(request):
     """
@@ -699,6 +852,7 @@ def rag_reindex(request):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN)
 @require_POST
 def rag_upload_document(request):
     """

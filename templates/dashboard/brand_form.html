@@ -1,0 +1,49 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{% if brand %}Edit{% else %}Add{% endif %} Brand{% endblock %}
+{% block page_title %}{% if brand %}Edit Brand{% else %}Add Brand{% endif %}{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ <a href="{% url 'dashboard:brands' %}" style="color:var(--muted);text-decoration:none;">Brands</a> / {% if brand %}Edit{% else %}New{% endif %}</span>{% endblock %}
+{% block nav_brands %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>{% if brand %}Edit "{{ brand.name }}"{% else %}Add New Brand{% endif %}</h1>
+  </div>
+  <a href="{% url 'dashboard:brands' %}" class="btn btn-ghost">← Back</a>
+</div>
+
+<form method="POST">
+  {% csrf_token %}
+  <div style="display:grid;grid-template-columns:1fr 320px;gap:1.5rem;align-items:start;">
+
+    <div class="card card-pad">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Brand Name *</label>
+          <input class="form-input" type="text" name="name" required value="{{ brand.name|default:'' }}" placeholder="e.g. Timken"/>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Display Order</label>
+            <input class="form-input" type="number" name="order" value="{{ brand.order|default:0 }}" min="0" max="100"/>
+          </div>
+          <div class="form-group">
+            <label class="form-check" style="margin-top:1.9rem;">
+              <input type="checkbox" name="is_active" {% if not brand or brand.is_active %}checked{% endif %}/>
+              <span class="form-check-label">Active</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card-pad">
+      <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1.25rem;">Actions</h3>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.875rem;">
+        {% if brand %}Save Changes{% else %}Add Brand{% endif %}
+      </button>
+      <a href="{% url 'dashboard:brands' %}" class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:0.5rem;">Cancel</a>
+    </div>
+  </div>
+</form>
+{% endblock %}

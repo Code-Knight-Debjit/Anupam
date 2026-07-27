@@ -11,6 +11,10 @@ python-decouple>=3.8
 # ── Media
 Pillow>=10.0
 
+# ── Stock Ledger: Excel / PDF export & import
+openpyxl>=3.1.0
+reportlab>=4.0.0
+
 # ── Email
 resend>=2.0
 

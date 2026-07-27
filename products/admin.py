@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .excel_table import clear_excel_table_file, store_excel_table_file
 from .forms import ProductAdminForm
-from .models import Category, Product, ProductImage, Enquiry
+from .models import Brand, Category, Product, ProductImage, Enquiry
 
 
 class ProductImageInline(admin.TabularInline):
@@ -13,16 +13,22 @@ class CategoryAdmin(admin.ModelAdmin):
     list_display = ['name', 'slug', 'order']
     prepopulated_fields = {'slug': ('name',)}
 
+@admin.register(Brand)
+class BrandAdmin(admin.ModelAdmin):
+    list_display = ['name', 'slug', 'is_active', 'order']
+    list_filter = ['is_active']
+    prepopulated_fields = {'slug': ('name',)}
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     form = ProductAdminForm
     inlines = [ProductImageInline]
-    list_display = ['name', 'category', 'is_featured', 'needs_excel_table', 'created_at']
-    list_filter = ['category', 'is_featured', 'needs_excel_table']
+    list_display = ['name', 'category', 'brand', 'sku', 'is_featured', 'needs_excel_table', 'created_at']
+    list_filter = ['category', 'brand', 'is_featured', 'needs_excel_table']
     prepopulated_fields = {'slug': ('name',)}
     fieldsets = (
         ('Basic Information', {
-            'fields': ('name', 'slug', 'category', 'description', 'specifications'),
+            'fields': ('name', 'slug', 'category', 'brand', 'sku', 'description', 'specifications'),
         }),
         ('Media', {
             'fields': ('image',),

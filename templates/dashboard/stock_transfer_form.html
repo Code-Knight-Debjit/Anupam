@@ -1,0 +1,62 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Create Transfer{% endblock %}
+{% block page_title %}Create Transfer{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ <a href="{% url 'dashboard:stock_ledger:transfer_list' %}" style="color:var(--muted);text-decoration:none;">Transfers</a> / New</span>{% endblock %}
+{% block nav_stock_transfers %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>Create Transfer</h1>
+    <p>Stock moves out of the sending branch only once they confirm dispatch, and into the receiving branch only once they confirm receipt.</p>
+  </div>
+  <a href="{% url 'dashboard:stock_ledger:transfer_list' %}" class="btn btn-ghost">← Back</a>
+</div>
+
+{% if stock_error %}
+<div class="card card-pad" style="max-width:640px;margin-bottom:1rem;border-color:#dc2626;">
+  <p style="color:#dc2626;font-size:0.875rem;">⚠ {{ stock_error }}</p>
+</div>
+{% endif %}
+
+<form method="POST" style="max-width:640px;">
+  {% csrf_token %}
+  <div class="card card-pad">
+    <div class="form-grid">
+      <div class="form-row">
+        <div class="form-group">
+          <label>From Branch *</label>
+          <select class="form-input" name="from_branch" id="id_from_branch" required>
+            <option value="">Select branch…</option>
+            {% for b in branches %}<option value="{{ b.pk }}">{{ b.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>To Branch *</label>
+          <select class="form-input" name="to_branch" required>
+            <option value="">Select branch…</option>
+            {% for b in branches %}<option value="{{ b.pk }}">{{ b.name }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Product * <span style="font-weight:400;text-transform:none;color:var(--muted);">(pick From Branch first — only its in-stock items are searchable)</span></label>
+        <div class="product-combobox" data-restrict-stock="true" data-branch-select="#id_from_branch">
+          <input type="text" class="form-input product-combobox-input" placeholder="Type a code or name…" autocomplete="off"/>
+          <input type="hidden" name="product" class="product-combobox-value" required/>
+          <div class="product-combobox-results"></div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Quantity (Pcs) *</label>
+        <input class="form-input" type="number" name="quantity" min="1" required/>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea class="form-input" name="notes"></textarea>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.875rem;margin-top:1.5rem;">Create Transfer</button>
+  </div>
+</form>
+{% endblock %}

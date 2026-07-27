@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     'contact',
     'chatbot',
     'dashboard',
+    'stock_ledger',
     'django_celery_beat',
 ]
 
@@ -52,6 +53,8 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'core.context_processors.seo',
+                'stock_ledger.context_processors.dashboard_role',
+                'stock_ledger.context_processors.low_stock_alert',
             ],
         },
     },

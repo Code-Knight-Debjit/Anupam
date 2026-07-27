@@ -1,0 +1,61 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Branches{% endblock %}
+{% block page_title %}Branches{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ Administration</span>{% endblock %}
+{% block nav_stock_branches %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>Branches</h1>
+    <p>{{ branches|length }} branch{{ branches|length|pluralize:"es" }}</p>
+  </div>
+  <a href="{% url 'dashboard:stock_ledger:branch_add' %}" class="btn btn-primary">+ Add Branch</a>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Branch</th>
+        <th>Code</th>
+        <th>Address</th>
+        <th>Status</th>
+        <th style="text-align:right;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in branches %}
+      <tr id="branch-row-{{ b.pk }}">
+        <td class="td-name">{{ b.name }}</td>
+        <td>{{ b.code }}</td>
+        <td class="td-sub" style="max-width:320px;white-space:normal;">{{ b.address|truncatechars:80 }}</td>
+        <td>
+          <button class="btn btn-sm {% if b.is_active %}btn-primary{% else %}btn-ghost{% endif %}"
+            onclick="toggleBranch({{ b.pk }}, this)">{% if b.is_active %}Active{% else %}Inactive{% endif %}</button>
+        </td>
+        <td style="text-align:right;">
+          <a href="{% url 'dashboard:stock_ledger:branch_edit' b.pk %}" class="btn btn-ghost btn-sm btn-icon" title="Edit">✏️</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon">🏢</div><h3>No branches yet</h3></div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function toggleBranch(pk, btn) {
+  const res = await fetch(`/dashboard/stock/branches/${pk}/deactivate/`, { method: 'POST', headers: { 'X-CSRFToken': getCsrf() } });
+  const d = await res.json();
+  if (d.success) {
+    btn.className = `btn btn-sm ${d.is_active ? 'btn-primary' : 'btn-ghost'}`;
+    btn.textContent = d.is_active ? 'Active' : 'Inactive';
+    showToast(d.is_active ? 'Branch activated' : 'Branch deactivated', 'success');
+  }
+}
+</script>
+{% endblock %}

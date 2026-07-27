@@ -28,16 +28,33 @@
             <label>Product Name *</label>
             <input class="form-input" type="text" name="name" required value="{{ product.name|default:'' }}" placeholder="e.g. Tapered Roller Bearing"/>
           </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Category *</label>
+              <select class="form-input" name="category" required>
+                <option value="">Select a category…</option>
+                {% for cat in categories %}
+                <option value="{{ cat.pk }}" {% if product and product.category_id == cat.pk %}selected{% endif %}>
+                  {{ cat.icon }} {{ cat.name }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Brand *</label>
+              <select class="form-input" name="brand" required>
+                <option value="">Select a brand…</option>
+                {% for b in brands %}
+                <option value="{{ b.pk }}" {% if product and product.brand_id == b.pk %}selected{% endif %}>{{ b.name }}</option>
+                {% endfor %}
+              </select>
+              {% if brand_error %}<p style="font-size:0.75rem;color:#dc2626;margin-top:0.35rem;">{{ brand_error }}</p>{% endif %}
+            </div>
+          </div>
           <div class="form-group">
-            <label>Category *</label>
-            <select class="form-input" name="category" required>
-              <option value="">Select a category…</option>
-              {% for cat in categories %}
-              <option value="{{ cat.pk }}" {% if product and product.category_id == cat.pk %}selected{% endif %}>
-                {{ cat.icon }} {{ cat.name }}
-              </option>
-              {% endfor %}
-            </select>
+            <label>SKU / Part Number</label>
+            <input class="form-input" type="text" name="sku" value="{{ product.sku|default:'' }}" placeholder="e.g. 6001-ZZ"/>
+            <p style="font-size:0.75rem;color:var(--muted);margin-top:0.35rem;">Used to match rows when bulk-importing Opening Stock from Excel.</p>
           </div>
           <div class="form-group">
             <label>Description</label>
