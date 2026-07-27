@@ -3,7 +3,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
-<link rel="preload" as="image" href="{% static 'images/hero/hero-bearings.png' %}" fetchpriority="high" />
+<link rel="preload" as="image" href="{% static 'images/hero/hero-bearings.webp' %}" fetchpriority="high" />
 {% endblock %}
 
 {% block intro %}
@@ -39,11 +39,11 @@
 
   <div class="hero-slide active">
     <div class="hero-slide-img-wrap">
-      <img src="{% static 'images/hero/hero-bearings.png' %}" alt="Timken precision roller bearings" class="hero-slide-img" loading="eager" fetchpriority="high" width="1200" height="900" />
+      <img src="{% static 'images/hero/hero-bearings.webp' %}" alt="Timken precision roller bearings" class="hero-slide-img" loading="eager" fetchpriority="high" width="1200" height="900" />
     </div>
     <div class="hero-content">
       <div class="timken-mark timken-mark--hero">
-        <img src="{% static 'images/Timken.png' %}" alt="Timken logo" loading="eager" width="240" height="96" />
+        <img src="{% static 'images/Timken.webp' %}" alt="Timken logo" loading="eager" width="240" height="96" />
       </div>
       <div class="partner-badge">✦ Certified Timken Partner</div><br>
       <div class="hero-label">Rolling Bearing</div>
@@ -57,7 +57,7 @@
 
   <div class="hero-slide">
     <div class="hero-slide-img-wrap">
-      <img src="{% static 'images/hero/hero-housings.png' %}" alt="Timken bearing housings and plummer blocks" class="hero-slide-img" loading="lazy" width="1200" height="900" />
+      <img src="{% static 'images/hero/hero-housings.webp' %}" alt="Timken bearing housings and plummer blocks" class="hero-slide-img" loading="lazy" width="1200" height="900" />
     </div>
     <div class="hero-content">
       <div class="hero-label">Housings</div>
@@ -72,7 +72,7 @@
 
   <div class="hero-slide">
     <div class="hero-slide-img-wrap">
-      <img src="{% static 'images/hero/hero-lubrication.png' %}" alt="Groeneveld-BEKA automatic lubrication systems" class="hero-slide-img" loading="lazy" width="1200" height="900" />
+      <img src="{% static 'images/hero/hero-lubrication.webp' %}" alt="Groeneveld-BEKA automatic lubrication systems" class="hero-slide-img" loading="lazy" width="1200" height="900" />
     </div>
     <div class="hero-content">
       <div class="hero-label">Automatic Lubrication &amp; Lubrications</div>
@@ -87,7 +87,7 @@
 
   <div class="hero-slide">
     <div class="hero-slide-img-wrap">
-      <img src="{% static 'images/hero/hero-linear.png' %}" alt="Rollon linear guides and motion rails" class="hero-slide-img" loading="lazy" width="1200" height="900" />
+      <img src="{% static 'images/hero/hero-linear.webp' %}" alt="Rollon linear guides and motion rails" class="hero-slide-img" loading="lazy" width="1200" height="900" />
     </div>
     <div class="hero-content">
       <div class="hero-label">Linear Motion System</div>
@@ -117,7 +117,7 @@
     <div class="about-split">
       <div class="anim-slide-left">
         <div class="about-img-wrap">
-          <img src="{% static 'images/about-us-home.png' %}" alt="Industrial bearing manufacturing facility" loading="lazy" width="1200" height="900" />
+          <img src="{% static 'images/about-us-home.webp' %}" alt="Industrial bearing manufacturing facility" loading="lazy" width="1200" height="900" />
           <div class="about-badge"><span>Certified</span>Timken Partner</div>
         </div>
       </div>
@@ -170,7 +170,7 @@
     <div class="category-grid anim-stagger-group">
       {% for cat in categories %}
       <a href="{% url 'products:list' %}?category={{ cat.slug }}" class="category-card-link anim-stagger-child anim-fade-up">
-        <article class="category-card"{% if cat.image %} style="--category-card-bg:url('{{ cat.image.url }}');"{% elif cat.slug == 'rolling-bearings' %} style="--category-card-bg:url('{% static 'images/hero/hero-bearings.png' %}');"{% elif cat.slug == 'bearing-housings' %} style="--category-card-bg:url('{% static 'images/hero/hero-housings.png' %}');"{% elif cat.slug == 'linear-motion' %} style="--category-card-bg:url('{% static 'images/hero/hero-linear.png' %}');"{% elif cat.slug == 'power-transmission' %} style="--category-card-bg:url('{% static 'images/hero/hero-power-transmission.png' %}');"{% elif cat.slug == 'lubrication-maintenance' %} style="--category-card-bg:url('{% static 'images/hero/hero-lubrication.png' %}');"{% else %} style="--category-card-bg:url('{% static 'images/hero/hero-bearings.png' %}');"{% endif %}>
+        <article class="category-card"{% if cat.image %} style="--category-card-bg:url('{{ cat.image.url }}');"{% elif cat.slug == 'rolling-bearings' %} style="--category-card-bg:url('{% static 'images/hero/hero-bearings.webp' %}');"{% elif cat.slug == 'bearing-housings' %} style="--category-card-bg:url('{% static 'images/hero/hero-housings.webp' %}');"{% elif cat.slug == 'linear-motion' %} style="--category-card-bg:url('{% static 'images/hero/hero-linear.webp' %}');"{% elif cat.slug == 'power-transmission' %} style="--category-card-bg:url('{% static 'images/hero/hero-power-transmission.webp' %}');"{% elif cat.slug == 'lubrication-maintenance' %} style="--category-card-bg:url('{% static 'images/hero/hero-lubrication.webp' %}');"{% else %} style="--category-card-bg:url('{% static 'images/hero/hero-bearings.webp' %}');"{% endif %}>
           <div class="category-card-body">
             <p class="category-card-cat"></p>
             <h3 class="category-card-name">{{ cat.name }}</h3>
@@ -205,7 +205,7 @@
     <!-- 4-card grid -->
     <div class="why-cards-v2 anim-stagger-group">
       <!-- Card 4 -->
-      <div class="why-card-v2 anim-stagger-child anim-fade-up" style="--why-card-bg:url('{% static 'images/Certified-Timken-Partner.png' %}');">
+      <div class="why-card-v2 anim-stagger-child anim-fade-up" style="--why-card-bg:url('{% static 'images/Certified-Timken-Partner.webp' %}');">
         <div class="why-card-v2-top">
           <div class="why-card-v2-num">01</div>
           <div class="why-card-v2-icon">
@@ -221,7 +221,7 @@
       </div>
       
       <!-- Card 1 -->
-      <div class="why-card-v2 anim-stagger-child anim-fade-up" style="--why-card-bg:url('{% static 'images/Largest-Inventory.jpeg' %}');">
+      <div class="why-card-v2 anim-stagger-child anim-fade-up" style="--why-card-bg:url('{% static 'images/Largest-Inventory.webp' %}');">
         <div class="why-card-v2-top">
           <div class="why-card-v2-num">02</div>
           <div class="why-card-v2-icon">
@@ -237,7 +237,7 @@
       </div>
 
       <!-- Card 2 -->
-      <div class="why-card-v2 anim-stagger-child anim-fade-up" style="--why-card-bg:url('{% static 'images/Fastest-Delivery.jpeg' %}');">
+      <div class="why-card-v2 anim-stagger-child anim-fade-up" style="--why-card-bg:url('{% static 'images/Fastest-Delivery.webp' %}');">
         <div class="why-card-v2-top">
           <div class="why-card-v2-num">03</div>
           <div class="why-card-v2-icon">
@@ -253,7 +253,7 @@
       </div>
 
       <!-- Card 3 -->
-      <div class="why-card-v2 anim-stagger-child anim-fade-up" style="--why-card-bg:url('{% static 'images/Expert-Technical-Support.jpeg' %}');">
+      <div class="why-card-v2 anim-stagger-child anim-fade-up" style="--why-card-bg:url('{% static 'images/Expert-Technical-Support.webp' %}');">
         <div class="why-card-v2-top">
           <div class="why-card-v2-num">04</div>
           <div class="why-card-v2-icon">

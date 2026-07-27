@@ -1,3 +1,12 @@
+"""
+core/seo_pages.py
+
+Changes from original:
+  - Added `keywords` field to every landing page (for meta keywords tag)
+  - Added RELATED_PAGES_MAP for internal sidebar linking on every landing page
+  - This replaces the raw keyword_targets list that was shown to visitors
+"""
+
 SEO_KEYWORD_MAP = {
     'commercial': [
         'bearing supplier',
@@ -42,10 +51,100 @@ SEO_KEYWORD_MAP = {
     ],
 }
 
+# ──────────────────────────────────────────────────────────────────────────────
+# RELATED PAGES MAP
+# Used by seo_landing_page view to populate the sidebar with internal links.
+# Add 3–5 closely related pages per slug for best topical clustering signal.
+# ──────────────────────────────────────────────────────────────────────────────
+RELATED_PAGES_MAP = {
+    'deep-groove-ball-bearings': [
+        {'label': 'Angular Contact Bearings', 'url': '/angular-contact-bearings/'},
+        {'label': 'Spherical Roller Bearings', 'url': '/spherical-roller-bearings/'},
+        {'label': 'Timken Bearings', 'url': '/timken-bearings/'},
+        {'label': 'Bearing Supplier Bangalore', 'url': '/bearing-supplier-bangalore/'},
+        {'label': 'All Products', 'url': '/products/'},
+    ],
+    'angular-contact-bearings': [
+        {'label': 'Deep Groove Ball Bearings', 'url': '/deep-groove-ball-bearings/'},
+        {'label': 'Cylindrical Roller Bearings', 'url': '/cylindrical-roller-bearings/'},
+        {'label': 'Timken Bearings', 'url': '/timken-bearings/'},
+        {'label': 'Bearing Supplier Bangalore', 'url': '/bearing-supplier-bangalore/'},
+    ],
+    'spherical-roller-bearings': [
+        {'label': 'Cylindrical Roller Bearings', 'url': '/cylindrical-roller-bearings/'},
+        {'label': 'Deep Groove Ball Bearings', 'url': '/deep-groove-ball-bearings/'},
+        {'label': 'Bearings for Mining', 'url': '/bearings-for-mining/'},
+        {'label': 'Bearings for Manufacturing', 'url': '/bearings-for-manufacturing/'},
+    ],
+    'cylindrical-roller-bearings': [
+        {'label': 'Spherical Roller Bearings', 'url': '/spherical-roller-bearings/'},
+        {'label': 'Angular Contact Bearings', 'url': '/angular-contact-bearings/'},
+        {'label': 'Bearings for Manufacturing', 'url': '/bearings-for-manufacturing/'},
+        {'label': 'SKF Bearings', 'url': '/skf-bearings/'},
+    ],
+    'timken-bearings': [
+        {'label': 'SKF Bearings', 'url': '/skf-bearings/'},
+        {'label': 'FAG Bearings', 'url': '/fag-bearings/'},
+        {'label': 'Deep Groove Ball Bearings', 'url': '/deep-groove-ball-bearings/'},
+        {'label': 'Bearing Supplier Bangalore', 'url': '/bearing-supplier-bangalore/'},
+    ],
+    'skf-bearings': [
+        {'label': 'Timken Bearings', 'url': '/timken-bearings/'},
+        {'label': 'FAG Bearings', 'url': '/fag-bearings/'},
+        {'label': 'Spherical Roller Bearings', 'url': '/spherical-roller-bearings/'},
+        {'label': 'Bearing Supplier Chennai', 'url': '/bearing-supplier-chennai/'},
+    ],
+    'fag-bearings': [
+        {'label': 'Timken Bearings', 'url': '/timken-bearings/'},
+        {'label': 'SKF Bearings', 'url': '/skf-bearings/'},
+        {'label': 'Angular Contact Bearings', 'url': '/angular-contact-bearings/'},
+        {'label': 'Bearing Distributor Karnataka', 'url': '/bearing-distributor-karnataka/'},
+    ],
+    'bearing-supplier-bangalore': [
+        {'label': 'Bearing Supplier Chennai', 'url': '/bearing-supplier-chennai/'},
+        {'label': 'Bearing Distributor Karnataka', 'url': '/bearing-distributor-karnataka/'},
+        {'label': 'Timken Bearings', 'url': '/timken-bearings/'},
+        {'label': 'Deep Groove Ball Bearings', 'url': '/deep-groove-ball-bearings/'},
+        {'label': 'Contact Us', 'url': '/contact/'},
+    ],
+    'bearing-supplier-chennai': [
+        {'label': 'Bearing Supplier Bangalore', 'url': '/bearing-supplier-bangalore/'},
+        {'label': 'Bearing Distributor Karnataka', 'url': '/bearing-distributor-karnataka/'},
+        {'label': 'Timken Bearings', 'url': '/timken-bearings/'},
+        {'label': 'Contact Us', 'url': '/contact/'},
+    ],
+    'bearing-distributor-karnataka': [
+        {'label': 'Bearing Supplier Bangalore', 'url': '/bearing-supplier-bangalore/'},
+        {'label': 'Bearing Supplier Chennai', 'url': '/bearing-supplier-chennai/'},
+        {'label': 'Deep Groove Ball Bearings', 'url': '/deep-groove-ball-bearings/'},
+        {'label': 'All Products', 'url': '/products/'},
+    ],
+    'bearings-for-automotive': [
+        {'label': 'Bearings for Manufacturing', 'url': '/bearings-for-manufacturing/'},
+        {'label': 'Deep Groove Ball Bearings', 'url': '/deep-groove-ball-bearings/'},
+        {'label': 'Timken Bearings', 'url': '/timken-bearings/'},
+        {'label': 'Bearing Supplier Bangalore', 'url': '/bearing-supplier-bangalore/'},
+    ],
+    'bearings-for-manufacturing': [
+        {'label': 'Bearings for Automotive', 'url': '/bearings-for-automotive/'},
+        {'label': 'Bearings for Mining', 'url': '/bearings-for-mining/'},
+        {'label': 'Spherical Roller Bearings', 'url': '/spherical-roller-bearings/'},
+        {'label': 'Bearing Distributor Karnataka', 'url': '/bearing-distributor-karnataka/'},
+    ],
+    'bearings-for-mining': [
+        {'label': 'Spherical Roller Bearings', 'url': '/spherical-roller-bearings/'},
+        {'label': 'Cylindrical Roller Bearings', 'url': '/cylindrical-roller-bearings/'},
+        {'label': 'Bearings for Manufacturing', 'url': '/bearings-for-manufacturing/'},
+        {'label': 'Contact Us', 'url': '/contact/'},
+    ],
+}
+
+
 SEO_LANDING_PAGES = {
     'deep-groove-ball-bearings': {
-        'title': 'Deep Groove Ball Bearings in India | Anupam Bearings',
-        'description': 'Source deep groove ball bearings for high-speed industrial applications from Anupam Bearings with supply support in Bengaluru, Chennai, Karnataka, Tamil Nadu, and across India.',
+        'title': 'Deep Groove Ball Bearings Supplier in India | Anupam Bearings',
+        'description': 'Source deep groove ball bearings for high-speed industrial applications from Anupam Bearings. Supply support in Bengaluru, Chennai, Karnataka, Tamil Nadu, and across India.',
+        'keywords': 'deep groove ball bearings, deep groove ball bearing supplier india, deep groove ball bearing bangalore, 6200 series bearing, 6300 series bearing',
         'headline': 'Deep Groove Ball Bearings for High-Speed, Low-Noise Duty',
         'intro': 'Deep groove ball bearings are the default choice when you need compact geometry, smooth running, and reliable radial load capacity. We support OEMs, maintenance teams, and distributors with industrial supply, cross-reference support, and fast dispatch.',
         'sections': [
@@ -74,8 +173,9 @@ SEO_LANDING_PAGES = {
         ],
     },
     'angular-contact-bearings': {
-        'title': 'Angular Contact Bearings Supplier | Anupam Bearings',
+        'title': 'Angular Contact Bearings Supplier India | Anupam Bearings',
         'description': 'Angular contact bearings for machine tools, pumps, spindles, and high-speed assemblies. Supply support from Anupam Bearings in India, Bengaluru, and Chennai.',
+        'keywords': 'angular contact bearings, angular contact bearing supplier india, angular contact bearing bangalore, spindle bearings india',
         'headline': 'Angular Contact Bearings for Axial and Combined Load Control',
         'intro': 'Angular contact bearings are selected when axial load capacity, speed, and preload control are central to the application. We support technical buyers who need correct contact angle selection and bearing pair configuration.',
         'sections': [
@@ -104,8 +204,9 @@ SEO_LANDING_PAGES = {
         ],
     },
     'spherical-roller-bearings': {
-        'title': 'Spherical Roller Bearings Supplier | Anupam Bearings',
-        'description': 'Spherical roller bearings for heavy-duty industrial loads, shock conditions, and misalignment control. Genuine sourcing support from Anupam Bearings.',
+        'title': 'Spherical Roller Bearings Supplier India | Anupam Bearings',
+        'description': 'Spherical roller bearings for heavy-duty industrial loads, shock conditions, and misalignment control. Genuine sourcing support from Anupam Bearings across India.',
+        'keywords': 'spherical roller bearings, spherical roller bearing supplier india, heavy duty bearings india, misalignment bearings',
         'headline': 'Spherical Roller Bearings for Heavy Load and Misalignment',
         'intro': 'Spherical roller bearings are engineered for machinery that sees heavy radial loads, shock loading, and shaft deflection. They are a core product category for steel, mining, paper, and process plants.',
         'sections': [
@@ -134,8 +235,9 @@ SEO_LANDING_PAGES = {
         ],
     },
     'cylindrical-roller-bearings': {
-        'title': 'Cylindrical Roller Bearings Supplier | Anupam Bearings',
+        'title': 'Cylindrical Roller Bearings Supplier India | Anupam Bearings',
         'description': 'Cylindrical roller bearings for high radial load capacity and industrial gearbox, motor, and mill applications. Source from Anupam Bearings in India.',
+        'keywords': 'cylindrical roller bearings, cylindrical roller bearing supplier india, gearbox bearings, roller bearing india',
         'headline': 'Cylindrical Roller Bearings for Radial Load Capacity',
         'intro': 'Cylindrical roller bearings are preferred where the application demands strong radial load handling, rigid support, and reliable running in demanding duty cycles.',
         'sections': [
@@ -164,10 +266,11 @@ SEO_LANDING_PAGES = {
         ],
     },
     'timken-bearings': {
-        'title': 'Timken Bearings Supplier in India | Anupam Bearings',
-        'description': 'Certified Timken bearings sourcing support for industrial buyers in Bengaluru, Chennai, Karnataka, Tamil Nadu, and across India.',
-        'headline': 'Timken Bearings for Industrial Reliability',
-        'intro': 'Timken product demand is usually driven by uptime, load handling, and long service life. Our role is to supply the right genuine product and prevent mismatched replacements.',
+        'title': 'Timken Bearings Supplier in India | Certified Partner | Anupam Bearings',
+        'description': 'Certified Timken bearings sourcing support for industrial buyers in Bengaluru, Chennai, Karnataka, Tamil Nadu, and across India. Genuine Timken products.',
+        'keywords': 'timken bearings india, timken bearings bangalore, timken bearings supplier india, timken taper roller bearings, timken certified distributor india',
+        'headline': 'Timken Bearings — Certified Industrial Supply Partner',
+        'intro': 'Timken product demand is usually driven by uptime, load handling, and long service life. Our role as a certified supply partner is to source the right genuine product and prevent mismatched replacements.',
         'sections': [
             {
                 'heading': 'Why buyers ask for Timken',
@@ -181,7 +284,7 @@ SEO_LANDING_PAGES = {
         'faq': [
             {
                 'question': 'Do you supply genuine Timken bearings?',
-                'answer': 'Yes. Genuine supply is a core part of our industrial positioning.',
+                'answer': 'Yes. Genuine supply is a core part of our industrial positioning as a certified partner.',
             },
             {
                 'question': 'Can you support bulk and repeat industrial orders?',
@@ -191,7 +294,8 @@ SEO_LANDING_PAGES = {
     },
     'skf-bearings': {
         'title': 'SKF Bearings Supplier in India | Anupam Bearings',
-        'description': 'SKF bearings sourcing support for industrial maintenance, OEM procurement, and replacement programs across India.',
+        'description': 'SKF bearings sourcing support for industrial maintenance, OEM procurement, and replacement programs across India from Anupam Bearings.',
+        'keywords': 'skf bearings india, skf bearings bangalore, skf bearings supplier india, skf bearing distributor',
         'headline': 'SKF Bearings for Maintenance and OEM Demand',
         'intro': 'SKF queries are usually driven by maintenance reliability, interchange accuracy, and the need for consistent industrial quality.',
         'sections': [
@@ -217,7 +321,8 @@ SEO_LANDING_PAGES = {
     },
     'fag-bearings': {
         'title': 'FAG Bearings Supplier in India | Anupam Bearings',
-        'description': 'FAG bearings sourcing support for industrial replacement, machine uptime, and technical procurement in India.',
+        'description': 'FAG bearings sourcing support for industrial replacement, machine uptime, and technical procurement in India from Anupam Bearings.',
+        'keywords': 'fag bearings india, fag bearings bangalore, fag bearings supplier india, schaeffler fag bearings',
         'headline': 'FAG Bearings for Technical Industrial Applications',
         'intro': 'FAG demand often comes from maintenance teams that need a precise replacement and cannot afford downtime caused by a near-match part.',
         'sections': [
@@ -242,10 +347,11 @@ SEO_LANDING_PAGES = {
         ],
     },
     'bearing-supplier-bangalore': {
-        'title': 'Bearing Supplier Bangalore | Anupam Bearings',
-        'description': 'Industrial bearing supplier in Bangalore for OEM, maintenance, and MRO buyers. Local sourcing support for bearings, housings, and motion products.',
+        'title': 'Bearing Supplier in Bangalore | Industrial Bearings | Anupam Bearings',
+        'description': 'Industrial bearing supplier in Bangalore for OEM, maintenance, and MRO buyers. Local sourcing support for bearings, housings, and motion products from Bommasandra.',
+        'keywords': 'bearing supplier bangalore, bearing dealer bangalore, industrial bearings bangalore, bearing shop bangalore, bearing company bangalore',
         'headline': 'Bearing Supplier in Bangalore for Industrial Buyers',
-        'intro': 'Bangalore buyers need fast response, technical fitment support, and dependable supply for plant, machine building, and maintenance operations. We support those requirements with a local industrial focus.',
+        'intro': 'Bangalore buyers need fast response, technical fitment support, and dependable supply for plant, machine building, and maintenance operations. We support those requirements from our Bommasandra Industrial Area location.',
         'sections': [
             {
                 'heading': 'Local supply use cases',
@@ -259,7 +365,7 @@ SEO_LANDING_PAGES = {
         'faq': [
             {
                 'question': 'Do you serve industrial customers in Bangalore?',
-                'answer': 'Yes. Bangalore is one of our primary industrial service regions.',
+                'answer': 'Yes. Bangalore is one of our primary industrial service regions, with our office at Bommasandra Industrial Area.',
             },
             {
                 'question': 'Can you support urgent plant shutdown orders?',
@@ -268,10 +374,11 @@ SEO_LANDING_PAGES = {
         ],
     },
     'bearing-supplier-chennai': {
-        'title': 'Bearing Supplier Chennai | Anupam Bearings',
-        'description': 'Bearing supplier in Chennai for industrial plants, OEMs, and maintenance buyers across Tamil Nadu. Genuine products and technical sourcing support.',
+        'title': 'Bearing Supplier in Chennai | Industrial Bearings | Anupam Bearings',
+        'description': 'Bearing supplier in Chennai for industrial plants, OEMs, and maintenance buyers across Tamil Nadu. Genuine products and technical sourcing support from Parrys.',
+        'keywords': 'bearing supplier chennai, bearing dealer chennai, industrial bearings chennai, bearing company chennai, bearing distributor tamil nadu',
         'headline': 'Bearing Supplier in Chennai for Industrial Reliability',
-        'intro': 'Chennai buyers expect fast dispatch, technical validation, and clear support for replacement bearings, housings, and motion components.',
+        'intro': 'Chennai buyers expect fast dispatch, technical validation, and clear support for replacement bearings, housings, and motion components from our Parrys office.',
         'sections': [
             {
                 'heading': 'Why Chennai searches convert',
@@ -285,7 +392,7 @@ SEO_LANDING_PAGES = {
         'faq': [
             {
                 'question': 'Do you have Chennai support?',
-                'answer': 'Yes. Chennai is a primary service location for our industrial customers.',
+                'answer': 'Yes. Chennai (Parrys) is a primary service location for our industrial customers.',
             },
             {
                 'question': 'Can you support Tamil Nadu procurement teams?',
@@ -294,8 +401,9 @@ SEO_LANDING_PAGES = {
         ],
     },
     'bearing-distributor-karnataka': {
-        'title': 'Bearing Distributor Karnataka | Anupam Bearings',
+        'title': 'Bearing Distributor in Karnataka | Anupam Bearings',
         'description': 'Industrial bearing distributor for Karnataka buyers needing genuine products, application support, and dependable supply chain execution.',
+        'keywords': 'bearing distributor karnataka, bearing supplier karnataka, industrial bearing karnataka, bearing dealer mysore, bearing supplier hubli',
         'headline': 'Bearing Distributor in Karnataka for Industrial Supply',
         'intro': 'Karnataka buyers need an industrial distributor that can move from code matching to dispatch without creating delays in plant operations.',
         'sections': [
@@ -320,8 +428,9 @@ SEO_LANDING_PAGES = {
         ],
     },
     'bearings-for-automotive': {
-        'title': 'Bearings for Automotive Applications | Anupam Bearings',
-        'description': 'Industrial bearing sourcing for automotive manufacturing, assemblies, and maintenance applications.',
+        'title': 'Bearings for Automotive Manufacturing | Anupam Bearings India',
+        'description': 'Industrial bearing sourcing for automotive manufacturing, assemblies, and maintenance applications across India.',
+        'keywords': 'bearings for automotive, automotive bearings india, bearings for car manufacturing, automotive industrial bearings bangalore',
         'headline': 'Bearings for Automotive Manufacturing and Assembly',
         'intro': 'Automotive production needs repeatable supply, dimensional accuracy, and tight delivery control. Our industrial positioning is built around those requirements.',
         'sections': [
@@ -346,8 +455,9 @@ SEO_LANDING_PAGES = {
         ],
     },
     'bearings-for-manufacturing': {
-        'title': 'Bearings for Manufacturing Plants | Anupam Bearings',
+        'title': 'Bearings for Manufacturing Plants | Anupam Bearings India',
         'description': 'Bearing supply for manufacturing plants, machine builders, and industrial maintenance teams across India.',
+        'keywords': 'bearings for manufacturing, manufacturing plant bearings india, industrial maintenance bearings, bearings for plant maintenance',
         'headline': 'Bearings for Manufacturing and Plant Maintenance',
         'intro': 'Manufacturing users need reliable bearing supply to protect uptime, reduce breakdown risk, and avoid counterfeit replacements.',
         'sections': [
@@ -372,8 +482,9 @@ SEO_LANDING_PAGES = {
         ],
     },
     'bearings-for-mining': {
-        'title': 'Bearings for Mining Applications | Anupam Bearings',
-        'description': 'Heavy-duty bearing sourcing for mining equipment, conveyors, crushers, and process machinery.',
+        'title': 'Bearings for Mining Equipment | Heavy Duty Supply | Anupam Bearings',
+        'description': 'Heavy-duty bearing sourcing for mining equipment, conveyors, crushers, and process machinery across India.',
+        'keywords': 'bearings for mining, mining equipment bearings india, crusher bearings, conveyor bearings india, heavy duty bearings mining',
         'headline': 'Bearings for Mining and Heavy-Duty Equipment',
         'intro': 'Mining equipment demands robust bearings, dependable supply, and technical alignment with load and contamination conditions.',
         'sections': [

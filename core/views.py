@@ -1,3 +1,13 @@
+"""
+core/views.py
+
+Changes from original:
+  - All views pass `keywords` to build_seo_context for meta keywords tag
+  - seo_landing_page passes `related_pages` to template sidebar (replaces keyword list)
+  - about view passes Organization schema
+  - contact view passes LocalBusiness schema
+"""
+
 import datetime
 import json
 from pathlib import Path
@@ -18,8 +28,10 @@ from .seo import (
     build_seo_context,
     faq_schema,
     local_business_schema,
+    organization_schema,
 )
-from .seo_pages import SEO_KEYWORD_MAP, SEO_LANDING_PAGES
+from .seo_pages import SEO_KEYWORD_MAP, SEO_LANDING_PAGES, RELATED_PAGES_MAP
+
 
 def home(request):
     categories = Category.objects.all()[:5]
@@ -27,8 +39,16 @@ def home(request):
     industries = IndustryCard.objects.filter(is_active=True).order_by('order', 'title')
     context = build_seo_context(
         request,
-        title='Anupam Bearings | Industrial Bearings, Housings, and Motion Products',
-        description='Anupam Bearings supplies industrial bearings, bearing housings, linear motion products, and power transmission components from Bengaluru and Chennai.',
+        title='Anupam Bearings | Industrial Bearings, Housings & Motion Products Supplier India',
+        description=(
+            'Anupam Bearings — certified Timken partner supplying industrial bearings, '
+            'bearing housings, linear motion products, and power transmission components '
+            'from Bengaluru and Chennai across India.'
+        ),
+        keywords=(
+            'bearing supplier bangalore, industrial bearings india, timken bearings supplier, '
+            'bearing distributor chennai, deep groove ball bearings, spherical roller bearings'
+        ),
         json_ld=[local_business_schema(PRIMARY_LOCATIONS[0])],
     )
     context.update({
@@ -39,15 +59,25 @@ def home(request):
     })
     return render(request, 'core/home.html', context)
 
+
 def about(request):
     industries = IndustryCard.objects.filter(is_active=True).order_by('order', 'title')
-    return render(request, 'core/about.html', build_seo_context(
+    context = build_seo_context(
         request,
-        title='About Anupam Bearings | Certified Industrial Bearing Supplier',
-        description='Learn how Anupam Bearings supports industrial procurement, OEM supply, and maintenance teams with genuine bearings and technical sourcing support.',
-    ) | {
-        'industries': industries,
-    })
+        title='About Anupam Bearings | Certified Timken Industrial Bearing Supplier India',
+        description=(
+            'Anupam Bearings is a certified Timken partner supplying industrial bearings, '
+            'bearing housings, and motion products to OEMs, maintenance teams, and distributors '
+            'across Bengaluru, Chennai, Karnataka, Tamil Nadu, and India.'
+        ),
+        keywords=(
+            'anupam bearings about, timken certified partner india, industrial bearing company bangalore'
+        ),
+        json_ld=[organization_schema()],
+    )
+    context['industries'] = industries
+    return render(request, 'core/about.html', context)
+
 
 def gallery(request):
     gallery_images = GalleryImage.objects.filter(is_active=True).order_by('order', '-created_at')
@@ -58,14 +88,16 @@ def gallery(request):
         .distinct()
         if category
     ]
-    return render(request, 'core/gallery.html', build_seo_context(
+    context = build_seo_context(
         request,
-        title='Gallery | Anupam Bearings Industrial Projects',
-        description='View industrial product installations, application imagery, and customer project visuals from Anupam Bearings.',
-    ) | {
+        title='Gallery | Anupam Bearings Industrial Products & Projects',
+        description='View industrial bearing products, installation projects, and application imagery from Anupam Bearings.',
+    )
+    context.update({
         'gallery_images': gallery_images,
         'gallery_categories': gallery_categories,
     })
+    return render(request, 'core/gallery.html', context)
 
 
 def seo_landing_page(request, slug):
@@ -88,6 +120,7 @@ def seo_landing_page(request, slug):
         title=landing_page['title'],
         description=landing_page['description'],
         canonical_url=f"{settings.SITE_URL.rstrip('/')}/{slug}/",
+        keywords=landing_page.get('keywords', ''),
         json_ld=[
             breadcrumb_schema(breadcrumb_items),
             faq_schema(landing_page['faq']) if landing_page.get('faq') else None,
@@ -96,14 +129,8 @@ def seo_landing_page(request, slug):
     )
     context.update({
         'landing_page': landing_page,
-        'keyword_targets': SEO_KEYWORD_MAP['commercial'] + SEO_KEYWORD_MAP['product'] + SEO_KEYWORD_MAP['brand'] + SEO_KEYWORD_MAP['local'],
-        'related_links': [
-            {'label': 'Products', 'url': '/products/'},
-            {'label': 'Contact', 'url': '/contact/'},
-        ],
-        'breadcrumb_schema_json': json.dumps(breadcrumb_schema(breadcrumb_items), ensure_ascii=False, separators=(',', ':')),
-        'faq_schema_json': json.dumps(faq_schema(landing_page['faq']), ensure_ascii=False, separators=(',', ':')) if landing_page.get('faq') else '',
-        'local_business_schema_json': json.dumps(local_schema, ensure_ascii=False, separators=(',', ':')) if local_schema else '',
+        # `related_pages` drives the sidebar — no raw keyword lists exposed to users
+        'related_pages': RELATED_PAGES_MAP.get(slug, []),
     })
     return render(request, 'core/seo_landing_page.html', context)
 
@@ -113,32 +140,3 @@ def favicon(request):
     if not favicon_path.exists():
         raise Http404()
     return FileResponse(favicon_path.open('rb'), content_type='image/x-icon')
-
-
-def sitemap_xml(request):
-    """Generate a simple sitemap.xml dynamically for products and categories."""
-    from django.conf import settings as _settings
-    host = getattr(_settings, 'SITE_URL', f"{request.scheme}://{request.get_host()}").rstrip('/')
-    urls = []
-    # Home
-    urls.append({'loc': f"{host}/", 'lastmod': datetime.date.today().isoformat()})
-    # Categories (as product listing with category param)
-    for cat in Category.objects.all():
-        urls.append({'loc': f"{host}/products/?category={cat.slug}", 'lastmod': ''})
-    for slug in SEO_LANDING_PAGES:
-        urls.append({'loc': f"{host}/{slug}/", 'lastmod': ''})
-    # Products
-    for p in Product.objects.all():
-        lastmod = p.created_at.date().isoformat() if getattr(p, 'created_at', None) else ''
-        urls.append({'loc': f"{host}/products/{p.slug}/", 'lastmod': lastmod})
-
-    xml_parts = ['<?xml version="1.0" encoding="UTF-8"?>', '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
-    for u in urls:
-        xml_parts.append('  <url>')
-        xml_parts.append(f"    <loc>{u['loc']}</loc>")
-        if u['lastmod']:
-            xml_parts.append(f"    <lastmod>{u['lastmod']}</lastmod>")
-        xml_parts.append('  </url>')
-    xml_parts.append('</urlset>')
-
-    return HttpResponse('\n'.join(xml_parts), content_type='application/xml')

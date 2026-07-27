@@ -4,48 +4,91 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  {# ── TITLE ── #}
   <title>{% block title %}{{ seo_title|default:seo_site_name }}{% endblock %}</title>
+
+  {# ── CORE META ── #}
   <meta name="description" content="{% block meta_desc %}{{ seo_meta_description|default:'Industrial bearings, bearing housings, linear motion products, power transmission products, Timken products, and engineering solutions.' }}{% endblock %}" />
   <meta name="robots" content="{{ seo_meta_robots|default:'index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1' }}" />
+  {% if seo_meta_keywords %}
+  <meta name="keywords" content="{{ seo_meta_keywords }}" />
+  {% endif %}
+
+  {# ── SITE NAME SIGNALS ── #}
   <meta name="application-name" content="{{ seo_site_name|default:'Anupam Bearings' }}" />
   <meta name="apple-mobile-web-app-title" content="{{ seo_site_name|default:'Anupam Bearings' }}" />
+
+  {# ── CANONICAL ── #}
   <link rel="canonical" href="{{ seo_canonical_url|default:seo_site_url }}" />
 
-  <!-- Open Graph / Twitter -->
+  {# ── HREFLANG ── #}
+  <link rel="alternate" hreflang="en" href="{{ seo_canonical_url|default:seo_site_url }}" />
+  <link rel="alternate" hreflang="en-in" href="{{ seo_canonical_url|default:seo_site_url }}" />
+  <link rel="alternate" hreflang="x-default" href="{{ seo_canonical_url|default:seo_site_url }}" />
+
+  {# ── OPEN GRAPH ── #}
   <meta property="og:type" content="{% block og_type %}website{% endblock %}" />
   <meta property="og:site_name" content="{{ seo_site_name|default:'Anupam Bearings' }}" />
   <meta property="og:title" content="{% block og_title %}{{ seo_og_title|default:seo_title|default:seo_site_name }}{% endblock %}" />
   <meta property="og:description" content="{% block og_desc %}{{ seo_og_description|default:seo_meta_description }}{% endblock %}" />
   <meta property="og:url" content="{{ seo_canonical_url|default:seo_site_url }}" />
   <meta property="og:image" content="{% block og_image %}{{ seo_og_image }}{% endblock %}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:locale" content="en_IN" />
+
+  {# ── TWITTER CARD ── #}
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:site" content="@anupambearings" />
   <meta name="twitter:title" content="{% block twitter_title %}{{ seo_twitter_title|default:seo_title|default:seo_site_name }}{% endblock %}" />
   <meta name="twitter:description" content="{% block twitter_desc %}{{ seo_twitter_description|default:seo_meta_description }}{% endblock %}" />
   <meta name="twitter:image" content="{% block twitter_image %}{{ seo_twitter_image }}{% endblock %}" />
 
+  <!-- {# ── STRUCTURED DATA ──
+     IMPORTANT: seo_json_ld already includes WebSite + Organization + any page-specific
+     schemas passed via json_ld=[...] in build_seo_context(). Do NOT add additional
+     <script type="application/ld+json"> blocks in child templates — it creates duplicates
+     that confuse Google and can prevent the site name from being recognised.
+  #} -->
   {% if seo_json_ld %}
   {% for schema in seo_json_ld %}
   <script type="application/ld+json">{{ schema|safe }}</script>
   {% endfor %}
   {% endif %}
-  <link rel="icon" href="/favicon.ico" sizes="any" />
-  <link rel="shortcut icon" href="/favicon.ico" />
-  <link rel="apple-touch-icon" href="{% static 'images/onlylogo.png' %}" />
 
-  <!-- Fonts -->
+  {# ── FAVICONS ── #}
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" href="{% static 'images/favicon.ico' %}" type="image/x-icon" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" href="{% static 'images/onlylogo.webp' %}" />
+
+  {# ── PERFORMANCE: PRECONNECT ── #}
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
+
+  {# ── PERFORMANCE: PRELOAD CRITICAL CSS ── #}
+  <link rel="preload" href="{% static 'css/main.css' %}" as="style" />
+
+  {# ── FONTS ── #}
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
 
-  <!-- GSAP -->
+  {# ── GSAP (deferred — not render-blocking) ── #}
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" defer></script>
 
-  <!-- Main CSS -->
+  {# ── MAIN CSS ── #}
   <link rel="stylesheet" href="{% static 'css/main.css' %}" />
 
   {% block extra_head %}{% endblock %}
+  <!-- Privacy-friendly analytics by Plausible -->
+  <script async src="https://analytics.debjit-paul.tech/js/pa-53hXSyWBI-sX1QKX_HR0M.js"></script>
+  <script>
+    window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+    plausible.init()
+  </script>
+
 </head>
 <body>
 
@@ -57,7 +100,7 @@
 <nav id="navbar" role="navigation" aria-label="Main navigation">
   <div class="nav-inner">
     <a href="{% url 'core:home' %}" class="nav-logo" aria-label="Anupam Bearings Home">
-      <img src="{% static 'images/logo.png' %}" alt="Anupam Bearings" width="180" height="80" />
+      <img src="{% static 'images/logo.webp' %}" alt="Anupam Bearings" width="180" height="80" />
     </a>
     
     <ul class="nav-links" role="list">
@@ -67,8 +110,6 @@
       <li><a href="{% url 'core:gallery' %}">Gallery</a></li>
       <li><a href="{% url 'contact:contact' %}">Contact</a></li>
     </ul>
-    
-    {% comment %} <a href="{% url 'contact:contact' %}" class="btn-primary nav-cta">Get a Quote</a> {% endcomment %}
     
     <button class="nav-hamburger" id="hamburger" aria-label="Toggle menu" aria-expanded="false">
       <span></span><span></span><span></span>
@@ -86,7 +127,6 @@
   <a href="{% url 'products:list' %}">Products</a>
   <a href="{% url 'core:gallery' %}">Gallery</a>
   <a href="{% url 'contact:contact' %}">Contact</a>
-  {% comment %} <a href="{% url 'contact:contact' %}" class="btn-primary" style="margin-top:1rem;">Get a Quote</a> {% endcomment %}
 </div>
 
 <!-- ── MAIN CONTENT ── -->
@@ -100,12 +140,12 @@
     <div class="footer-grid">
       <div>
         <div class="footer-logo">
-          <img src="{% static 'images/logo.png' %}" alt="Anupam Bearings" width="180" height="80" />
+          <img src="{% static 'images/logo.webp' %}" alt="Anupam Bearings" width="180" height="80" />
         </div>
         <p class="footer-desc">Certified Timken Parts Supplier driving industrial excellence across India. Headquartered in Bengaluru with offices in Chennai.</p>
         <div class="footer-social">
-          <a href="#" aria-label="LinkedIn">in</a>
-          <a href="#" aria-label="Twitter">𝕏</a>
+          <a href="https://www.linkedin.com/company/anupam-bearings" rel="noopener noreferrer" target="_blank" aria-label="LinkedIn">in</a>
+          <a href="https://twitter.com/anupambearings" rel="noopener noreferrer" target="_blank" aria-label="Twitter">𝕏</a>
           <a href="mailto:info@anupambearings.com" aria-label="Email">✉</a>
         </div>
       </div>
@@ -120,26 +160,44 @@
         </ul>
       </div>
       <div>
+        <p class="footer-heading">Product Types</p>
+        <ul class="footer-links">
+          <li><a href="/deep-groove-ball-bearings/">Deep Groove Ball Bearings</a></li>
+          <li><a href="/angular-contact-bearings/">Angular Contact Bearings</a></li>
+          <li><a href="/spherical-roller-bearings/">Spherical Roller Bearings</a></li>
+          <li><a href="/timken-bearings/">Timken Bearings</a></li>
+          <li><a href="/skf-bearings/">SKF Bearings</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="footer-heading">Locations</p>
+        <ul class="footer-links">
+          <li><a href="/bearing-supplier-bangalore/">Bearing Supplier Bangalore</a></li>
+          <li><a href="/bearing-supplier-chennai/">Bearing Supplier Chennai</a></li>
+          <li><a href="/bearing-distributor-karnataka/">Distributor Karnataka</a></li>
+        </ul>
+      </div>
+      <div>
         <p class="footer-heading">Company</p>
         <ul class="footer-links">
           <li><a href="{% url 'core:about' %}">About Us</a></li>
           <li><a href="{% url 'core:gallery' %}">Gallery</a></li>
           <li><a href="{% url 'contact:contact' %}">Contact</a></li>
-          {% comment %} <li><a href="{% url 'contact:contact' %}">Get a Quote</a></li> {% endcomment %}
         </ul>
       </div>
       <div>
         <p class="footer-heading">Contact</p>
         <ul class="footer-links">
-          <li><a href="tel:+919884400741">+91-98844-00741</a></li>
+          <li><a href="tel:+919884400741">+91-98844-00741 (BLR)</a></li>
+          <li><a href="tel:04446912265">044-4691-2265 (CHN)</a></li>
           <li><a href="mailto:info@anupambearings.com">info@anupambearings.com</a></li>
           <li><a href="mailto:sales@anupambearings.com">sales@anupambearings.com</a></li>
-          <li style="color:rgba(255,255,255,0.35);font-size:0.8rem;margin-top:0.5rem;">Bengaluru · Chennai</a></li>
+          <li style="color:rgba(255,255,255,0.35);font-size:0.8rem;margin-top:0.5rem;">Bengaluru · Chennai</li>
         </ul>
       </div>
     </div>
     <div class="footer-bottom">
-      <span>© 2025 Anupam Bearings. All rights reserved.</span>
+      <span>© 2024–2025 Anupam Bearings. All rights reserved.</span>
       <span>Certified Timken Partner · India</span>
     </div>
   </div>
