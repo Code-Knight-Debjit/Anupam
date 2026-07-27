@@ -25,6 +25,8 @@ urlpatterns = [
     path('brands/add/',             views.brand_add,               name='brand_add'),
     path('brands/<int:pk>/edit/',   views.brand_edit,              name='brand_edit'),
     path('brands/<int:pk>/delete/', views.brand_delete,            name='brand_delete'),
+    path('brands/search/',          views.brand_search,            name='brand_search'),
+    path('brands/quick-create/',    views.brand_quick_create,      name='brand_quick_create'),
 
     # Content
     path('industries/',              views.industry_list,          name='industries'),

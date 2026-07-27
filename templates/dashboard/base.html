@@ -485,7 +485,38 @@
       Dashboard
     </a>
   </div>
+  {% endif %}
 
+  <div class="sidebar-section">
+    <div class="sidebar-section-label">Stock Ledger</div>
+    <a href="{% url 'dashboard:stock_ledger:overview' %}" class="nav-item {% block nav_stock_overview %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+      Overview
+    </a>
+    <a href="{% url 'dashboard:stock_ledger:opening_stock_list' %}" class="nav-item {% block nav_stock_opening %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
+      Opening Stock
+    </a>
+    <a href="{% url 'dashboard:stock_ledger:purchase_list' %}" class="nav-item {% block nav_stock_purchase %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m-10 4a1 1 0 100 2 1 1 0 000-2zm10 0a1 1 0 100 2 1 1 0 000-2z"/></svg>
+      Purchases
+    </a>
+    <a href="{% url 'dashboard:stock_ledger:sale_list' %}" class="nav-item {% block nav_stock_sale %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m-6 4h6m-6 4h4M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg>
+      Sales
+    </a>
+    <a href="{% url 'dashboard:stock_ledger:history' %}" class="nav-item {% block nav_stock_history %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      History
+    </a>
+    <a href="{% url 'dashboard:stock_ledger:transfer_list' %}" class="nav-item {% block nav_stock_transfers %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4"/></svg>
+      Transfers
+      <span class="nav-badge" id="sidebar-transfer-badge" style="display:none;"></span>
+    </a>
+  </div>
+
+  {% if dash_role == 'ADMIN' %}
   <div class="sidebar-section">
     <div class="sidebar-section-label">Catalogue</div>
     <a href="{% url 'dashboard:categories' %}" class="nav-item {% block nav_cats %}{% endblock %}">
@@ -536,35 +567,6 @@
     </a>
   </div>
   {% endif %}
-
-  <div class="sidebar-section">
-    <div class="sidebar-section-label">Stock Ledger</div>
-    <a href="{% url 'dashboard:stock_ledger:overview' %}" class="nav-item {% block nav_stock_overview %}{% endblock %}">
-      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-      Overview
-    </a>
-    <a href="{% url 'dashboard:stock_ledger:opening_stock_list' %}" class="nav-item {% block nav_stock_opening %}{% endblock %}">
-      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
-      Opening Stock
-    </a>
-    <a href="{% url 'dashboard:stock_ledger:purchase_list' %}" class="nav-item {% block nav_stock_purchase %}{% endblock %}">
-      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m-10 4a1 1 0 100 2 1 1 0 000-2zm10 0a1 1 0 100 2 1 1 0 000-2z"/></svg>
-      Purchases
-    </a>
-    <a href="{% url 'dashboard:stock_ledger:sale_list' %}" class="nav-item {% block nav_stock_sale %}{% endblock %}">
-      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m-6 4h6m-6 4h4M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg>
-      Sales
-    </a>
-    <a href="{% url 'dashboard:stock_ledger:history' %}" class="nav-item {% block nav_stock_history %}{% endblock %}">
-      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-      History
-    </a>
-    <a href="{% url 'dashboard:stock_ledger:transfer_list' %}" class="nav-item {% block nav_stock_transfers %}{% endblock %}">
-      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4"/></svg>
-      Transfers
-      <span class="nav-badge" id="sidebar-transfer-badge" style="display:none;"></span>
-    </a>
-  </div>
 
   {% if dash_role == 'ADMIN' %}
   <div class="sidebar-section">
@@ -694,10 +696,11 @@
       </div>
       <div class="form-group">
         <label>Brand *</label>
-        <select class="form-input" id="pc-brand">
-          <option value="">Select a brand…</option>
-          {% for b in product_create_brands %}<option value="{{ b.pk }}">{{ b.name }}</option>{% endfor %}
-        </select>
+        <div class="brand-combobox">
+          <input type="text" class="form-input brand-combobox-input" id="pc-brand-input" placeholder="Type to search or create…" autocomplete="off"/>
+          <input type="hidden" class="brand-combobox-value" id="pc-brand"/>
+          <div class="product-combobox-results"></div>
+        </div>
       </div>
       <div class="form-group">
         <label>Display Name (optional)</label>
@@ -906,16 +909,20 @@ function initProductComboboxes() {
       if (el) el.addEventListener('change', () => { hidden.value = ''; input.value = ''; });
     }
 
-    const form = box.closest('form');
-    if (form && !form.dataset.comboboxGuarded) {
-      form.dataset.comboboxGuarded = '1';
-      form.addEventListener('submit', e => {
-        const missing = [...form.querySelectorAll('.product-combobox')].some(b => !b.querySelector('.product-combobox-value').value);
-        if (missing) {
-          e.preventDefault();
-          showToast('Select or create a product first.', 'error');
-        }
-      });
+    wireComboboxFormGuard(box);
+  });
+}
+
+function wireComboboxFormGuard(box) {
+  const form = box.closest('form');
+  if (!form || form.dataset.comboboxGuarded) return;
+  form.dataset.comboboxGuarded = '1';
+  form.addEventListener('submit', e => {
+    const missingProduct = [...form.querySelectorAll('.product-combobox')].some(b => !b.querySelector('.product-combobox-value').value);
+    const missingBrand = [...form.querySelectorAll('.brand-combobox')].some(b => !b.querySelector('.brand-combobox-value').value);
+    if (missingProduct || missingBrand) {
+      e.preventDefault();
+      showToast(missingProduct ? 'Select or create a product first.' : 'Select or create a brand first.', 'error');
     }
   });
 }
@@ -964,14 +971,93 @@ function renderProductComboboxResults(box, q, matches) {
 
 document.addEventListener('click', e => {
   document.querySelectorAll('.product-combobox-results.open').forEach(r => {
-    if (!r.closest('.product-combobox').contains(e.target)) r.classList.remove('open');
+    if (!r.closest('.product-combobox, .brand-combobox').contains(e.target)) r.classList.remove('open');
   });
 });
+
+// ── BRAND COMBOBOX ──
+// Usage: <div class="brand-combobox">
+//          <input class="brand-combobox-input" .../>
+//          <input type="hidden" name="brand" class="brand-combobox-value"/>
+//          <div class="product-combobox-results"></div>   <!-- shared dropdown styling -->
+//        </div>
+let brandComboboxDebounce = null;
+
+function initBrandComboboxes() {
+  document.querySelectorAll('.brand-combobox').forEach(box => {
+    const input = box.querySelector('.brand-combobox-input');
+    const hidden = box.querySelector('.brand-combobox-value');
+    const results = box.querySelector('.product-combobox-results');
+    if (!input || box.dataset.wired) return;
+    box.dataset.wired = '1';
+
+    input.addEventListener('input', () => {
+      hidden.value = '';
+      clearTimeout(brandComboboxDebounce);
+      const q = input.value.trim();
+      if (q.length < 1) { results.classList.remove('open'); return; }
+      brandComboboxDebounce = setTimeout(() => searchBrandCombobox(box, q), 250);
+    });
+    input.addEventListener('focus', () => {
+      if (input.value.trim().length >= 1) searchBrandCombobox(box, input.value.trim());
+    });
+
+    wireComboboxFormGuard(box);
+  });
+}
+
+async function searchBrandCombobox(box, q) {
+  const res = await fetch(`{% url 'dashboard:brand_search' %}?q=${encodeURIComponent(q)}`);
+  const data = await res.json();
+  renderBrandComboboxResults(box, q, data.results || []);
+}
+
+function renderBrandComboboxResults(box, q, matches) {
+  const results = box.querySelector('.product-combobox-results');
+  let html = '';
+  matches.forEach(m => {
+    html += `<div class="product-combobox-item" data-id="${m.id}" data-name="${m.name.replace(/"/g, '&quot;')}">${m.name}</div>`;
+  });
+  if (!matches.length) html += `<div class="product-combobox-empty">No matching brand.</div>`;
+  if (q) html += `<div class="product-combobox-item create-new" data-create-brand="${q.replace(/"/g, '&quot;')}">+ Create "${q}" as new brand</div>`;
+  results.innerHTML = html;
+  results.classList.add('open');
+
+  results.querySelectorAll('.product-combobox-item[data-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      box.querySelector('.brand-combobox-input').value = el.dataset.name;
+      box.querySelector('.brand-combobox-value').value = el.dataset.id;
+      results.classList.remove('open');
+    });
+  });
+  const createEl = results.querySelector('[data-create-brand]');
+  if (createEl) {
+    createEl.addEventListener('click', () => createBrandInline(box, createEl.dataset.createBrand));
+  }
+}
+
+async function createBrandInline(box, name) {
+  const res = await fetch('{% url "dashboard:brand_quick_create" %}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': getCsrf() },
+    body: `name=${encodeURIComponent(name)}`,
+  });
+  const data = await res.json();
+  if (data.success) {
+    box.querySelector('.brand-combobox-input').value = data.brand.name;
+    box.querySelector('.brand-combobox-value').value = data.brand.id;
+    box.querySelector('.product-combobox-results').classList.remove('open');
+    showToast('Brand ready.', 'success');
+  } else {
+    showToast(data.message || 'Could not create brand.', 'error');
+  }
+}
 
 function openProductCreateModal(box, code) {
   activeProductCombobox = box;
   document.getElementById('pc-code').value = code;
   document.getElementById('pc-brand').value = '';
+  document.getElementById('pc-brand-input').value = '';
   document.getElementById('pc-name').value = '';
   document.getElementById('product-create-modal').classList.add('open');
 }
@@ -1001,6 +1087,7 @@ async function submitProductCreate() {
   }
 }
 initProductComboboxes();
+initBrandComboboxes();
 
 // Run on load and poll every 30s
 fetchNotifications();

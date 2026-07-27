@@ -359,6 +359,40 @@ def brand_delete(request, pk):
 
 @login_required(login_url='/dashboard/login/')
 @staff_required
+@role_required(UserProfile.ADMIN, UserProfile.BRANCH_STAFF)
+@require_GET
+def brand_search(request):
+    q = request.GET.get('q', '').strip()
+    qs = Brand.objects.filter(is_active=True)
+    if q:
+        qs = qs.filter(name__icontains=q)
+    qs = qs.order_by('name')[:20]
+    return JsonResponse({'results': [{'id': b.id, 'name': b.name} for b in qs]})
+
+
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN, UserProfile.BRANCH_STAFF)
+@require_POST
+def brand_quick_create(request):
+    name = request.POST.get('name', '').strip()
+    if not name:
+        return JsonResponse({'success': False, 'message': 'Enter a brand name.'})
+
+    existing = Brand.objects.filter(name__iexact=name).first()
+    if existing:
+        return JsonResponse({'success': True, 'brand': {'id': existing.id, 'name': existing.name}})
+
+    slug = slugify(name)
+    base = slug; i = 1
+    while Brand.objects.filter(slug=slug).exists():
+        slug = f'{base}-{i}'; i += 1
+    brand = Brand.objects.create(name=name, slug=slug, is_active=True)
+    return JsonResponse({'success': True, 'brand': {'id': brand.id, 'name': brand.name}})
+
+
+@login_required(login_url='/dashboard/login/')
+@staff_required
 @role_required(UserProfile.ADMIN)
 @require_POST
 def product_delete(request, pk):

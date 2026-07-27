@@ -41,13 +41,12 @@
               </select>
             </div>
             <div class="form-group">
-              <label>Brand *</label>
-              <select class="form-input" name="brand" required>
-                <option value="">Select a brand…</option>
-                {% for b in brands %}
-                <option value="{{ b.pk }}" {% if product and product.brand_id == b.pk %}selected{% endif %}>{{ b.name }}</option>
-                {% endfor %}
-              </select>
+              <label>Brand * <span style="font-weight:400;text-transform:none;color:var(--muted);">(type to search or create)</span></label>
+              <div class="brand-combobox">
+                <input type="text" class="form-input brand-combobox-input" placeholder="Type a brand name…" autocomplete="off" value="{{ product.brand.name|default:'' }}"/>
+                <input type="hidden" name="brand" class="brand-combobox-value" value="{{ product.brand_id|default:'' }}" required/>
+                <div class="product-combobox-results"></div>
+              </div>
               {% if brand_error %}<p style="font-size:0.75rem;color:#dc2626;margin-top:0.35rem;">{{ brand_error }}</p>{% endif %}
             </div>
           </div>

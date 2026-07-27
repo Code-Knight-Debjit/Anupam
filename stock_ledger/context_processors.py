@@ -1,25 +1,20 @@
-from products.models import Brand
 from .models import UserProfile
 from .services import get_low_stock_items, visible_branches
 
 
 def dashboard_role(request):
     """Exposes the logged-in dashboard user's role/branch to every template,
-    used by dashboard/base.html to gate the sidebar sections, plus the Brand
-    list needed by the shared product quick-create modal wherever it appears."""
+    used by dashboard/base.html to gate the sidebar sections."""
     user = getattr(request, 'user', None)
     if not user or not user.is_authenticated or not user.is_staff:
         return {}
     profile = getattr(user, 'stock_profile', None)
     if profile is None:
         return {}
-    context = {
+    return {
         'dash_role': profile.role,
         'dash_branch': profile.branch,
     }
-    if profile.role in (UserProfile.ADMIN, UserProfile.BRANCH_STAFF):
-        context['product_create_brands'] = Brand.objects.filter(is_active=True)
-    return context
 
 
 def low_stock_alert(request):
