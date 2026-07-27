@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 from . import views
 
 app_name = 'dashboard'
@@ -19,6 +19,12 @@ urlpatterns = [
     path('categories/add/',        views.category_add,            name='category_add'),
     path('categories/<int:pk>/edit/',        views.category_edit,           name='category_edit'),
     path('categories/<int:pk>/delete/',      views.category_delete,         name='category_delete'),
+
+    # Brands
+    path('brands/',                 views.brand_list,              name='brands'),
+    path('brands/add/',             views.brand_add,               name='brand_add'),
+    path('brands/<int:pk>/edit/',   views.brand_edit,              name='brand_edit'),
+    path('brands/<int:pk>/delete/', views.brand_delete,            name='brand_delete'),
 
     # Content
     path('industries/',              views.industry_list,          name='industries'),
@@ -54,4 +60,7 @@ urlpatterns = [
 
     # API
     path('api/notifications/',     views.notifications_api,       name='notifications_api'),
+
+    # Stock Ledger
+    path('stock/', include(('stock_ledger.urls', 'stock_ledger'), namespace='stock_ledger')),
 ]

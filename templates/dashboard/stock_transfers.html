@@ -1,0 +1,112 @@
+{% extends "dashboard/base.html" %}
+{% load stock_ledger_extras %}
+{% block title %}Transfers{% endblock %}
+{% block page_title %}Stock Transfers{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ Stock Ledger</span>{% endblock %}
+{% block nav_stock_transfers %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>Transfers</h1>
+    <p>{{ transfers|length }} transfer{{ transfers|length|pluralize }}</p>
+  </div>
+  {% if is_admin %}<a href="{% url 'dashboard:stock_ledger:transfer_create' %}" class="btn btn-primary">+ Create Transfer</a>{% endif %}
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Product</th>
+        <th>From</th>
+        <th>To</th>
+        <th>Quantity</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th style="text-align:right;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in transfers %}
+      <tr id="transfer-row-{{ t.pk }}">
+        <td class="td-name">{{ t.product|product_label }}</td>
+        <td>{{ t.from_branch.name }}</td>
+        <td>{{ t.to_branch.name }}</td>
+        <td>{{ t.quantity }}</td>
+        <td>
+          {% if t.status == 'PENDING' %}<span class="pill pill-new">Pending</span>
+          {% elif t.status == 'DISPATCHED' %}<span class="pill pill-in-progress">Dispatched</span>
+          {% elif t.status == 'PARTIALLY_RECEIVED' %}
+            <span class="pill pill-in-progress">Partially Received</span>
+            <div class="td-sub">{{ t.received_quantity }} / {{ t.quantity }} received, {{ t.remaining_quantity }} left</div>
+          {% elif t.status == 'RECEIVED' %}<span class="pill pill-resolved">Received</span>
+          {% elif t.status == 'ISSUE_REPORTED' %}<span class="pill pill-unread">Issue Reported</span>
+          {% else %}<span class="pill pill-read">Cancelled</span>{% endif %}
+        </td>
+        <td class="td-sub">{{ t.created_at|date:"d M Y H:i" }}</td>
+        <td style="text-align:right;">
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.4rem;flex-wrap:wrap;">
+            {% if t.status == 'PENDING' and t.from_branch_id == my_branch_id %}
+            <button class="btn btn-primary btn-sm" onclick="doTransferAction({{ t.pk }}, 'dispatch')">Dispatch</button>
+            {% endif %}
+            {% if t.to_branch_id == my_branch_id and t.status == 'DISPATCHED' or t.to_branch_id == my_branch_id and t.status == 'PARTIALLY_RECEIVED' %}
+            <button class="btn btn-primary btn-sm" onclick="recordReceipt({{ t.pk }}, {{ t.remaining_quantity }})">Record Receipt</button>
+            <button class="btn btn-danger btn-sm" onclick="doTransferAction({{ t.pk }}, 'not-received')">Not Received</button>
+            {% endif %}
+            {% if is_admin and t.status == 'PENDING' %}
+            <button class="btn btn-danger btn-sm" onclick="doTransferAction({{ t.pk }}, 'cancel')">Cancel</button>
+            {% endif %}
+            {% if is_admin and t.status == 'ISSUE_REPORTED' %}
+            <button class="btn btn-primary btn-sm" onclick="doTransferAction({{ t.pk }}, 'resolve-issue')">Resolve Issue</button>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">🔁</div><h3>No transfers</h3></div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function doTransferAction(pk, action) {
+  const labels = { dispatch: 'dispatch', 'not-received': 'mark as not received', cancel: 'cancel', 'resolve-issue': 'resolve the reported issue on' };
+  if (!confirm(`Are you sure you want to ${labels[action]} this transfer?`)) return;
+  const res = await fetch(`/dashboard/stock/transfers/${pk}/${action}/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCsrf() },
+  });
+  const d = await res.json();
+  if (d.success) {
+    showToast('Transfer updated', 'success');
+    setTimeout(() => location.reload(), 600);
+  } else {
+    showToast(d.message || 'Action failed', 'error');
+  }
+}
+
+async function recordReceipt(pk, remaining) {
+  const input = prompt(`How many units did you actually receive? (up to ${remaining})`, remaining);
+  if (input === null) return;
+  const quantity = parseInt(input, 10);
+  if (!quantity || quantity <= 0) { showToast('Enter a valid quantity.', 'error'); return; }
+
+  const res = await fetch(`/dashboard/stock/transfers/${pk}/receive/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+    body: JSON.stringify({ quantity }),
+  });
+  const d = await res.json();
+  if (d.success) {
+    showToast(d.status === 'RECEIVED' ? 'Transfer fully received.' : `Partial receipt recorded — ${d.remaining_quantity} left.`, 'success');
+    setTimeout(() => location.reload(), 600);
+  } else {
+    showToast(d.message || 'Action failed', 'error');
+  }
+}
+</script>
+{% endblock %}

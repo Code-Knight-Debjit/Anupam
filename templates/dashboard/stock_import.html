@@ -1,0 +1,57 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Opening Stock Import{% endblock %}
+{% block page_title %}Opening Stock — Bulk Import{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ <a href="{% url 'dashboard:stock_ledger:opening_stock_list' %}" style="color:var(--muted);text-decoration:none;">Opening Stock</a> / Import</span>{% endblock %}
+{% block nav_stock_opening %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>Bulk Import Opening Stock</h1>
+    <p>One-time setup: upload existing stock levels in bulk. Uploaded batches can be found and removed later from <a href="{% url 'dashboard:stock_ledger:import_batches' %}">Import Batches</a>.</p>
+  </div>
+  <a href="{% url 'dashboard:stock_ledger:opening_stock_import_template' %}" class="btn btn-ghost">⬇ Download Template</a>
+</div>
+
+{% if error %}
+<div class="card card-pad" style="max-width:640px;margin-bottom:1.25rem;border-color:#dc2626;">
+  <p style="color:#dc2626;font-size:0.875rem;">{{ error }}</p>
+</div>
+{% endif %}
+
+{% if result %}
+<div class="card card-pad" style="max-width:720px;margin-bottom:1.25rem;">
+  <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1rem;">Import Result</h3>
+  <p style="font-size:0.875rem;margin-bottom:0.5rem;"><span class="pill pill-resolved">{{ result.imported }} imported</span> &nbsp; <span class="pill pill-unread">{{ result.skipped }} skipped</span></p>
+  {% if result.errors %}
+  <div class="table-wrap" style="margin-top:1rem;">
+    <table>
+      <thead><tr><th>Row</th><th>Reason</th></tr></thead>
+      <tbody>
+        {% for row_number, reason in result.errors %}
+        <tr><td>{{ row_number }}</td><td class="td-sub">{{ reason }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<form method="POST" enctype="multipart/form-data" style="max-width:640px;">
+  {% csrf_token %}
+  <div class="card card-pad">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Excel Workbook (.xlsx) *</label>
+        <input class="form-input" type="file" name="workbook" accept=".xlsx" required/>
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem;">
+          Columns: <strong>ID</strong> (product SKU, e.g. 6001-ZZ), <strong>Brand</strong>, <strong>Branch</strong>, <strong>Quantity</strong>, <strong>Price</strong>.
+          Rows referencing a Product/Brand/Branch that doesn't already exist are skipped and reported — nothing is auto-created.
+        </p>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.875rem;margin-top:1rem;">Upload &amp; Import</button>
+  </div>
+</form>
+{% endblock %}

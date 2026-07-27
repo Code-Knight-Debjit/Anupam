@@ -51,6 +51,22 @@
     </div>
     <div class="stat-card-icon purple">💬</div>
   </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value">{{ stats.total_stock_qty }}</div>
+      <div class="stat-card-label">Total Stock (Pcs, all branches)</div>
+      <a href="{% url 'dashboard:stock_ledger:overview' %}" class="stat-card-badge badge-ok" style="text-decoration:none;">View Stock Ledger</a>
+    </div>
+    <div class="stat-card-icon green">🧮</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value">₹{{ stats.total_inventory_value|floatformat:0 }}</div>
+      <div class="stat-card-label">Total Inventory Value</div>
+      <span class="stat-card-badge badge-ok">Latest unit prices</span>
+    </div>
+    <div class="stat-card-icon orange">💰</div>
+  </div>
 </div>
 
 <!-- ── CONTENT SHORTCUTS ── -->

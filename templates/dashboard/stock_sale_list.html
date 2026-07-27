@@ -1,0 +1,80 @@
+{% extends "dashboard/base.html" %}
+{% load stock_ledger_extras %}
+{% block title %}Sales{% endblock %}
+{% block page_title %}Stock Sales{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ Stock Ledger</span>{% endblock %}
+{% block nav_stock_sale %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>Sales</h1>
+    <p>{{ entries|length }} entr{{ entries|length|pluralize:"y,ies" }}</p>
+  </div>
+  <div style="display:flex;gap:0.5rem;">
+    {% if can_mutate %}<a href="{% url 'dashboard:stock_ledger:sale_add' %}" class="btn btn-primary">+ Add Sale</a>{% endif %}
+    <a href="{% url 'dashboard:stock_ledger:export_history' 'sale' 'excel' %}?{{ request.GET.urlencode }}" class="btn btn-ghost">⬇ Excel</a>
+    <a href="{% url 'dashboard:stock_ledger:export_history' 'sale' 'pdf' %}?{{ request.GET.urlencode }}" class="btn btn-ghost">⬇ PDF</a>
+  </div>
+</div>
+
+{% if branches|length > 1 %}
+<form method="GET" class="filter-bar">
+  <select class="filter-input" name="branch" onchange="this.form.submit()">
+    <option value="">All Branches</option>
+    {% for b in branches %}
+    <option value="{{ b.pk }}" {% if branch_filter == b.pk|stringformat:"s" %}selected{% endif %}>{{ b.name }}</option>
+    {% endfor %}
+  </select>
+</form>
+{% endif %}
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Product</th>
+        <th>Branch</th>
+        <th>Quantity</th>
+        {% if include_money %}<th>Cost Price</th><th>Selling Price</th><th>Profit</th>{% endif %}
+        <th>Customer</th>
+        <th>Sale Date</th>
+        <th>Last Updated</th>
+        {% if can_mutate %}<th style="text-align:right;">Actions</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr id="sale-row-{{ e.pk }}">
+        <td class="td-name">{{ e.product|product_label }}</td>
+        <td>{{ e.branch.name }}</td>
+        <td>{{ e.quantity }}</td>
+        {% if include_money %}
+        <td>₹{{ e.price|floatformat:2 }}</td>
+        <td>₹{{ e.selling_price|floatformat:2 }}</td>
+        <td><span class="pill {% if e.total_profit >= 0 %}pill-resolved{% else %}pill-unread{% endif %}">₹{{ e.total_profit|floatformat:2 }}</span></td>
+        {% endif %}
+        <td class="td-sub">{{ e.customer|default:"—" }}</td>
+        <td>{{ e.sale_date|date:"d M Y" }}</td>
+        <td class="td-sub">
+          {% if e.updated_by %}Edited by {{ e.updated_by.username }} · {{ e.updated_at|timesince }} ago
+          {% else %}Added by {{ e.created_by.username|default:"—" }} · {{ e.created_at|timesince }} ago{% endif %}
+        </td>
+        {% if can_mutate %}
+        <td style="text-align:right;">
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.4rem;">
+            <a href="{% url 'dashboard:stock_ledger:sale_edit' e.pk %}" class="btn btn-ghost btn-sm btn-icon" title="Edit">✏️</a>
+            <button class="btn btn-danger btn-sm btn-icon" title="Delete"
+              onclick="confirmDelete('{% url 'dashboard:stock_ledger:sale_delete' e.pk %}', '{{ e.product.name|escapejs }}', () => document.getElementById('sale-row-{{ e.pk }}').remove())">🗑</button>
+          </div>
+        </td>
+        {% endif %}
+      </tr>
+      {% empty %}
+      <tr><td colspan="10"><div class="empty-state"><div class="empty-state-icon">📦</div><h3>No sales recorded</h3></div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if page_obj %}{% include "includes/pagination.html" %}{% endif %}
+{% endblock %}

@@ -1,0 +1,88 @@
+{% extends "dashboard/base.html" %}
+{% load stock_ledger_extras %}
+{% block title %}{% if entry %}Edit{% else %}Add{% endif %} Sale{% endblock %}
+{% block page_title %}{% if entry %}Edit Sale{% else %}Add Sale{% endif %}{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ <a href="{% url 'dashboard:stock_ledger:sale_list' %}" style="color:var(--muted);text-decoration:none;">Sales</a> / {% if entry %}Edit{% else %}New{% endif %}</span>{% endblock %}
+{% block nav_stock_sale %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>{% if entry %}Edit Sale{% else %}Add Sale{% endif %}</h1>
+  </div>
+  <a href="{% url 'dashboard:stock_ledger:sale_list' %}" class="btn btn-ghost">← Back</a>
+</div>
+
+{% if stock_error %}
+<div class="card card-pad" style="max-width:640px;margin-bottom:1rem;border-color:#dc2626;">
+  <p style="color:#dc2626;font-size:0.875rem;">⚠ {{ stock_error }}</p>
+</div>
+{% endif %}
+
+<form method="POST" style="max-width:640px;">
+  {% csrf_token %}
+  <div class="card card-pad">
+    <div class="form-grid">
+      {% if entry %}
+      <div class="form-row">
+        <div class="form-group"><label>Product</label><input class="form-input" value="{{ entry.product|product_label }}" disabled/></div>
+        <div class="form-group"><label>Branch</label><input class="form-input" value="{{ entry.branch.name }}" disabled/></div>
+      </div>
+      {% else %}
+      <div class="form-row">
+        <div class="form-group">
+          <label>Product * <span style="font-weight:400;text-transform:none;color:var(--muted);">(only in-stock items shown)</span></label>
+          <div class="product-combobox" data-restrict-stock="true" {% if is_admin %}data-branch-select="#id_branch"{% else %}data-fixed-branch="{{ branches.0.pk }}"{% endif %}>
+            <input type="text" class="form-input product-combobox-input" placeholder="Type a code or name…" autocomplete="off"/>
+            <input type="hidden" name="product" class="product-combobox-value" required/>
+            <div class="product-combobox-results"></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Branch *</label>
+          {% if is_admin %}
+          <select class="form-input" name="branch" id="id_branch" required>
+            <option value="">Select a branch…</option>
+            {% for b in branches %}<option value="{{ b.pk }}">{{ b.name }}</option>{% endfor %}
+          </select>
+          {% else %}
+          <input class="form-input" value="{{ branches.0.name }}" disabled/>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+      <div class="form-row">
+        <div class="form-group">
+          <label>Quantity (Pcs) *</label>
+          <input class="form-input" type="number" name="quantity" min="1" required value="{{ entry.quantity|default:posted.quantity|default:'' }}"/>
+        </div>
+        <div class="form-group">
+          <label>Sale Date *</label>
+          <input class="form-input" type="date" name="sale_date" required value="{{ entry.sale_date|date:'Y-m-d'|default:posted.sale_date|default:'' }}"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Cost Price per Unit *</label>
+          <input class="form-input" type="number" step="0.01" min="0" name="price" required value="{{ entry.price|default:posted.price|default:'' }}"/>
+        </div>
+        <div class="form-group">
+          <label>Selling Price per Unit *</label>
+          <input class="form-input" type="number" step="0.01" min="0" name="selling_price" required value="{{ entry.selling_price|default:posted.selling_price|default:'' }}"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Customer</label>
+        <input class="form-input" type="text" name="customer" value="{{ entry.customer|default:posted.customer|default:'' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea class="form-input" name="notes">{{ entry.notes|default:posted.notes|default:'' }}</textarea>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.875rem;margin-top:1.5rem;">
+      {% if entry %}Save Changes{% else %}Add Sale{% endif %}
+    </button>
+  </div>
+</form>
+{% endblock %}

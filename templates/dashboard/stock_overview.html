@@ -1,0 +1,152 @@
+{% extends "dashboard/base.html" %}
+{% load stock_ledger_extras %}
+{% block title %}Stock Ledger{% endblock %}
+{% block page_title %}Stock Ledger{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ Overview</span>{% endblock %}
+{% block nav_stock_overview %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>Stock Ledger</h1>
+    <p>
+      {% if is_admin %}Stock across all branches{% elif is_branch_staff %}Stock for your branch{% else %}Combined stock, all branches{% endif %}
+    </p>
+  </div>
+  <div style="display:flex;gap:0.5rem;">
+    <a href="{% url 'dashboard:stock_ledger:export_stock' 'excel' %}?{{ request.GET.urlencode }}" class="btn btn-ghost">⬇ Excel</a>
+    <a href="{% url 'dashboard:stock_ledger:export_stock' 'pdf' %}?{{ request.GET.urlencode }}" class="btn btn-ghost">⬇ PDF</a>
+  </div>
+</div>
+
+<!-- Stat cards -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value">{{ stats.total_quantity }}</div>
+      <div class="stat-card-label">Total Stock (Pcs)</div>
+    </div>
+    <div class="stat-card-icon blue">🧮</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value">{{ stats.low_stock_count }}</div>
+      <div class="stat-card-label">Low Stock Items</div>
+      {% if stats.low_stock_count > 0 %}<span class="stat-card-badge badge-new">Needs attention</span>{% else %}<span class="stat-card-badge badge-ok">All clear</span>{% endif %}
+    </div>
+    <div class="stat-card-icon red">⚠️</div>
+  </div>
+  {% if include_money %}
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value">₹{{ stats.total_inventory_value|floatformat:0 }}</div>
+      <div class="stat-card-label">Total Inventory Value</div>
+    </div>
+    <div class="stat-card-icon orange">💰</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value">₹{{ profit_data.profit|floatformat:0 }}</div>
+      <div class="stat-card-label">Profit ({{ profit_data.date_from|date:"d M" }} – {{ profit_data.date_to|date:"d M" }})</div>
+      <span class="stat-card-badge badge-ok">{{ profit_data.qty }} units sold</span>
+    </div>
+    <div class="stat-card-icon green">📈</div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Filters -->
+<form method="GET" class="filter-bar">
+  {% if is_admin %}
+  <select class="filter-input" name="branch" onchange="this.form.submit()">
+    <option value="">All Branches</option>
+    {% for b in branches %}
+    <option value="{{ b.pk }}" {% if branch_filter == b.pk|stringformat:"s" %}selected{% endif %}>{{ b.name }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  <select class="filter-input" name="brand" onchange="this.form.submit()">
+    <option value="">All Brands</option>
+    {% for b in brands %}
+    <option value="{{ b.pk }}" {% if brand_filter == b.pk|stringformat:"s" %}selected{% endif %}>{{ b.name }}</option>
+    {% endfor %}
+  </select>
+  {% if include_money %}
+  <input class="filter-input" type="date" name="date_from" value="{{ profit_data.date_from|date:'Y-m-d' }}" style="min-width:150px;"/>
+  <input class="filter-input" type="date" name="date_to" value="{{ profit_data.date_to|date:'Y-m-d' }}" style="min-width:150px;"/>
+  {% endif %}
+  <button type="submit" class="btn btn-ghost">Filter</button>
+  <a href="{% url 'dashboard:stock_ledger:overview' %}" class="btn btn-ghost">✕ Clear</a>
+</form>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Product</th>
+        <th>Brand</th>
+        {% if not grouped %}<th>Branch</th>{% endif %}
+        <th>Quantity (Pcs)</th>
+        {% if include_money %}<th>Unit Price</th><th>Value</th>{% endif %}
+        {% if is_admin and not grouped %}<th>Low Stock Threshold</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% if grouped %}
+        {% for row in rows %}
+        <tr>
+          <td class="td-name">{{ row.product.sku }} — {{ row.product.name }}</td>
+          <td>{{ row.brand.name|default:"—" }}</td>
+          <td>{{ row.quantity }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="3"><div class="empty-state"><div class="empty-state-icon">📦</div><h3>No stock recorded yet</h3></div></td></tr>
+        {% endfor %}
+      {% else %}
+        {% for row in rows %}
+        <tr id="branch-stock-row-{{ row.pk }}">
+          <td class="td-name">{{ row.product.sku }} — {{ row.product.name }}</td>
+          <td>{{ row.product.brand.name|default:"—" }}</td>
+          <td>{{ row.branch.name }}</td>
+          <td>
+            {% if row.low_stock_threshold > 0 and row.quantity <= row.low_stock_threshold %}
+            <span class="pill pill-unread">{{ row.quantity }}</span>
+            {% else %}
+            {{ row.quantity }}
+            {% endif %}
+          </td>
+          {% if include_money %}
+          <td>₹{{ row.unit_price|floatformat:2 }}</td>
+          <td>₹{{ row.value|floatformat:2 }}</td>
+          {% endif %}
+          {% if is_admin %}
+          <td>
+            <input type="number" min="0" class="form-input" style="width:90px;padding:0.35rem 0.5rem;"
+                   value="{{ row.low_stock_threshold }}"
+                   onchange="setThreshold({{ row.pk }}, this.value)"/>
+          </td>
+          {% endif %}
+        </tr>
+        {% empty %}
+        <tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">📦</div><h3>No stock recorded yet</h3></div></td></tr>
+        {% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function setThreshold(pk, value) {
+  const res = await fetch(`/dashboard/stock/branch-stock/${pk}/threshold/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+    body: JSON.stringify({ threshold: value }),
+  });
+  const d = await res.json();
+  if (d.success) showToast('Threshold updated', 'success');
+  else showToast('Update failed', 'error');
+}
+</script>
+{% endblock %}

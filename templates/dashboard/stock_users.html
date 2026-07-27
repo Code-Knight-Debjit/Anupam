@@ -1,0 +1,80 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Users{% endblock %}
+{% block page_title %}Users{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ Administration</span>{% endblock %}
+{% block nav_stock_users %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>Users</h1>
+    <p>{{ profiles|length }} account{{ profiles|length|pluralize }}</p>
+  </div>
+  <a href="{% url 'dashboard:stock_ledger:user_add' %}" class="btn btn-primary">+ Add User</a>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Role</th>
+        <th>Branch</th>
+        <th>Status</th>
+        <th style="text-align:right;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in profiles %}
+      <tr id="user-row-{{ p.pk }}">
+        <td>
+          <div class="td-name">{{ p.user.username }}</div>
+          <div class="td-sub">{{ p.user.email|default:"—" }}</div>
+        </td>
+        <td><span class="pill" style="background:rgba(255,106,0,0.1);color:var(--orange-dk);">{{ p.get_role_display }}</span></td>
+        <td>{{ p.branch.name|default:"—" }}</td>
+        <td>
+          <button class="btn btn-sm {% if p.user.is_active %}btn-primary{% else %}btn-ghost{% endif %}"
+            onclick="toggleUserActive({{ p.pk }}, this)">{% if p.user.is_active %}Active{% else %}Inactive{% endif %}</button>
+        </td>
+        <td style="text-align:right;">
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.4rem;">
+            <a href="{% url 'dashboard:stock_ledger:user_edit' p.pk %}" class="btn btn-ghost btn-sm btn-icon" title="Edit">✏️</a>
+            <button class="btn btn-ghost btn-sm" onclick="resetPassword({{ p.pk }})" title="Reset password">🔑 Reset</button>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon">👤</div><h3>No users yet</h3></div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function toggleUserActive(pk, btn) {
+  const res = await fetch(`/dashboard/stock/users/${pk}/toggle-active/`, { method: 'POST', headers: { 'X-CSRFToken': getCsrf() } });
+  const d = await res.json();
+  if (d.success) {
+    btn.className = `btn btn-sm ${d.is_active ? 'btn-primary' : 'btn-ghost'}`;
+    btn.textContent = d.is_active ? 'Active' : 'Inactive';
+    showToast(d.is_active ? 'User activated' : 'User deactivated', 'success');
+  }
+}
+
+async function resetPassword(pk) {
+  const password = prompt('Enter a new password for this user (min 8 characters):');
+  if (!password) return;
+  const res = await fetch(`/dashboard/stock/users/${pk}/reset-password/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+    body: JSON.stringify({ password }),
+  });
+  const d = await res.json();
+  if (d.success) showToast('Password reset. Share it with the user securely.', 'success');
+  else showToast(d.message || 'Reset failed', 'error');
+}
+</script>
+{% endblock %}

@@ -397,6 +397,31 @@
     .dash-modal-close { position: absolute; top: 1rem; right: 1rem; background: var(--surface); border: none; border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font-size: 1rem; color: var(--muted); display: flex; align-items: center; justify-content: center; }
     .dash-modal-title { font-family: var(--font-d); font-size: 1.1rem; font-weight: 700; margin-bottom: 1.25rem; padding-right: 2rem; }
 
+    /* ── PRODUCT COMBOBOX ── */
+    .product-combobox { position: relative; }
+    .product-combobox-results {
+      position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+      z-index: 500;
+      max-height: 260px;
+      overflow-y: auto;
+      display: none;
+    }
+    .product-combobox-results.open { display: block; }
+    .product-combobox-item {
+      padding: 0.65rem 0.875rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+    }
+    .product-combobox-item:last-child { border-bottom: none; }
+    .product-combobox-item:hover, .product-combobox-item.active { background: var(--surface); }
+    .product-combobox-item.create-new { color: var(--orange-dk); font-weight: 600; }
+    .product-combobox-empty { padding: 0.875rem; font-size: 0.8rem; color: var(--muted); }
+
     /* ── CHAT BUBBLES ── */
     .chat-bubble-wrap { display: flex; margin-bottom: 1rem; }
     .chat-bubble-wrap.user { justify-content: flex-end; }
@@ -452,6 +477,7 @@
     </div>
   </div>
 
+  {% if dash_role == 'ADMIN' %}
   <div class="sidebar-section">
     <div class="sidebar-section-label">Overview</div>
     <a href="{% url 'dashboard:home' %}" class="nav-item {% block nav_home %}{% endblock %}">
@@ -469,6 +495,10 @@
     <a href="{% url 'dashboard:products' %}" class="nav-item {% block nav_prods %}{% endblock %}">
       <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
       Products
+    </a>
+    <a href="{% url 'dashboard:brands' %}" class="nav-item {% block nav_brands %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5.586a1 1 0 01.707.293l7.414 7.414a1 1 0 010 1.414l-8.586 8.586a1 1 0 01-1.414 0l-7.414-7.414A1 1 0 013 12.586V7a4 4 0 014-4z"/></svg>
+      Brands
     </a>
   </div>
 
@@ -505,6 +535,50 @@
       RAG System
     </a>
   </div>
+  {% endif %}
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-label">Stock Ledger</div>
+    <a href="{% url 'dashboard:stock_ledger:overview' %}" class="nav-item {% block nav_stock_overview %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+      Overview
+    </a>
+    <a href="{% url 'dashboard:stock_ledger:opening_stock_list' %}" class="nav-item {% block nav_stock_opening %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
+      Opening Stock
+    </a>
+    <a href="{% url 'dashboard:stock_ledger:purchase_list' %}" class="nav-item {% block nav_stock_purchase %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m-10 4a1 1 0 100 2 1 1 0 000-2zm10 0a1 1 0 100 2 1 1 0 000-2z"/></svg>
+      Purchases
+    </a>
+    <a href="{% url 'dashboard:stock_ledger:sale_list' %}" class="nav-item {% block nav_stock_sale %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m-6 4h6m-6 4h4M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg>
+      Sales
+    </a>
+    <a href="{% url 'dashboard:stock_ledger:history' %}" class="nav-item {% block nav_stock_history %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      History
+    </a>
+    <a href="{% url 'dashboard:stock_ledger:transfer_list' %}" class="nav-item {% block nav_stock_transfers %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4"/></svg>
+      Transfers
+      <span class="nav-badge" id="sidebar-transfer-badge" style="display:none;"></span>
+    </a>
+  </div>
+
+  {% if dash_role == 'ADMIN' %}
+  <div class="sidebar-section">
+    <div class="sidebar-section-label">Administration</div>
+    <a href="{% url 'dashboard:stock_ledger:branches' %}" class="nav-item {% block nav_stock_branches %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01M9 15v.01"/></svg>
+      Branches
+    </a>
+    <a href="{% url 'dashboard:stock_ledger:users' %}" class="nav-item {% block nav_stock_users %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-8.13a4 4 0 11-4 4 4 4 0 014-4zm6 4a4 4 0 00-3-3.87"/></svg>
+      Users
+    </a>
+  </div>
+  {% endif %}
 
   <div class="sidebar-section" style="margin-top:auto;">
     <a href="/" target="_blank" class="nav-item">
@@ -518,7 +592,9 @@
       <div class="sidebar-avatar">{{ request.user.username|first|upper }}</div>
       <div>
         <div class="sidebar-user-name">{{ request.user.get_full_name|default:request.user.username }}</div>
-        <div class="sidebar-user-role">{% if request.user.is_superuser %}Superuser{% else %}Staff{% endif %}</div>
+        <div class="sidebar-user-role">
+          {% if dash_role == 'ADMIN' %}Admin{% elif dash_role == 'BRANCH_STAFF' %}Branch Staff{% if dash_branch %} · {{ dash_branch.name }}{% endif %}{% elif dash_role == 'VIEWER' %}Viewer{% else %}Staff{% endif %}
+        </div>
       </div>
     </div>
     <a href="{% url 'dashboard:logout' %}" class="sidebar-logout">
@@ -577,6 +653,62 @@
 <!-- Toast -->
 <div class="dash-toast" id="dash-toast"></div>
 
+<!-- Low Stock Alert Modal -->
+{% if show_low_stock_modal %}
+<div class="dash-modal-overlay open" id="low-stock-modal">
+  <div class="dash-modal" style="max-width:560px;">
+    <button class="dash-modal-close" onclick="document.getElementById('low-stock-modal').classList.remove('open')">✕</button>
+    <div class="dash-modal-title">⚠️ Low Stock Alert</div>
+    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:1.25rem;">The following items are at or below their low-stock threshold:</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Product</th><th>Branch</th><th>Qty</th><th>Threshold</th></tr>
+        </thead>
+        <tbody>
+          {% for item in low_stock_items %}
+          <tr>
+            <td class="td-name">{{ item.product.name }}</td>
+            <td>{{ item.branch.name }}</td>
+            <td><span class="pill pill-unread">{{ item.quantity }}</span></td>
+            <td style="color:var(--muted);">{{ item.low_stock_threshold }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <a href="{% url 'dashboard:stock_ledger:overview' %}" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:1.25rem;padding:0.875rem;">View Stock Ledger</a>
+  </div>
+</div>
+{% endif %}
+
+<!-- Product Quick-Create Modal (shared by all product comboboxes) -->
+<div class="dash-modal-overlay" id="product-create-modal">
+  <div class="dash-modal" style="max-width:440px;">
+    <button class="dash-modal-close" onclick="closeProductCreateModal()">✕</button>
+    <div class="dash-modal-title">Create New Product</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Code</label>
+        <input class="form-input" type="text" id="pc-code" disabled/>
+      </div>
+      <div class="form-group">
+        <label>Brand *</label>
+        <select class="form-input" id="pc-brand">
+          <option value="">Select a brand…</option>
+          {% for b in product_create_brands %}<option value="{{ b.pk }}">{{ b.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Display Name (optional)</label>
+        <input class="form-input" type="text" id="pc-name" placeholder="Defaults to the code"/>
+      </div>
+      <p style="font-size:0.75rem;color:var(--muted);">Category is set to "Uncategorized" — an Admin can reassign it later from the Products page.</p>
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:1.25rem;padding:0.875rem;" onclick="submitProductCreate()">Create Product</button>
+  </div>
+</div>
+
 <script>
 // ── SIDEBAR TOGGLE ──
 function toggleSidebar() {
@@ -605,23 +737,38 @@ async function fetchNotifications() {
     const res = await fetch('{% url "dashboard:notifications_api" %}');
     const data = await res.json();
 
-    const enqBadge = document.getElementById('sidebar-enq-badge');
-    const msgBadge = document.getElementById('sidebar-msg-badge');
+    const enqBadge      = document.getElementById('sidebar-enq-badge');
+    const msgBadge      = document.getElementById('sidebar-msg-badge');
+    const transferBadge = document.getElementById('sidebar-transfer-badge');
     const countEl  = document.getElementById('notif-count');
     const totalEl  = document.getElementById('notif-total-badge');
 
-    if (data.new_enquiries > 0) {
-      enqBadge.textContent = data.new_enquiries;
-      enqBadge.style.display = 'inline-block';
-    } else {
-      enqBadge.style.display = 'none';
+    if (enqBadge) {
+      if (data.new_enquiries > 0) {
+        enqBadge.textContent = data.new_enquiries;
+        enqBadge.style.display = 'inline-block';
+      } else {
+        enqBadge.style.display = 'none';
+      }
     }
 
-    if (data.unread_messages > 0) {
-      msgBadge.textContent = data.unread_messages;
-      msgBadge.style.display = 'inline-block';
-    } else {
-      msgBadge.style.display = 'none';
+    if (msgBadge) {
+      if (data.unread_messages > 0) {
+        msgBadge.textContent = data.unread_messages;
+        msgBadge.style.display = 'inline-block';
+      } else {
+        msgBadge.style.display = 'none';
+      }
+    }
+
+    if (transferBadge) {
+      const pendingTransfers = (data.pending_dispatches || 0) + (data.pending_receipts || 0);
+      if (pendingTransfers > 0) {
+        transferBadge.textContent = pendingTransfers;
+        transferBadge.style.display = 'inline-block';
+      } else {
+        transferBadge.style.display = 'none';
+      }
     }
 
     if (data.total_unread > 0) {
@@ -651,6 +798,33 @@ async function fetchNotifications() {
         <div class="notif-item-text">
           <div class="notif-item-title">${data.unread_messages} Unread Contact Message${data.unread_messages > 1 ? 's' : ''}</div>
           <div class="notif-item-sub">From your contact form</div>
+        </div>
+      </a>`;
+    }
+    if (data.pending_dispatches > 0) {
+      html += `<a href="{% url 'dashboard:stock_ledger:transfer_list' %}" class="notif-item">
+        <div class="notif-item-icon" style="background:rgba(255,106,0,0.1);">📦</div>
+        <div class="notif-item-text">
+          <div class="notif-item-title">${data.pending_dispatches} Transfer${data.pending_dispatches > 1 ? 's' : ''} Awaiting Dispatch</div>
+          <div class="notif-item-sub">Pending outgoing stock transfer${data.pending_dispatches > 1 ? 's' : ''}</div>
+        </div>
+      </a>`;
+    }
+    if (data.pending_receipts > 0) {
+      html += `<a href="{% url 'dashboard:stock_ledger:transfer_list' %}" class="notif-item">
+        <div class="notif-item-icon" style="background:rgba(34,197,94,0.1);">📬</div>
+        <div class="notif-item-text">
+          <div class="notif-item-title">${data.pending_receipts} Transfer${data.pending_receipts > 1 ? 's' : ''} Awaiting Receipt</div>
+          <div class="notif-item-sub">Dispatched stock on its way to you</div>
+        </div>
+      </a>`;
+    }
+    if (data.pending_issues > 0) {
+      html += `<a href="{% url 'dashboard:stock_ledger:transfer_list' %}" class="notif-item">
+        <div class="notif-item-icon" style="background:rgba(239,68,68,0.1);">⚠️</div>
+        <div class="notif-item-text">
+          <div class="notif-item-title">${data.pending_issues} Transfer${data.pending_issues > 1 ? 's' : ''} With Reported Issues</div>
+          <div class="notif-item-sub">Needs Admin follow-up</div>
         </div>
       </a>`;
     }
@@ -687,6 +861,146 @@ function confirmDelete(url, label, onSuccess) {
 function getCsrf() {
   return document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] || '';
 }
+
+// ── PRODUCT COMBOBOX ──
+// Usage: <div class="product-combobox" data-creatable="true|false" data-restrict-stock="true|false"
+//             data-branch-select="#id_of_branch_select" data-fixed-branch="123">
+//          <input class="product-combobox-input" .../>
+//          <input type="hidden" name="product" class="product-combobox-value"/>
+//          <div class="product-combobox-results"></div>
+//        </div>
+let productComboboxDebounce = null;
+let activeProductCombobox = null;
+
+function productComboboxBranch(box) {
+  const branchSelectSel = box.dataset.branchSelect;
+  if (branchSelectSel) {
+    const el = document.querySelector(branchSelectSel);
+    return el ? el.value : '';
+  }
+  return box.dataset.fixedBranch || '';
+}
+
+function initProductComboboxes() {
+  document.querySelectorAll('.product-combobox').forEach(box => {
+    const input = box.querySelector('.product-combobox-input');
+    const hidden = box.querySelector('.product-combobox-value');
+    const results = box.querySelector('.product-combobox-results');
+    if (!input || box.dataset.wired) return;
+    box.dataset.wired = '1';
+
+    input.addEventListener('input', () => {
+      hidden.value = '';
+      clearTimeout(productComboboxDebounce);
+      const q = input.value.trim();
+      if (q.length < 1) { results.classList.remove('open'); return; }
+      productComboboxDebounce = setTimeout(() => searchProductCombobox(box, q), 250);
+    });
+    input.addEventListener('focus', () => {
+      if (input.value.trim().length >= 1) searchProductCombobox(box, input.value.trim());
+    });
+
+    const branchSelectSel = box.dataset.branchSelect;
+    if (branchSelectSel) {
+      const el = document.querySelector(branchSelectSel);
+      if (el) el.addEventListener('change', () => { hidden.value = ''; input.value = ''; });
+    }
+
+    const form = box.closest('form');
+    if (form && !form.dataset.comboboxGuarded) {
+      form.dataset.comboboxGuarded = '1';
+      form.addEventListener('submit', e => {
+        const missing = [...form.querySelectorAll('.product-combobox')].some(b => !b.querySelector('.product-combobox-value').value);
+        if (missing) {
+          e.preventDefault();
+          showToast('Select or create a product first.', 'error');
+        }
+      });
+    }
+  });
+}
+
+async function searchProductCombobox(box, q) {
+  const results = box.querySelector('.product-combobox-results');
+  const restrictStock = box.dataset.restrictStock === 'true';
+  const branchId = productComboboxBranch(box);
+
+  let url = `/dashboard/stock/products/search/?q=${encodeURIComponent(q)}`;
+  if (restrictStock && branchId) url += `&in_stock_branch=${branchId}`;
+
+  const res = await fetch(url);
+  const data = await res.json();
+  renderProductComboboxResults(box, q, data.results || []);
+}
+
+function renderProductComboboxResults(box, q, matches) {
+  const results = box.querySelector('.product-combobox-results');
+  const creatable = box.dataset.creatable === 'true';
+  let html = '';
+  matches.forEach(m => {
+    html += `<div class="product-combobox-item" data-id="${m.id}" data-label="${m.label.replace(/"/g, '&quot;')}">${m.label}</div>`;
+  });
+  if (!matches.length) {
+    html += `<div class="product-combobox-empty">${creatable ? 'No matching product.' : 'No matching in-stock product.'}</div>`;
+  }
+  if (creatable && q) {
+    html += `<div class="product-combobox-item create-new" data-create="${q.replace(/"/g, '&quot;')}">+ Create "${q}" as new product</div>`;
+  }
+  results.innerHTML = html;
+  results.classList.add('open');
+
+  results.querySelectorAll('.product-combobox-item[data-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      box.querySelector('.product-combobox-input').value = el.dataset.label;
+      box.querySelector('.product-combobox-value').value = el.dataset.id;
+      results.classList.remove('open');
+    });
+  });
+  const createEl = results.querySelector('.product-combobox-item[data-create]');
+  if (createEl) {
+    createEl.addEventListener('click', () => openProductCreateModal(box, createEl.dataset.create));
+  }
+}
+
+document.addEventListener('click', e => {
+  document.querySelectorAll('.product-combobox-results.open').forEach(r => {
+    if (!r.closest('.product-combobox').contains(e.target)) r.classList.remove('open');
+  });
+});
+
+function openProductCreateModal(box, code) {
+  activeProductCombobox = box;
+  document.getElementById('pc-code').value = code;
+  document.getElementById('pc-brand').value = '';
+  document.getElementById('pc-name').value = '';
+  document.getElementById('product-create-modal').classList.add('open');
+}
+function closeProductCreateModal() {
+  document.getElementById('product-create-modal').classList.remove('open');
+  activeProductCombobox = null;
+}
+async function submitProductCreate() {
+  const code = document.getElementById('pc-code').value;
+  const brand = document.getElementById('pc-brand').value;
+  const name = document.getElementById('pc-name').value;
+  if (!brand) { showToast('Select a brand.', 'error'); return; }
+
+  const res = await fetch('{% url "dashboard:stock_ledger:product_quick_create" %}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': getCsrf() },
+    body: `code=${encodeURIComponent(code)}&brand=${encodeURIComponent(brand)}&name=${encodeURIComponent(name)}`,
+  });
+  const data = await res.json();
+  if (data.success && activeProductCombobox) {
+    activeProductCombobox.querySelector('.product-combobox-input').value = data.product.label;
+    activeProductCombobox.querySelector('.product-combobox-value').value = data.product.id;
+    showToast('Product created.', 'success');
+    closeProductCreateModal();
+  } else {
+    showToast(data.message || 'Could not create product.', 'error');
+  }
+}
+initProductComboboxes();
 
 // Run on load and poll every 30s
 fetchNotifications();
