@@ -304,21 +304,66 @@ def purchase_list(request):
 @staff_required
 @role_required(UserProfile.ADMIN, UserProfile.BRANCH_STAFF)
 def purchase_add(request):
+    """A single purchase (one supplier, one date, one notes field — e.g. one
+    Blinkit order) can cover several different products at once, so this takes
+    parallel item_product[]/item_quantity[]/item_price[] arrays and creates one
+    StockPurchase row per line item, all sharing the same branch/date/supplier/
+    notes, atomically."""
     profile = _profile(request)
     if request.method == 'POST':
-        branch_id = request.POST.get('branch') if _is_admin(profile) else profile.branch_id
-        require_branch_match(profile, int(branch_id))
-        entry = StockPurchase.objects.create(
-            product_id=request.POST.get('product'),
-            branch_id=branch_id,
-            quantity=int(request.POST.get('quantity', 0) or 0),
-            price=request.POST.get('price', '0'),
-            purchase_date=_parse_date(request.POST.get('purchase_date'), timezone.localdate()),
-            supplier=request.POST.get('supplier', '').strip(),
-            notes=request.POST.get('notes', '').strip(),
-            created_by=request.user,
-        )
-        recompute_branch_stock(entry.product_id, entry.branch_id)
+        branch_id = int(request.POST.get('branch')) if _is_admin(profile) else profile.branch_id
+        require_branch_match(profile, branch_id)
+
+        purchase_date = _parse_date(request.POST.get('purchase_date'), timezone.localdate())
+        supplier = request.POST.get('supplier', '').strip()
+        notes = request.POST.get('notes', '').strip()
+
+        item_products = request.POST.getlist('item_product')
+        item_quantities = request.POST.getlist('item_quantity')
+        item_prices = request.POST.getlist('item_price')
+
+        items = []
+        item_error = None
+        for product_id, quantity_raw, price_raw in zip(item_products, item_quantities, item_prices):
+            if not product_id or not quantity_raw or not price_raw:
+                continue
+            try:
+                quantity = int(quantity_raw)
+                if quantity <= 0:
+                    raise ValueError
+            except ValueError:
+                item_error = f'Invalid quantity "{quantity_raw}".'
+                break
+            items.append((product_id, quantity, price_raw))
+
+        if not items and not item_error:
+            item_error = 'Add at least one item.'
+
+        if item_error:
+            return render(request, 'dashboard/stock_purchase_form.html', {
+                'entry': None,
+                'branches': _branch_choices(profile),
+                'is_admin': _is_admin(profile),
+                'stock_error': item_error,
+                'posted': {
+                    'purchase_date': request.POST.get('purchase_date', ''),
+                    'supplier': supplier,
+                    'notes': notes,
+                },
+            })
+
+        with transaction.atomic():
+            created_entries = [
+                StockPurchase.objects.create(
+                    product_id=product_id, branch_id=branch_id, quantity=quantity, price=price_raw,
+                    purchase_date=purchase_date, supplier=supplier, notes=notes, created_by=request.user,
+                )
+                for product_id, quantity, price_raw in items
+            ]
+            affected_pairs = {(e.product_id, e.branch_id) for e in created_entries}
+            for product_id, branch_id in affected_pairs:
+                recompute_branch_stock(product_id, branch_id)
+
         return redirect('dashboard:stock_ledger:purchase_list')
     return render(request, 'dashboard/stock_purchase_form.html', {
         'entry': None,
@@ -394,42 +439,81 @@ def sale_list(request):
 @staff_required
 @role_required(UserProfile.ADMIN, UserProfile.BRANCH_STAFF)
 def sale_add(request):
+    """One sale (one branch, one date, one customer/notes — e.g. one invoice)
+    can cover several different products at once, mirroring purchase_add.
+    Unlike purchases, each item is validated against currently-available stock
+    — and since two rows in the same submission could both target the same
+    product, the running total sold per product within this one request is
+    tracked so the sum can't oversell even though each row looks fine alone."""
     profile = _profile(request)
     if request.method == 'POST':
         branch_id = int(request.POST.get('branch')) if _is_admin(profile) else profile.branch_id
         require_branch_match(profile, branch_id)
-        product_id = request.POST.get('product')
-        quantity = int(request.POST.get('quantity', 0) or 0)
 
-        available = get_available_quantity(product_id, branch_id)
-        if quantity <= 0 or quantity > available:
+        sale_date = _parse_date(request.POST.get('sale_date'), timezone.localdate())
+        customer = request.POST.get('customer', '').strip()
+        notes = request.POST.get('notes', '').strip()
+
+        item_products = request.POST.getlist('item_product')
+        item_quantities = request.POST.getlist('item_quantity')
+        item_prices = request.POST.getlist('item_price')
+        item_selling_prices = request.POST.getlist('item_selling_price')
+
+        items = []
+        item_error = None
+        remaining_by_product = {}
+        for product_id, quantity_raw, price_raw, selling_price_raw in zip(
+            item_products, item_quantities, item_prices, item_selling_prices
+        ):
+            if not product_id or not quantity_raw or not price_raw or not selling_price_raw:
+                continue
+            try:
+                quantity = int(quantity_raw)
+                if quantity <= 0:
+                    raise ValueError
+            except ValueError:
+                item_error = f'Invalid quantity "{quantity_raw}".'
+                break
+
+            if product_id not in remaining_by_product:
+                remaining_by_product[product_id] = get_available_quantity(product_id, branch_id)
+            remaining_by_product[product_id] -= quantity
+            if remaining_by_product[product_id] < 0:
+                name = Product.objects.filter(pk=product_id).values_list('name', flat=True).first()
+                item_error = f'Not enough stock for "{name}" to sell {quantity} of it here.'
+                break
+
+            items.append((product_id, quantity, price_raw, selling_price_raw))
+
+        if not items and not item_error:
+            item_error = 'Add at least one item.'
+
+        if item_error:
             return render(request, 'dashboard/stock_sale_form.html', {
                 'entry': None,
                 'branches': _branch_choices(profile),
                 'is_admin': _is_admin(profile),
-                'stock_error': f'Only {available} in stock at this branch — cannot sell {quantity}.',
+                'stock_error': item_error,
                 'posted': {
-                    'quantity': request.POST.get('quantity', ''),
                     'sale_date': request.POST.get('sale_date', ''),
-                    'price': request.POST.get('price', ''),
-                    'selling_price': request.POST.get('selling_price', ''),
-                    'customer': request.POST.get('customer', ''),
-                    'notes': request.POST.get('notes', ''),
+                    'customer': customer,
+                    'notes': notes,
                 },
             })
 
-        entry = StockSale.objects.create(
-            product_id=product_id,
-            branch_id=branch_id,
-            quantity=quantity,
-            price=request.POST.get('price', '0'),
-            selling_price=request.POST.get('selling_price', '0'),
-            sale_date=_parse_date(request.POST.get('sale_date'), timezone.localdate()),
-            customer=request.POST.get('customer', '').strip(),
-            notes=request.POST.get('notes', '').strip(),
-            created_by=request.user,
-        )
-        recompute_branch_stock(entry.product_id, entry.branch_id)
+        with transaction.atomic():
+            created_entries = [
+                StockSale.objects.create(
+                    product_id=product_id, branch_id=branch_id, quantity=quantity,
+                    price=price_raw, selling_price=selling_price_raw,
+                    sale_date=sale_date, customer=customer, notes=notes, created_by=request.user,
+                )
+                for product_id, quantity, price_raw, selling_price_raw in items
+            ]
+            affected_pairs = {(e.product_id, e.branch_id) for e in created_entries}
+            for aff_product_id, aff_branch_id in affected_pairs:
+                recompute_branch_stock(aff_product_id, aff_branch_id)
+
         return redirect('dashboard:stock_ledger:sale_list')
     return render(request, 'dashboard/stock_sale_form.html', {
         'entry': None,

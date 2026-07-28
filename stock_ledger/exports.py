@@ -59,13 +59,13 @@ def _pdf_response(filename, title, headers, rows):
 def export_branch_stock(rows, include_money, fmt):
     """rows: iterable of BranchStock with .product/.branch selected, plus an
     injected `unit_price`/`value` pair from the caller when include_money."""
-    headers = ['Product', 'SKU', 'Brand', 'Branch', 'Quantity (Pcs)']
+    headers = ['Product', 'SKU', 'Brand', 'Branch', 'Location', 'Quantity (Pcs)']
     if include_money:
         headers += ['Unit Price', 'Total Value']
 
     data = []
     for r in rows:
-        line = [r.product.name, r.product.sku, r.product.brand.name if r.product.brand_id else '', r.branch.name, r.quantity]
+        line = [r.product.name, r.product.sku, r.product.brand.name if r.product.brand_id else '', r.branch.name, r.location or '', r.quantity]
         if include_money:
             line += [f'{r.unit_price:.2f}', f'{r.value:.2f}']
         data.append(line)

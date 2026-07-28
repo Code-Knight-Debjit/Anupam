@@ -85,7 +85,7 @@
       <tr>
         <th>Product</th>
         <th>Brand</th>
-        {% if not grouped %}<th>Branch</th>{% endif %}
+        {% if not grouped %}<th>Branch</th><th>Location</th>{% endif %}
         <th>Quantity (Pcs)</th>
         {% if include_money %}<th>Unit Price</th><th>Value</th>{% endif %}
         {% if is_admin and not grouped %}<th>Low Stock Threshold</th>{% endif %}
@@ -108,6 +108,7 @@
           <td class="td-name">{{ row.product.sku }} — {{ row.product.name }}</td>
           <td>{{ row.product.brand.name|default:"—" }}</td>
           <td>{{ row.branch.name }}</td>
+          <td class="td-sub">{{ row.location|default:"—" }}</td>
           <td>
             {% if row.low_stock_threshold > 0 and row.quantity <= row.low_stock_threshold %}
             <span class="pill pill-unread">{{ row.quantity }}</span>
