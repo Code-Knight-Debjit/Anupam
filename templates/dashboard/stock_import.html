@@ -22,9 +22,30 @@
 {% if result %}
 <div class="card card-pad" style="max-width:720px;margin-bottom:1.25rem;">
   <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1rem;">Import Result</h3>
-  <p style="font-size:0.875rem;margin-bottom:0.5rem;"><span class="pill pill-resolved">{{ result.imported }} imported</span> &nbsp; <span class="pill pill-unread">{{ result.skipped }} skipped</span></p>
+  <p style="font-size:0.875rem;margin-bottom:0.5rem;">
+    <span class="pill pill-resolved">{{ result.imported }} imported</span>
+    {% if result.created_products %}<span class="pill" style="background:rgba(59,130,246,0.12);color:#1d4ed8;">{{ result.created_products }} new product{{ result.created_products|pluralize }} added to catalogue</span>{% endif %}
+    {% if result.created_categories %}<span class="pill" style="background:rgba(168,85,247,0.12);color:#7e22ce;">{{ result.created_categories }} new categor{{ result.created_categories|pluralize:"y,ies" }} added</span>{% endif %}
+    <span class="pill pill-unread">{{ result.skipped }} skipped</span>
+  </p>
+
+  {% if result.duplicates %}
+  <h4 style="font-size:0.8rem;font-weight:700;margin:1rem 0 0.5rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;">Already Added Previously</h4>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Row</th><th>Reason</th></tr></thead>
+      <tbody>
+        {% for row_number, reason in result.duplicates %}
+        <tr><td>{{ row_number }}</td><td class="td-sub">{{ reason }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
   {% if result.errors %}
-  <div class="table-wrap" style="margin-top:1rem;">
+  <h4 style="font-size:0.8rem;font-weight:700;margin:1rem 0 0.5rem;color:#dc2626;text-transform:uppercase;letter-spacing:0.06em;">Errors</h4>
+  <div class="table-wrap">
     <table>
       <thead><tr><th>Row</th><th>Reason</th></tr></thead>
       <tbody>
@@ -46,8 +67,10 @@
         <label>Excel Workbook (.xlsx) *</label>
         <input class="form-input" type="file" name="workbook" accept=".xlsx" required/>
         <p style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem;">
-          Columns: <strong>ID</strong> (product SKU, e.g. 6001-ZZ), <strong>Brand</strong>, <strong>Branch</strong>, <strong>Quantity</strong>, <strong>Price</strong>.
-          Rows referencing a Product/Brand/Branch that doesn't already exist are skipped and reported — nothing is auto-created.
+          Columns: <strong>ID</strong> (SKU, e.g. 6001-ZZ), <strong>Brand</strong>, <strong>Category</strong>, <strong>Branch</strong>, <strong>Quantity</strong>, <strong>Price</strong>, <strong>Location</strong> (physical rack spot, optional),
+          then any further columns — each extra header becomes a <strong>Technical Specification</strong> name (e.g. "Bore Diameter") shown on the public product page, with the cell below as that product's value.
+          A product that doesn't exist yet under that exact Brand is created automatically, and so is its Category if that's new too — that's the normal case for a first-time opening balance.
+          Brand and Branch must already exist, and a product that already has an opening stock at that branch has that part skipped as a duplicate (not double-counted) — though Location/specs still get applied.
         </p>
       </div>
     </div>

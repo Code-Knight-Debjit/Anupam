@@ -9,29 +9,63 @@
 <div class="page-header">
   <div class="page-header-left">
     <h1>{% if entry %}Edit Purchase{% else %}Add Purchase{% endif %}</h1>
+    {% if not entry %}<p>One order can cover several different products — add as many items as this purchase actually had.</p>{% endif %}
   </div>
   <a href="{% url 'dashboard:stock_ledger:purchase_list' %}" class="btn btn-ghost">← Back</a>
 </div>
 
+{% if stock_error %}
+<div class="card card-pad" style="max-width:720px;margin-bottom:1rem;border-color:#dc2626;">
+  <p style="color:#dc2626;font-size:0.875rem;">⚠ {{ stock_error }}</p>
+</div>
+{% endif %}
+
+{% if entry %}
 <form method="POST" style="max-width:640px;">
   {% csrf_token %}
   <div class="card card-pad">
     <div class="form-grid">
-      {% if entry %}
       <div class="form-row">
         <div class="form-group"><label>Product</label><input class="form-input" value="{{ entry.product|product_label }}" disabled/></div>
         <div class="form-group"><label>Branch</label><input class="form-input" value="{{ entry.branch.name }}" disabled/></div>
       </div>
-      {% else %}
       <div class="form-row">
         <div class="form-group">
-          <label>Product *</label>
-          <div class="product-combobox" data-creatable="true">
-            <input type="text" class="form-input product-combobox-input" placeholder="Type a code or name…" autocomplete="off"/>
-            <input type="hidden" name="product" class="product-combobox-value" required/>
-            <div class="product-combobox-results"></div>
-          </div>
+          <label>Quantity (Pcs) *</label>
+          <input class="form-input" type="number" name="quantity" min="1" required value="{{ entry.quantity }}"/>
         </div>
+        <div class="form-group">
+          <label>Price per Unit *</label>
+          <input class="form-input" type="number" step="0.01" min="0" name="price" required value="{{ entry.price }}"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Purchase Date *</label>
+          <input class="form-input" type="date" name="purchase_date" required value="{{ entry.purchase_date|date:'Y-m-d' }}"/>
+        </div>
+        <div class="form-group">
+          <label>Supplier</label>
+          <input class="form-input" type="text" name="supplier" value="{{ entry.supplier }}"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea class="form-input" name="notes">{{ entry.notes }}</textarea>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.875rem;margin-top:1.5rem;">Save Changes</button>
+  </div>
+</form>
+
+{% else %}
+<form method="POST" style="max-width:880px;">
+  {% csrf_token %}
+
+  <div class="card card-pad">
+    <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1.25rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">Purchase Details</h3>
+    <div class="form-grid">
+      <div class="form-row">
         <div class="form-group">
           <label>Branch *</label>
           {% if is_admin %}
@@ -43,36 +77,70 @@
           <input class="form-input" value="{{ branches.0.name }}" disabled/>
           {% endif %}
         </div>
-      </div>
-      {% endif %}
-      <div class="form-row">
-        <div class="form-group">
-          <label>Quantity (Pcs) *</label>
-          <input class="form-input" type="number" name="quantity" min="1" required value="{{ entry.quantity|default:'' }}"/>
-        </div>
-        <div class="form-group">
-          <label>Price per Unit *</label>
-          <input class="form-input" type="number" step="0.01" min="0" name="price" required value="{{ entry.price|default:'' }}"/>
-        </div>
-      </div>
-      <div class="form-row">
         <div class="form-group">
           <label>Purchase Date *</label>
-          <input class="form-input" type="date" name="purchase_date" required value="{{ entry.purchase_date|date:'Y-m-d' }}"/>
-        </div>
-        <div class="form-group">
-          <label>Supplier</label>
-          <input class="form-input" type="text" name="supplier" value="{{ entry.supplier|default:'' }}"/>
+          <input class="form-input" type="date" name="purchase_date" required value="{{ posted.purchase_date|default:'' }}"/>
         </div>
       </div>
       <div class="form-group">
-        <label>Notes</label>
-        <textarea class="form-input" name="notes">{{ entry.notes|default:'' }}</textarea>
+        <label>Supplier <span style="font-weight:400;text-transform:none;color:var(--muted);">(one for the whole order, e.g. Blinkit)</span></label>
+        <input class="form-input" type="text" name="supplier" value="{{ posted.supplier|default:'' }}" placeholder="e.g. Blinkit"/>
+      </div>
+      <div class="form-group">
+        <label>Notes <span style="font-weight:400;text-transform:none;color:var(--muted);">(also common to the whole order)</span></label>
+        <textarea class="form-input" name="notes">{{ posted.notes|default:'' }}</textarea>
       </div>
     </div>
-    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.875rem;margin-top:1.5rem;">
-      {% if entry %}Save Changes{% else %}Add Purchase{% endif %}
-    </button>
   </div>
+
+  <div class="card card-pad" style="margin-top:1.25rem;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">
+      <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;">Items</h3>
+      <button type="button" onclick="addPurchaseItemRow()" class="btn btn-ghost btn-sm">+ Add Item</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 110px 130px 32px;gap:0.5rem;margin-bottom:0.5rem;">
+      <label style="font-size:0.72rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);">Product</label>
+      <label style="font-size:0.72rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);">Qty (Pcs)</label>
+      <label style="font-size:0.72rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);">Price/Unit</label>
+      <span></span>
+    </div>
+    <div id="purchase-item-rows"></div>
+  </div>
+
+  <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.875rem;margin-top:1.5rem;">Add Purchase</button>
 </form>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function addPurchaseItemRow() {
+  const container = document.getElementById('purchase-item-rows');
+  const row = document.createElement('div');
+  row.className = 'purchase-item-row';
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 110px 130px 32px;gap:0.5rem;margin-bottom:0.5rem;align-items:start;';
+  row.innerHTML = `
+    <div class="product-combobox" data-creatable="true">
+      <input type="text" class="form-input product-combobox-input" placeholder="Type a code or name…" autocomplete="off"/>
+      <input type="hidden" name="item_product" class="product-combobox-value"/>
+      <div class="product-combobox-results"></div>
+    </div>
+    <input class="form-input" type="number" name="item_quantity" min="1" placeholder="Qty"/>
+    <input class="form-input" type="number" step="0.01" min="0" name="item_price" placeholder="Price"/>
+    <button type="button" class="btn btn-danger btn-icon btn-sm" onclick="removePurchaseItemRow(this)" title="Remove item">✕</button>
+  `;
+  container.appendChild(row);
+  initProductComboboxes();
+}
+
+function removePurchaseItemRow(btn) {
+  const container = document.getElementById('purchase-item-rows');
+  if (container.children.length <= 1) { showToast('Keep at least one item.', 'error'); return; }
+  btn.closest('.purchase-item-row').remove();
+}
+
+{% if not entry %}
+addPurchaseItemRow();
+{% endif %}
+</script>
 {% endblock %}

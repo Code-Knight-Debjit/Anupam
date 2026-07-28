@@ -1,13 +1,33 @@
 import json
+from io import BytesIO
 
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.urls import reverse
+from openpyxl import Workbook
 
 from products.models import Brand, Category, Product
+from .excel_import import import_opening_stock_workbook
 from .models import Branch, BranchStock, OpeningStock, StockPurchase, StockSale, StockTransfer, UserProfile
 from .services import recompute_branch_stock
+
+
+def make_workbook_upload(rows, filename='upload.xlsx', extra_headers=None):
+    """rows: list of [ID, Brand, Category, Branch, Quantity, Price, Location, *specs]."""
+    wb = Workbook()
+    ws = wb.active
+    headers = ['ID', 'Brand', 'Category', 'Branch', 'Quantity', 'Price', 'Location']
+    if extra_headers:
+        headers += extra_headers
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return SimpleUploadedFile(filename, buf.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
 def make_user(username, role, branch=None, is_staff=True):
@@ -222,7 +242,9 @@ class SaleStockLimitTests(StockLedgerTestBase):
     def test_sale_exceeding_stock_is_rejected(self):
         self.client.force_login(self.blr_staff)
         response = self.client.post(reverse('dashboard:stock_ledger:sale_add'), {
-            'product': self.product.id, 'quantity': 11, 'price': 5, 'selling_price': 8, 'sale_date': '2026-01-01',
+            'sale_date': '2026-01-01', 'customer': '', 'notes': '',
+            'item_product': [str(self.product.id)], 'item_quantity': ['11'],
+            'item_price': ['5'], 'item_selling_price': ['8'],
         })
         self.assertEqual(response.status_code, 200)  # re-rendered form, not redirected
         self.assertEqual(StockSale.objects.count(), 0)
@@ -232,7 +254,9 @@ class SaleStockLimitTests(StockLedgerTestBase):
     def test_sale_within_stock_succeeds_and_never_goes_negative(self):
         self.client.force_login(self.blr_staff)
         response = self.client.post(reverse('dashboard:stock_ledger:sale_add'), {
-            'product': self.product.id, 'quantity': 10, 'price': 5, 'selling_price': 8, 'sale_date': '2026-01-01',
+            'sale_date': '2026-01-01', 'customer': '', 'notes': '',
+            'item_product': [str(self.product.id)], 'item_quantity': ['10'],
+            'item_price': ['5'], 'item_selling_price': ['8'],
         })
         self.assertEqual(response.status_code, 302)
         stock = BranchStock.objects.get(product=self.product, branch=self.blr)
@@ -355,3 +379,199 @@ class ProductSearchTests(StockLedgerTestBase):
 
         response = self.client.get(url, {'q': '6001', 'in_stock_branch': self.maa.id})
         self.assertEqual(len(response.json()['results']), 0)
+
+
+class OpeningStockImportTests(StockLedgerTestBase):
+    def test_new_sku_brand_is_auto_created_not_skipped(self):
+        upload = make_workbook_upload([['NEW-SKU-1', self.brand.name, self.category.name, self.blr.name, 10, 5, '']])
+        result = import_opening_stock_workbook(upload, self.admin)
+
+        self.assertEqual(result.imported, 1)
+        self.assertEqual(result.created_products, 1)
+        self.assertEqual(result.skipped, 0)
+        product = Product.objects.get(sku='NEW-SKU-1', brand=self.brand)
+        self.assertEqual(product.category_id, self.category.id)
+        stock = BranchStock.objects.get(product=product, branch=self.blr)
+        self.assertEqual(stock.quantity, 10)
+
+    def test_new_category_is_auto_created(self):
+        self.assertFalse(Category.objects.filter(name='Brand New Category').exists())
+        upload = make_workbook_upload([['NEW-SKU-2', self.brand.name, 'Brand New Category', self.blr.name, 10, 5, '']])
+        result = import_opening_stock_workbook(upload, self.admin)
+
+        self.assertEqual(result.imported, 1)
+        self.assertEqual(result.created_categories, 1)
+        product = Product.objects.get(sku='NEW-SKU-2', brand=self.brand)
+        self.assertEqual(product.category.name, 'Brand New Category')
+
+    def test_location_is_captured_on_branch_stock(self):
+        upload = make_workbook_upload([['NEW-SKU-3', self.brand.name, self.category.name, self.blr.name, 10, 5, 'C1R2']])
+        import_opening_stock_workbook(upload, self.admin)
+        product = Product.objects.get(sku='NEW-SKU-3', brand=self.brand)
+        stock = BranchStock.objects.get(product=product, branch=self.blr)
+        self.assertEqual(stock.location, 'C1R2')
+
+    def test_dynamic_spec_columns_are_merged_into_product_specifications(self):
+        upload = make_workbook_upload(
+            [['NEW-SKU-4', self.brand.name, self.category.name, self.blr.name, 10, 5, '', '12mm', '28mm']],
+            extra_headers=['Bore Diameter', 'Outer Diameter'],
+        )
+        import_opening_stock_workbook(upload, self.admin)
+        product = Product.objects.get(sku='NEW-SKU-4', brand=self.brand)
+        self.assertEqual(product.specifications.get('Bore Diameter'), '12mm')
+        self.assertEqual(product.specifications.get('Outer Diameter'), '28mm')
+
+    def test_reupload_of_already_added_product_is_flagged_as_duplicate_not_error(self):
+        OpeningStock.objects.create(
+            product=self.product, branch=self.blr, quantity=50, price=10, created_by=self.admin,
+        )
+        recompute_branch_stock(self.product.id, self.blr.id)
+
+        upload = make_workbook_upload([[self.product.sku, self.brand.name, self.category.name, self.blr.name, 999, 1, '']])
+        result = import_opening_stock_workbook(upload, self.admin)
+
+        self.assertEqual(result.imported, 0)
+        self.assertEqual(len(result.duplicates), 1)
+        self.assertEqual(len(result.errors), 0)
+        self.assertIn('already', result.duplicates[0][1].lower())
+
+        # stock must be unaffected by the duplicate attempt
+        stock = BranchStock.objects.get(product=self.product, branch=self.blr)
+        self.assertEqual(stock.quantity, 50)
+
+    def test_unknown_brand_is_still_skipped_as_error_not_auto_created(self):
+        upload = make_workbook_upload([['SOME-SKU', 'TotallyMadeUpBrand', self.category.name, self.blr.name, 10, 5, '']])
+        result = import_opening_stock_workbook(upload, self.admin)
+
+        self.assertEqual(result.imported, 0)
+        self.assertEqual(len(result.errors), 1)
+        self.assertFalse(Brand.objects.filter(name='TotallyMadeUpBrand').exists())
+
+    def test_existing_product_without_opening_stock_at_branch_still_imports(self):
+        # Product exists (created in setUp) but has no opening stock at MAA yet.
+        upload = make_workbook_upload([[self.product.sku, self.brand.name, self.category.name, self.maa.name, 7, 3, '']])
+        result = import_opening_stock_workbook(upload, self.admin)
+
+        self.assertEqual(result.imported, 1)
+        self.assertEqual(result.created_products, 0)  # product already existed
+        stock = BranchStock.objects.get(product=self.product, branch=self.maa)
+        self.assertEqual(stock.quantity, 7)
+
+
+class MultiItemPurchaseTests(StockLedgerTestBase):
+    def test_single_purchase_creates_one_row_per_item_sharing_supplier_and_notes(self):
+        other_product = Product.objects.create(
+            category=self.category, brand=self.brand, name='6205-2RS', slug='6205-2rs', sku='6205-2RS',
+        )
+        self.client.force_login(self.blr_staff)
+        response = self.client.post(reverse('dashboard:stock_ledger:purchase_add'), {
+            'purchase_date': '2026-02-01', 'supplier': 'Blinkit', 'notes': 'Bulk restock order',
+            'item_product': [str(self.product.id), str(other_product.id)],
+            'item_quantity': ['20', '15'],
+            'item_price': ['10.00', '25.50'],
+        })
+        self.assertEqual(response.status_code, 302)
+        entries = StockPurchase.objects.filter(supplier='Blinkit').order_by('id')
+        self.assertEqual(entries.count(), 2)
+        self.assertTrue(all(e.notes == 'Bulk restock order' for e in entries))
+        self.assertTrue(all(e.purchase_date.isoformat() == '2026-02-01' for e in entries))
+
+        stock1 = BranchStock.objects.get(product=self.product, branch=self.blr)
+        stock2 = BranchStock.objects.get(product=other_product, branch=self.blr)
+        self.assertEqual(stock1.quantity, 20)
+        self.assertEqual(stock2.quantity, 15)
+
+    def test_incomplete_rows_are_silently_skipped(self):
+        self.client.force_login(self.blr_staff)
+        response = self.client.post(reverse('dashboard:stock_ledger:purchase_add'), {
+            'purchase_date': '2026-02-01', 'supplier': 'Blinkit', 'notes': '',
+            'item_product': [str(self.product.id), ''],
+            'item_quantity': ['5', ''],
+            'item_price': ['10.00', ''],
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(StockPurchase.objects.filter(supplier='Blinkit').count(), 1)
+
+    def test_no_items_at_all_reports_error_without_crashing(self):
+        self.client.force_login(self.blr_staff)
+        response = self.client.post(reverse('dashboard:stock_ledger:purchase_add'), {
+            'purchase_date': '2026-02-01', 'supplier': 'Blinkit', 'notes': '',
+            'item_product': [''], 'item_quantity': [''], 'item_price': [''],
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(StockPurchase.objects.count(), 0)
+
+
+class SaleAddPageTests(StockLedgerTestBase):
+    """Regression coverage for the GET-request crash: the template referenced
+    `posted` as a filter *argument* (`default:posted.x`), which — unlike a
+    plain top-level `{{ posted.x }}` — isn't protected by Django's silent
+    missing-variable handling, so it 500'd whenever `posted` wasn't in the
+    render context (i.e. every normal page load, not just the error path)."""
+    def test_add_sale_page_loads_without_posted_in_context(self):
+        self.client.force_login(self.blr_staff)
+        response = self.client.get(reverse('dashboard:stock_ledger:sale_add'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_add_purchase_page_loads_without_posted_in_context(self):
+        self.client.force_login(self.blr_staff)
+        response = self.client.get(reverse('dashboard:stock_ledger:purchase_add'))
+        self.assertEqual(response.status_code, 200)
+
+
+class MultiItemSaleTests(StockLedgerTestBase):
+    def setUp(self):
+        super().setUp()
+        self.other_product = Product.objects.create(
+            category=self.category, brand=self.brand, name='6205-2RS', slug='6205-2rs', sku='6205-2RS',
+        )
+        OpeningStock.objects.create(product=self.product, branch=self.blr, quantity=20, price=5, created_by=self.admin)
+        OpeningStock.objects.create(product=self.other_product, branch=self.blr, quantity=15, price=8, created_by=self.admin)
+        recompute_branch_stock(self.product.id, self.blr.id)
+        recompute_branch_stock(self.other_product.id, self.blr.id)
+
+    def test_single_sale_creates_one_row_per_item_sharing_customer_and_notes(self):
+        self.client.force_login(self.blr_staff)
+        response = self.client.post(reverse('dashboard:stock_ledger:sale_add'), {
+            'sale_date': '2026-03-01', 'customer': 'Walk-in', 'notes': 'Counter sale',
+            'item_product': [str(self.product.id), str(self.other_product.id)],
+            'item_quantity': ['5', '3'],
+            'item_price': ['5.00', '8.00'],
+            'item_selling_price': ['9.00', '14.00'],
+        })
+        self.assertEqual(response.status_code, 302)
+        entries = StockSale.objects.filter(customer='Walk-in').order_by('id')
+        self.assertEqual(entries.count(), 2)
+        self.assertTrue(all(e.notes == 'Counter sale' for e in entries))
+
+        stock1 = BranchStock.objects.get(product=self.product, branch=self.blr)
+        stock2 = BranchStock.objects.get(product=self.other_product, branch=self.blr)
+        self.assertEqual(stock1.quantity, 15)  # 20 - 5
+        self.assertEqual(stock2.quantity, 12)  # 15 - 3
+
+    def test_sum_of_rows_for_same_product_cannot_exceed_stock(self):
+        self.client.force_login(self.blr_staff)
+        # Two rows for the same product (20 in stock): 12 + 12 = 24 > 20, must be rejected as a whole.
+        response = self.client.post(reverse('dashboard:stock_ledger:sale_add'), {
+            'sale_date': '2026-03-01', 'customer': '', 'notes': '',
+            'item_product': [str(self.product.id), str(self.product.id)],
+            'item_quantity': ['12', '12'],
+            'item_price': ['5.00', '5.00'],
+            'item_selling_price': ['9.00', '9.00'],
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(StockSale.objects.count(), 0)
+        stock = BranchStock.objects.get(product=self.product, branch=self.blr)
+        self.assertEqual(stock.quantity, 20)  # untouched
+
+    def test_incomplete_item_row_is_silently_skipped(self):
+        self.client.force_login(self.blr_staff)
+        response = self.client.post(reverse('dashboard:stock_ledger:sale_add'), {
+            'sale_date': '2026-03-01', 'customer': '', 'notes': '',
+            'item_product': [str(self.product.id), ''],
+            'item_quantity': ['2', ''],
+            'item_price': ['5.00', ''],
+            'item_selling_price': ['9.00', ''],
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(StockSale.objects.count(), 1)

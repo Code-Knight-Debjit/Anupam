@@ -190,6 +190,10 @@ class BranchStock(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='stock_rows')
     quantity = models.IntegerField(default=0)
     low_stock_threshold = models.IntegerField(default=0)
+    location = models.CharField(
+        max_length=50, blank=True,
+        help_text="Physical rack location at this branch, e.g. C1R2. Set per-branch since the same product can sit in a different spot at each warehouse."
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
