@@ -9,84 +9,87 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.comments import Comment
 
-from products.models import Brand, Category, Product
-from .models import Branch, BranchStock, OpeningStock, OpeningStockImportBatch, new_import_batch_id
+from products.models import Category, Product, SubCategory
+from .models import Branch, BranchStock, OpeningStock
 from .services import recompute_branch_stock
 
-FIXED_HEADERS = ['ID', 'Brand', 'Category', 'Branch', 'Quantity', 'Price', 'Location']
+FIXED_HEADERS = ['Name/SKU', 'Category', 'SubCategory', 'Branch', 'Opening Quantity', 'Cost Price', 'Low Stock Threshold', 'Visible']
 HEADER_FILL = PatternFill(start_color='0E0E11', end_color='0E0E11', fill_type='solid')
 HEADER_FONT = Font(color='FFFFFF', bold=True)
 
-
-class ImportError_(ValueError):
-    pass
+TRUE_VALUES = {'true', '1', 'yes', 'y'}
+FALSE_VALUES = {'false', '0', 'no', 'n'}
 
 
 @dataclass
 class ImportResult:
-    batch: OpeningStockImportBatch | None
     imported: int = 0
     created_products: int = 0
     created_categories: int = 0
+    created_subcategories: int = 0
     skipped: int = 0
     errors: list = field(default_factory=list)      # list of (row_number, reason) — bad data, can't proceed
     duplicates: list = field(default_factory=list)   # list of (row_number, reason) — already added previously
 
 
-def build_template_workbook() -> BytesIO:
-    """One-time-setup template for bulk-uploading Opening Stock. Sheet 1 is the
-    fill-in-and-upload sheet: the fixed columns (ID, Brand, Category, Branch,
-    Quantity, Price, Location) plus any further columns, which are treated as
-    Technical Specifications — each extra header becomes a spec name and the
-    cell below it becomes that product's value for it (shown on the public
-    product page). Sheet 2 is a live reference of Brand/Category/Branch names
-    already in the system — Brand and Branch must already exist; Category is
-    created automatically if it's new, same as the Product itself."""
+def build_products_template_workbook() -> BytesIO:
+    """Template for bulk-uploading Products: one row per (Product, Branch)
+    pair. Name/SKU, Category and Branch are required; SubCategory is optional
+    (auto-created under the row's Category if it's new, same as Category
+    itself); Opening Quantity + Cost Price together create that product's
+    opening balance at that branch (skipped if it already has one there —
+    reported as a duplicate, not double-counted); Low Stock Threshold and
+    Visible apply regardless. Anything after Visible is a Technical
+    Specification: the header is the spec name, the cell below is this
+    product's value — shown on the public product page. Add as many of these
+    columns as needed; re-uploading an existing product with new spec columns
+    fills them in (existing keys are kept, new values win)."""
     wb = Workbook()
 
     ws = wb.active
-    ws.title = 'Opening Stock'
+    ws.title = 'Products'
     spec_example_headers = ['Bore Diameter', 'Outer Diameter']
     ws.append(FIXED_HEADERS + spec_example_headers)
     for cell in ws[1]:
         cell.font = HEADER_FONT
         cell.fill = HEADER_FILL
         cell.alignment = Alignment(horizontal='center')
-    ws['A1'].comment = Comment('Product SKU / part code, e.g. 6001-ZZ. If this code + Brand isn\'t in the catalogue yet, it will be created automatically.', 'Anupam Bearings')
-    ws['B1'].comment = Comment('Must exactly match an existing Brand name (case-insensitive) — see the Reference sheet. Brands are not auto-created.', 'Anupam Bearings')
-    ws['C1'].comment = Comment('Product category, e.g. Bearings. Created automatically if it doesn\'t exist yet — only applied when the product itself is new.', 'Anupam Bearings')
+    ws['A1'].comment = Comment('Product identity — type the part code and brand together as free text, e.g. "6205-2RS Timken". If this exact name isn\'t in the catalogue yet, it will be created automatically.', 'Anupam Bearings')
+    ws['B1'].comment = Comment('Product category, e.g. Bearings. Created automatically if it doesn\'t exist yet.', 'Anupam Bearings')
+    ws['C1'].comment = Comment('Optional. Created automatically under the Category above if it\'s new.', 'Anupam Bearings')
     ws['D1'].comment = Comment('Must exactly match an existing Branch name or code (case-insensitive) — see the Reference sheet.', 'Anupam Bearings')
-    ws['E1'].comment = Comment('Whole number of units (Pcs), greater than 0.', 'Anupam Bearings')
-    ws['F1'].comment = Comment('Price per unit, e.g. 45.50', 'Anupam Bearings')
-    ws['G1'].comment = Comment('Physical rack location at this branch, e.g. C1R2. Optional.', 'Anupam Bearings')
-    ws['H1'].comment = Comment('Anything after Location is a Technical Specification: the header is the spec name, the cell below is this product\'s value — shown on the public product page. Add as many of these columns as you need.', 'Anupam Bearings')
+    ws['E1'].comment = Comment('Opening balance at this branch, whole number of units (Pcs). Leave blank to skip creating an opening balance for this row.', 'Anupam Bearings')
+    ws['F1'].comment = Comment('Price per unit for the opening balance. Required if Opening Quantity is given.', 'Anupam Bearings')
+    ws['G1'].comment = Comment('Optional. Low-stock alert threshold at this branch.', 'Anupam Bearings')
+    ws['H1'].comment = Comment('Optional, defaults to TRUE. Set to FALSE to hide this product from the public site.', 'Anupam Bearings')
+    ws['I1'].comment = Comment('Anything after Visible is a Technical Specification: the header is the spec name, the cell below is this product\'s value — shown on the public product page. Add as many of these columns as you need.', 'Anupam Bearings')
 
-    ws.append(['6001-ZZ', 'TIMKEN', 'Bearings', 'Bengaluru', 100, 45.50, 'C1R2', '12mm', '28mm'])
+    ws.append(['6001-ZZ Timken', 'Bearings', 'Ball Bearings', 'Bengaluru', 100, 45.50, 10, 'TRUE', '12mm', '28mm'])
     for cell in ws[2]:
         cell.font = Font(italic=True, color='888888')
 
-    widths = [16, 14, 16, 14, 12, 12, 12, 16, 16]
+    widths = [28, 16, 16, 14, 16, 12, 18, 10, 16, 16]
     for i, width in enumerate(widths, start=1):
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = width
     ws.freeze_panes = 'A2'
 
     ref = wb.create_sheet('Reference')
-    ref.append(['Valid Brand Names', 'Valid Branch Names', 'Branch Code', 'Existing Category Names'])
+    ref.append(['Valid Branch Names', 'Branch Code', 'Existing Category Names', 'Existing SubCategory Names'])
     for cell in ref[1]:
         cell.font = HEADER_FONT
         cell.fill = HEADER_FILL
-    brand_names = list(Brand.objects.filter(is_active=True).order_by('name').values_list('name', flat=True))
     branches = list(Branch.objects.filter(is_active=True).order_by('name').values_list('name', 'code'))
     category_names = list(Category.objects.order_by('name').values_list('name', flat=True))
-    for i in range(max(len(brand_names), len(branches), len(category_names))):
+    subcategory_names = list(SubCategory.objects.order_by('name').values_list('name', flat=True))
+    for i in range(max(len(branches), len(category_names), len(subcategory_names))):
         row = [
-            brand_names[i] if i < len(brand_names) else '',
             branches[i][0] if i < len(branches) else '',
             branches[i][1] if i < len(branches) else '',
             category_names[i] if i < len(category_names) else '',
+            subcategory_names[i] if i < len(subcategory_names) else '',
         ]
         ref.append(row)
-    for i, width in enumerate([22, 18, 14, 22], start=1):
+    for i, width in enumerate([18, 14, 22, 22], start=1):
         ref.column_dimensions[ref.cell(row=1, column=i).column_letter].width = width
 
     buf = BytesIO()
@@ -106,12 +109,23 @@ def _parse_decimal(value, row_number, field_name, errors):
 def _parse_int(value, row_number, field_name, errors):
     try:
         n = int(value)
-        if n <= 0:
+        if n < 0:
             raise ValueError
         return n
     except (TypeError, ValueError):
         errors.append((row_number, f'Invalid {field_name}: {value!r}'))
         return None
+
+
+def _parse_bool(value, default=True):
+    if value in (None, ''):
+        return default
+    text = str(value).strip().lower()
+    if text in TRUE_VALUES:
+        return True
+    if text in FALSE_VALUES:
+        return False
+    return default
 
 
 def _unique_slug(model, base):
@@ -125,10 +139,6 @@ def _unique_slug(model, base):
 
 
 def _get_or_create_category(name):
-    """A Category name given explicitly in the sheet is auto-created if it
-    doesn't exist yet — unlike Brand, which is deliberately curated
-    centrally, Category is just a label and the dashboard's own quick-create
-    flow already establishes 'create it if it's new' as the norm here."""
     category = Category.objects.filter(name__iexact=name).first()
     if category:
         return category, False
@@ -136,19 +146,24 @@ def _get_or_create_category(name):
     return category, True
 
 
-def _get_or_create_product(sku, brand, category, specifications):
-    """Opening Stock is how a product's very first balance enters the system,
-    so a (SKU, Brand) that doesn't exist yet is the *expected* case, not an
-    error — it's auto-created (name defaults to the code) the same way the
-    dashboard's inline product-create combobox does. Technical Specification
-    columns are merged into the product's existing specs (new values win,
-    other existing keys are kept) whether the product is new or not, so a
-    re-upload can be used to fill in specs for an already-catalogued product."""
-    product = Product.objects.filter(sku__iexact=sku, brand=brand).first()
+def _get_or_create_subcategory(name, category):
+    subcategory = SubCategory.objects.filter(name__iexact=name, category=category).first()
+    if subcategory:
+        return subcategory, False
+    subcategory = SubCategory.objects.create(name=name, category=category, slug=_unique_slug(SubCategory, name))
+    return subcategory, True
+
+
+def _get_or_create_product(name, category, subcategory, specifications):
+    """Technical Specification columns are merged into the product's existing
+    specs (new values win, other existing keys are kept) whether the product
+    is new or not, so a re-upload can be used to fill in specs for an
+    already-catalogued product."""
+    product = Product.objects.filter(name__iexact=name).first()
     created = False
     if product is None:
         product = Product.objects.create(
-            name=sku, slug=_unique_slug(Product, sku), sku=sku, brand=brand, category=category,
+            name=name, slug=_unique_slug(Product, name), category=category, subcategory=subcategory,
         )
         created = True
 
@@ -162,18 +177,14 @@ def _get_or_create_product(sku, brand, category, specifications):
 
 
 @transaction.atomic
-def import_opening_stock_workbook(uploaded_file, user, filename=''):
-    """Parses an Opening Stock Excel workbook: ID | Brand | Category | Branch |
-    Quantity | Price | Location, followed by any number of Technical
-    Specification columns (header = spec name, cell = spec value for that
-    product). Brand and Branch must already exist (skipped + reported if not);
-    Category and the Product itself (the SKU+Brand pair) are auto-created if
-    new, since that's the expected case for a first-time opening balance.
-    Location and specs are applied even when the stock itself turns out to be
-    a duplicate, so a re-upload can still be used to fill those in. If the
-    product already has an opening stock entry at that branch, the stock part
-    of the row is treated as a duplicate re-upload — skipped and reported
-    separately from actual errors, rather than silently double-counted."""
+def import_products_workbook(uploaded_file, user, filename=''):
+    """Parses a Products bulk-upload workbook: Name/SKU | Category |
+    SubCategory | Branch | Opening Quantity | Cost Price | Low Stock
+    Threshold | Visible, one row per (Product, Branch) pair. Category and
+    SubCategory are auto-created if new; Branch must already exist (curated
+    centrally, never auto-created). A product that already has an opening
+    stock entry at that branch has the stock part of the row skipped as a
+    duplicate (not double-counted) — Threshold/Visible still apply."""
     wb = load_workbook(uploaded_file, read_only=True, data_only=True)
     ws = wb.active
 
@@ -182,8 +193,10 @@ def import_opening_stock_workbook(uploaded_file, user, filename=''):
 
     errors = []
     duplicates = []
-    valid_rows = []  # (product, branch, quantity, price, is_new_product)
+    valid_rows = []  # (product, branch, quantity, price, threshold, is_new_product)
     created_categories = 0
+    created_subcategories = 0
+    created_products_total = 0
 
     rows = list(ws.iter_rows(min_row=2, values_only=True))
     for idx, row in enumerate(rows, start=2):
@@ -193,24 +206,13 @@ def import_opening_stock_workbook(uploaded_file, user, filename=''):
         def cell(i):
             return row[i] if len(row) > i else None
 
-        sku = str(cell(0)).strip() if cell(0) is not None else ''
-        brand_name = str(cell(1)).strip() if cell(1) is not None else ''
-        category_name = str(cell(2)).strip() if cell(2) is not None else ''
+        name = str(cell(0)).strip() if cell(0) is not None else ''
+        category_name = str(cell(1)).strip() if cell(1) is not None else ''
+        subcategory_name = str(cell(2)).strip() if cell(2) is not None else ''
         branch_name = str(cell(3)).strip() if cell(3) is not None else ''
-        location = str(cell(6)).strip() if cell(6) is not None else ''
 
-        if not sku or not brand_name or not category_name or not branch_name:
-            errors.append((idx, 'Missing ID, Brand, Category, or Branch.'))
-            continue
-
-        quantity = _parse_int(cell(4), idx, 'Quantity', errors)
-        price = _parse_decimal(cell(5), idx, 'Price', errors)
-        if quantity is None or price is None:
-            continue
-
-        brand = Brand.objects.filter(name__iexact=brand_name, is_active=True).first()
-        if brand is None:
-            errors.append((idx, f'No active brand found matching "{brand_name}". Add it under Brands first.'))
+        if not name or not category_name or not branch_name:
+            errors.append((idx, 'Missing Name/SKU, Category, or Branch.'))
             continue
 
         branch = Branch.objects.filter(name__iexact=branch_name, is_active=True).first()
@@ -220,9 +222,27 @@ def import_opening_stock_workbook(uploaded_file, user, filename=''):
             errors.append((idx, f'No active branch found matching "{branch_name}".'))
             continue
 
-        category, category_created = _get_or_create_category(category_name)
-        if category_created:
-            created_categories += 1
+        quantity = None
+        price = None
+        if cell(4) not in (None, ''):
+            quantity = _parse_int(cell(4), idx, 'Opening Quantity', errors)
+            if quantity is not None and quantity > 0:
+                if cell(5) in (None, ''):
+                    errors.append((idx, 'Cost Price is required when Opening Quantity is given.'))
+                    continue
+                price = _parse_decimal(cell(5), idx, 'Cost Price', errors)
+                if price is None:
+                    continue
+            else:
+                quantity = None
+
+        threshold = None
+        if cell(6) not in (None, ''):
+            threshold = _parse_int(cell(6), idx, 'Low Stock Threshold', errors)
+            if threshold is None:
+                continue
+
+        is_visible = _parse_bool(cell(7), default=True)
 
         specifications = {}
         for spec_index, spec_name in enumerate(spec_names):
@@ -230,64 +250,58 @@ def import_opening_stock_workbook(uploaded_file, user, filename=''):
             if value not in (None, ''):
                 specifications[spec_name] = str(value).strip()
 
-        product, is_new_product = _get_or_create_product(sku, brand, category, specifications)
+        category, category_created = _get_or_create_category(category_name)
+        if category_created:
+            created_categories += 1
 
-        if location:
+        subcategory = None
+        if subcategory_name:
+            subcategory, subcategory_created = _get_or_create_subcategory(subcategory_name, category)
+            if subcategory_created:
+                created_subcategories += 1
+
+        product, is_new_product = _get_or_create_product(name, category, subcategory, specifications)
+        if is_new_product:
+            created_products_total += 1
+        if product.is_visible != is_visible:
+            product.is_visible = is_visible
+            product.save(update_fields=['is_visible'])
+
+        if quantity and price is not None:
+            if OpeningStock.objects.filter(product=product, branch=branch, is_deleted=False).exists():
+                duplicates.append((idx, f'"{name}" at {branch.name} already has an opening stock — skipped to avoid double-counting.'))
+                if threshold is not None:
+                    BranchStock.objects.update_or_create(
+                        product=product, branch=branch, defaults={'low_stock_threshold': threshold},
+                    )
+                continue
+            valid_rows.append((product, branch, quantity, price, threshold))
+        elif threshold is not None:
             BranchStock.objects.update_or_create(
-                product=product, branch=branch, defaults={'location': location},
+                product=product, branch=branch, defaults={'low_stock_threshold': threshold},
             )
 
-        if not is_new_product and OpeningStock.objects.filter(
-            product=product, branch=branch, is_deleted=False
-        ).exists():
-            duplicates.append((idx, f'"{sku}" ({brand.name}) at {branch.name} was already given an opening stock — skipped to avoid double-counting.'))
-            continue
-
-        valid_rows.append((product, branch, quantity, price, is_new_product))
-
     result = ImportResult(
-        batch=None, skipped=len(errors) + len(duplicates), errors=errors, duplicates=duplicates,
-        created_categories=created_categories,
-    )
-    if not valid_rows:
-        return result
-
-    batch_id = new_import_batch_id()
-    batch = OpeningStockImportBatch.objects.create(
-        batch_id=batch_id, uploaded_by=user, filename=filename,
-        row_count=len(valid_rows), skipped_count=len(errors) + len(duplicates),
+        skipped=len(errors) + len(duplicates), errors=errors, duplicates=duplicates,
+        created_categories=created_categories, created_subcategories=created_subcategories,
+        created_products=created_products_total,
     )
 
     affected_pairs = set()
-    created_products = 0
-    for product, branch, quantity, price, is_new_product in valid_rows:
+    for product, branch, quantity, price, threshold in valid_rows:
         OpeningStock.objects.create(
             product=product, branch=branch, quantity=quantity, price=price,
-            effective_date=timezone.localdate(),
-            created_by=user, import_batch=batch_id,
+            effective_date=timezone.localdate(), created_by=user,
         )
         affected_pairs.add((product.id, branch.id))
-        if is_new_product:
-            created_products += 1
+        result.imported += 1
 
     for product_id, branch_id in affected_pairs:
         recompute_branch_stock(product_id, branch_id)
 
-    result.batch = batch
-    result.imported = len(valid_rows)
-    result.created_products = created_products
+    if valid_rows:
+        for product, branch, quantity, price, threshold in valid_rows:
+            if threshold is not None:
+                BranchStock.objects.filter(product=product, branch=branch).update(low_stock_threshold=threshold)
+
     return result
-
-
-@transaction.atomic
-def delete_import_batch(batch: OpeningStockImportBatch, user):
-    rows = OpeningStock.objects.filter(import_batch=batch.batch_id, is_deleted=False)
-    affected_pairs = set(rows.values_list('product_id', 'branch_id'))
-    for row in rows:
-        row.soft_delete(user)
-    for product_id, branch_id in affected_pairs:
-        recompute_branch_stock(product_id, branch_id)
-    batch.is_deleted = True
-    batch.deleted_by = user
-    batch.deleted_at = timezone.now()
-    batch.save(update_fields=['is_deleted', 'deleted_by', 'deleted_at'])

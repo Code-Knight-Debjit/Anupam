@@ -493,10 +493,6 @@
       <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
       Overview
     </a>
-    <a href="{% url 'dashboard:stock_ledger:opening_stock_list' %}" class="nav-item {% block nav_stock_opening %}{% endblock %}">
-      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
-      Opening Stock
-    </a>
     <a href="{% url 'dashboard:stock_ledger:purchase_list' %}" class="nav-item {% block nav_stock_purchase %}{% endblock %}">
       <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m-10 4a1 1 0 100 2 1 1 0 000-2zm10 0a1 1 0 100 2 1 1 0 000-2z"/></svg>
       Purchases
@@ -527,9 +523,9 @@
       <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
       Products
     </a>
-    <a href="{% url 'dashboard:brands' %}" class="nav-item {% block nav_brands %}{% endblock %}">
-      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5.586a1 1 0 01.707.293l7.414 7.414a1 1 0 010 1.414l-8.586 8.586a1 1 0 01-1.414 0l-7.414-7.414A1 1 0 013 12.586V7a4 4 0 014-4z"/></svg>
-      Brands
+    <a href="{% url 'dashboard:subcategories' %}" class="nav-item {% block nav_subcats %}{% endblock %}">
+      <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+      Sub Categories
     </a>
   </div>
 
@@ -683,23 +679,6 @@
   </div>
 </div>
 {% endif %}
-
-<!-- Product Quick-Create Modal (shared by all product comboboxes) -->
-<div class="dash-modal-overlay" id="product-create-modal">
-  <div class="dash-modal" style="max-width:400px;">
-    <button class="dash-modal-close" onclick="closeProductCreateModal()">✕</button>
-    <div class="dash-modal-title">Which brand is "<span id="pc-code-display"></span>"?</div>
-    <p style="font-size:0.8rem;color:var(--muted);margin-top:-0.75rem;margin-bottom:1.25rem;">This code isn't in the catalogue yet. Pick or type the brand and it'll be added right away.</p>
-    <input type="hidden" id="pc-code"/>
-    <div class="form-group">
-      <div class="brand-combobox">
-        <input type="text" class="form-input brand-combobox-input" id="pc-brand-input" placeholder="Type a brand name…" autocomplete="off" autofocus/>
-        <input type="hidden" class="brand-combobox-value" id="pc-brand"/>
-        <div class="product-combobox-results"></div>
-      </div>
-    </div>
-  </div>
-</div>
 
 <script>
 // ── SIDEBAR TOGGLE ──
@@ -887,7 +866,6 @@ function getCsrf() {
 //          <div class="product-combobox-results"></div>
 //        </div>
 let productComboboxDebounce = null;
-let activeProductCombobox = null;
 
 function productComboboxBranch(box) {
   const branchSelectSel = box.dataset.branchSelect;
@@ -919,9 +897,7 @@ function initProductComboboxes() {
         if (hidden.value) return;
         const typed = input.value.trim();
         if (!typed) return;
-        const exact = (box._lastProductMatches || []).find(m =>
-          m.label.toLowerCase() === typed.toLowerCase() || (m.sku && m.sku.toLowerCase() === typed.toLowerCase())
-        );
+        const exact = (box._lastProductMatches || []).find(m => m.label.toLowerCase() === typed.toLowerCase());
         if (exact) {
           input.value = exact.label;
           hidden.value = exact.id;
@@ -951,13 +927,9 @@ function wireComboboxFormGuard(box) {
       const val = b.querySelector('.product-combobox-value');
       return val.hasAttribute('required') && !val.value;
     });
-    const missingBrand = [...form.querySelectorAll('.brand-combobox')].some(b => {
-      const val = b.querySelector('.brand-combobox-value');
-      return val.hasAttribute('required') && !val.value;
-    });
-    if (missingProduct || missingBrand) {
+    if (missingProduct) {
       e.preventDefault();
-      showToast(missingProduct ? 'Select or create a product first.' : 'Select or create a brand first.', 'error');
+      showToast('Select or create a product first.', 'error');
     }
   });
 }
@@ -980,7 +952,7 @@ function renderProductComboboxResults(box, q, matches) {
   const results = box.querySelector('.product-combobox-results');
   const creatable = box.dataset.creatable === 'true';
   const typed = q.trim().toLowerCase();
-  const exactMatch = matches.find(m => m.label.toLowerCase() === typed || (m.sku && m.sku.toLowerCase() === typed));
+  const exactMatch = matches.find(m => m.label.toLowerCase() === typed);
   let html = '';
   matches.forEach(m => {
     html += `<div class="product-combobox-item" data-id="${m.id}" data-label="${m.label.replace(/"/g, '&quot;')}">${m.label}</div>`;
@@ -1003,154 +975,34 @@ function renderProductComboboxResults(box, q, matches) {
   });
   const createEl = results.querySelector('.product-combobox-item[data-create]');
   if (createEl) {
-    createEl.addEventListener('click', () => openProductCreateModal(box, createEl.dataset.create));
+    createEl.addEventListener('click', () => createProductInline(box, createEl.dataset.create));
   }
 }
 
 document.addEventListener('click', e => {
   document.querySelectorAll('.product-combobox-results.open').forEach(r => {
-    if (!r.closest('.product-combobox, .brand-combobox').contains(e.target)) r.classList.remove('open');
+    if (!r.closest('.product-combobox').contains(e.target)) r.classList.remove('open');
   });
 });
 
-// ── BRAND COMBOBOX ──
-// Usage: <div class="brand-combobox">
-//          <input class="brand-combobox-input" .../>
-//          <input type="hidden" name="brand" class="brand-combobox-value"/>
-//          <div class="product-combobox-results"></div>   <!-- shared dropdown styling -->
-//        </div>
-let brandComboboxDebounce = null;
-
-function initBrandComboboxes() {
-  document.querySelectorAll('.brand-combobox').forEach(box => {
-    const input = box.querySelector('.brand-combobox-input');
-    const hidden = box.querySelector('.brand-combobox-value');
-    const results = box.querySelector('.product-combobox-results');
-    if (!input || box.dataset.wired) return;
-    box.dataset.wired = '1';
-
-    input.addEventListener('input', () => {
-      hidden.value = '';
-      clearTimeout(brandComboboxDebounce);
-      brandComboboxDebounce = setTimeout(() => searchBrandCombobox(box, input.value.trim()), 250);
-    });
-    // Show the existing brand list immediately on focus, even before typing —
-    // so it behaves like a normal dropdown, not something that only reacts once
-    // you start typing.
-    input.addEventListener('focus', () => searchBrandCombobox(box, input.value.trim()));
-    input.addEventListener('blur', () => {
-      // Clicking a dropdown item fires blur first; delay so that click can
-      // register and set the hidden value before we check it.
-      setTimeout(() => {
-        if (hidden.value) return;
-        const typed = input.value.trim();
-        if (!typed) return;
-        const exact = (box._lastBrandMatches || []).find(m => m.name.toLowerCase() === typed.toLowerCase());
-        if (exact) {
-          input.value = exact.name;
-          hidden.value = exact.id;
-        }
-      }, 200);
-    });
-
-    wireComboboxFormGuard(box);
-  });
-}
-
-async function searchBrandCombobox(box, q) {
-  const res = await fetch(`{% url 'dashboard:brand_search' %}?q=${encodeURIComponent(q)}`);
-  const data = await res.json();
-  box._lastBrandMatches = data.results || [];
-  renderBrandComboboxResults(box, q, box._lastBrandMatches);
-}
-
-function renderBrandComboboxResults(box, q, matches) {
-  const results = box.querySelector('.product-combobox-results');
-  const exactMatch = matches.find(m => m.name.toLowerCase() === q.trim().toLowerCase());
-  let html = '';
-  matches.forEach(m => {
-    html += `<div class="product-combobox-item" data-id="${m.id}" data-name="${m.name.replace(/"/g, '&quot;')}">${m.name}</div>`;
-  });
-  if (!matches.length) html += `<div class="product-combobox-empty">${q ? 'No matching brand.' : 'No brands yet.'}</div>`;
-  // Only offer to create a new brand once the typed text doesn't already
-  // match an existing one exactly — otherwise both options being shown for
-  // the same brand invites picking the wrong one.
-  if (q && !exactMatch) {
-    html += `<div class="product-combobox-item create-new" data-create-brand="${q.replace(/"/g, '&quot;')}">+ Create "${q}" as new brand</div>`;
-  }
-  results.innerHTML = html;
-  results.classList.add('open');
-
-  results.querySelectorAll('.product-combobox-item[data-id]').forEach(el => {
-    el.addEventListener('click', () => {
-      box.querySelector('.brand-combobox-input').value = el.dataset.name;
-      box.querySelector('.brand-combobox-value').value = el.dataset.id;
-      results.classList.remove('open');
-      if (box.closest('#product-create-modal')) submitProductCreate();
-    });
-  });
-  const createEl = results.querySelector('[data-create-brand]');
-  if (createEl) {
-    createEl.addEventListener('click', () => createBrandInline(box, createEl.dataset.createBrand));
-  }
-}
-
-async function createBrandInline(box, name) {
-  const res = await fetch('{% url "dashboard:brand_quick_create" %}', {
+async function createProductInline(box, name) {
+  const res = await fetch('{% url "dashboard:stock_ledger:product_quick_create" %}', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': getCsrf() },
     body: `name=${encodeURIComponent(name)}`,
   });
   const data = await res.json();
   if (data.success) {
-    box.querySelector('.brand-combobox-input').value = data.brand.name;
-    box.querySelector('.brand-combobox-value').value = data.brand.id;
+    box.querySelector('.product-combobox-input').value = data.product.label;
+    box.querySelector('.product-combobox-value').value = data.product.id;
     box.querySelector('.product-combobox-results').classList.remove('open');
-    if (box.closest('#product-create-modal')) {
-      submitProductCreate();
-    } else {
-      showToast('Brand ready.', 'success');
-    }
-  } else {
-    showToast(data.message || 'Could not create brand.', 'error');
-  }
-}
-
-function openProductCreateModal(box, code) {
-  activeProductCombobox = box;
-  document.getElementById('pc-code').value = code;
-  document.getElementById('pc-code-display').textContent = code;
-  document.getElementById('pc-brand').value = '';
-  document.getElementById('pc-brand-input').value = '';
-  document.getElementById('product-create-modal').classList.add('open');
-  document.getElementById('pc-brand-input').focus();
-}
-function closeProductCreateModal() {
-  document.getElementById('product-create-modal').classList.remove('open');
-  activeProductCombobox = null;
-}
-async function submitProductCreate() {
-  const code = document.getElementById('pc-code').value;
-  const brand = document.getElementById('pc-brand').value;
-  if (!brand || !activeProductCombobox) return;
-
-  const res = await fetch('{% url "dashboard:stock_ledger:product_quick_create" %}', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': getCsrf() },
-    body: `code=${encodeURIComponent(code)}&brand=${encodeURIComponent(brand)}`,
-  });
-  const data = await res.json();
-  if (data.success && activeProductCombobox) {
-    activeProductCombobox.querySelector('.product-combobox-input').value = data.product.label;
-    activeProductCombobox.querySelector('.product-combobox-value').value = data.product.id;
     showToast('Product added.', 'success');
-    closeProductCreateModal();
   } else {
     showToast(data.message || 'Could not create product.', 'error');
   }
 }
+
 initProductComboboxes();
-initBrandComboboxes();
 
 // Run on load and poll every 30s
 fetchNotifications();

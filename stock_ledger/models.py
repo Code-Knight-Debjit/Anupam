@@ -67,7 +67,8 @@ class AuditModel(models.Model):
 
 
 class OpeningStock(AuditModel):
-    product = models.ForeignKey('products.Product', on_delete=models.PROTECT, related_name='opening_stock_entries')
+    product = models.ForeignKey('products.Product', on_delete=models.SET_NULL, null=True, related_name='opening_stock_entries')
+    product_name_snapshot = models.CharField(max_length=300, blank=True)
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='opening_stock_entries')
     quantity = models.PositiveIntegerField()
     price = models.DecimalField(max_digits=12, decimal_places=2)
@@ -80,15 +81,18 @@ class OpeningStock(AuditModel):
         verbose_name_plural = 'Opening stock entries'
 
     def save(self, *args, **kwargs):
+        if not self.product_name_snapshot and self.product_id:
+            self.product_name_snapshot = self.product.name
         self.total_price = Decimal(str(self.price)) * int(self.quantity)
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f'Opening: {self.product} @ {self.branch} ({self.quantity})'
+        return f'Opening: {self.product_name_snapshot or self.product} @ {self.branch} ({self.quantity})'
 
 
 class StockPurchase(AuditModel):
-    product = models.ForeignKey('products.Product', on_delete=models.PROTECT, related_name='purchase_entries')
+    product = models.ForeignKey('products.Product', on_delete=models.SET_NULL, null=True, related_name='purchase_entries')
+    product_name_snapshot = models.CharField(max_length=300, blank=True)
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='purchase_entries')
     quantity = models.PositiveIntegerField()
     price = models.DecimalField(max_digits=12, decimal_places=2)
@@ -101,15 +105,18 @@ class StockPurchase(AuditModel):
         ordering = ['-purchase_date', '-created_at']
 
     def save(self, *args, **kwargs):
+        if not self.product_name_snapshot and self.product_id:
+            self.product_name_snapshot = self.product.name
         self.total_price = Decimal(str(self.price)) * int(self.quantity)
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f'Purchase: {self.product} @ {self.branch} ({self.quantity})'
+        return f'Purchase: {self.product_name_snapshot or self.product} @ {self.branch} ({self.quantity})'
 
 
 class StockSale(AuditModel):
-    product = models.ForeignKey('products.Product', on_delete=models.PROTECT, related_name='sale_entries')
+    product = models.ForeignKey('products.Product', on_delete=models.SET_NULL, null=True, related_name='sale_entries')
+    product_name_snapshot = models.CharField(max_length=300, blank=True)
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='sale_entries')
     quantity = models.PositiveIntegerField()
     price = models.DecimalField(max_digits=12, decimal_places=2, help_text='Cost price per unit')
@@ -125,6 +132,8 @@ class StockSale(AuditModel):
         ordering = ['-sale_date', '-created_at']
 
     def save(self, *args, **kwargs):
+        if not self.product_name_snapshot and self.product_id:
+            self.product_name_snapshot = self.product.name
         price = Decimal(str(self.price))
         selling_price = Decimal(str(self.selling_price))
         quantity = int(self.quantity)
@@ -134,7 +143,7 @@ class StockSale(AuditModel):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f'Sale: {self.product} @ {self.branch} ({self.quantity})'
+        return f'Sale: {self.product_name_snapshot or self.product} @ {self.branch} ({self.quantity})'
 
 
 class StockTransfer(models.Model):
@@ -153,7 +162,8 @@ class StockTransfer(models.Model):
         (CANCELLED, 'Cancelled'),
     ]
 
-    product = models.ForeignKey('products.Product', on_delete=models.PROTECT, related_name='transfers')
+    product = models.ForeignKey('products.Product', on_delete=models.SET_NULL, null=True, related_name='transfers')
+    product_name_snapshot = models.CharField(max_length=300, blank=True)
     from_branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='transfers_out')
     to_branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='transfers_in')
     quantity = models.PositiveIntegerField()
@@ -181,8 +191,14 @@ class StockTransfer(models.Model):
     def remaining_quantity(self):
         return self.quantity - self.received_quantity
 
+    def save(self, *args, **kwargs):
+        if not self.product_name_snapshot and self.product_id:
+            self.product_name_snapshot = self.product.name
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f'Transfer #{self.pk}: {self.product} {self.from_branch}→{self.to_branch} ({self.quantity}) [{self.status}]'
+        name = self.product_name_snapshot or self.product
+        return f'Transfer #{self.pk}: {name} {self.from_branch}→{self.to_branch} ({self.quantity}) [{self.status}]'
 
 
 class BranchStock(models.Model):
@@ -205,22 +221,8 @@ class BranchStock(models.Model):
 
 
 def new_import_batch_id():
+    """Kept only because migration 0001_initial references this callable by
+    import path as OpeningStockImportBatch.batch_id's default — removing it
+    would break replaying historical migrations even though that model (and
+    its batch-tracking feature) no longer exists."""
     return uuid.uuid4().hex[:16]
-
-
-class OpeningStockImportBatch(models.Model):
-    batch_id = models.CharField(max_length=64, unique=True, default=new_import_batch_id)
-    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+')
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-    row_count = models.PositiveIntegerField(default=0)
-    skipped_count = models.PositiveIntegerField(default=0)
-    filename = models.CharField(max_length=255, blank=True)
-    is_deleted = models.BooleanField(default=False)
-    deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+', null=True, blank=True)
-    deleted_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        ordering = ['-uploaded_at']
-
-    def __str__(self):
-        return f'Import {self.batch_id} ({self.row_count} rows)'

@@ -14,16 +14,6 @@ urlpatterns = [
     # History
     path('history/', views.history, name='history'),
 
-    # Opening stock
-    path('opening/', views.opening_stock_list, name='opening_stock_list'),
-    path('opening/add/', views.opening_stock_add, name='opening_stock_add'),
-    path('opening/<int:pk>/edit/', views.opening_stock_edit, name='opening_stock_edit'),
-    path('opening/<int:pk>/delete/', views.opening_stock_delete, name='opening_stock_delete'),
-    path('opening/import/', views.opening_stock_import, name='opening_stock_import'),
-    path('opening/import/template/', views.opening_stock_import_template, name='opening_stock_import_template'),
-    path('opening/import/batches/', views.import_batches, name='import_batches'),
-    path('opening/import/batches/<int:pk>/delete/', views.import_batch_delete, name='import_batch_delete'),
-
     # Purchases
     path('purchases/', views.purchase_list, name='purchase_list'),
     path('purchases/add/', views.purchase_add, name='purchase_add'),
@@ -58,8 +48,9 @@ urlpatterns = [
     path('users/<int:pk>/toggle-active/', views.user_toggle_active, name='user_toggle_active'),
     path('users/<int:pk>/reset-password/', views.user_reset_password, name='user_reset_password'),
 
-    # Threshold
+    # Threshold / BranchStock row removal
     path('branch-stock/<int:pk>/threshold/', views.branch_stock_set_threshold, name='set_threshold'),
+    path('branch-stock/<int:pk>/delete/', views.branch_stock_delete, name='branch_stock_delete'),
 
     # Exports
     path('export/stock/<str:fmt>/', views.export_stock, name='export_stock'),

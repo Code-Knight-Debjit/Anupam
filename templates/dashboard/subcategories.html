@@ -1,0 +1,57 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Sub Categories{% endblock %}
+{% block page_title %}Sub Categories{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ Catalogue</span>{% endblock %}
+{% block nav_subcats %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>Sub Categories</h1>
+    <p>{{ subcategories|length }} sub categor{{ subcategories|length|pluralize:"y,ies" }}</p>
+  </div>
+  <a href="{% url 'dashboard:subcategory_add' %}" class="btn btn-primary">+ Add Sub Category</a>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Sub Category</th>
+        <th>Category</th>
+        <th>Products</th>
+        <th>Order</th>
+        <th style="text-align:right;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sub in subcategories %}
+      <tr id="subcat-row-{{ sub.pk }}">
+        <td class="td-name">{{ sub.name }}</td>
+        <td>
+          <span class="pill" style="background:rgba(255,106,0,0.1);color:var(--orange-dk);">{{ sub.category.name }}</span>
+        </td>
+        <td>
+          <span class="pill" style="background:rgba(59,130,246,0.1);color:#1d4ed8;">
+            {{ sub.product_count }} product{{ sub.product_count|pluralize }}
+          </span>
+        </td>
+        <td style="color:var(--muted);font-size:0.875rem;">{{ sub.order }}</td>
+        <td style="text-align:right;">
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.4rem;">
+            <a href="{% url 'dashboard:subcategory_edit' sub.pk %}" class="btn btn-ghost btn-sm btn-icon" title="Edit">✏️</a>
+            <button
+              class="btn btn-danger btn-sm btn-icon"
+              title="Delete"
+              onclick="confirmDelete('{% url 'dashboard:subcategory_delete' sub.pk %}', '{{ sub.name|escapejs }}', () => document.getElementById('subcat-row-{{ sub.pk }}').remove())"
+            >🗑</button>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon">📂</div><h3>No sub categories</h3><p><a href="{% url 'dashboard:subcategory_add' %}">Add your first sub category</a></p></div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

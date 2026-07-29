@@ -11,11 +11,10 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 from django.utils.text import slugify
 
-from products.models import Brand, Category, Product
-from .excel_import import build_template_workbook, import_opening_stock_workbook, delete_import_batch
+from products.models import Category, Product
 from .exports import export_branch_stock, export_ledger_history
 from .models import (
-    Branch, BranchStock, OpeningStock, OpeningStockImportBatch, StockPurchase,
+    Branch, BranchStock, OpeningStock, StockPurchase,
     StockSale, StockTransfer, UserProfile,
 )
 from .permissions import require_branch_match, role_required
@@ -55,22 +54,16 @@ def product_search(request):
     q = request.GET.get('q', '').strip()
     in_stock_branch = request.GET.get('in_stock_branch', '')
 
-    qs = Product.objects.select_related('brand')
+    qs = Product.objects.all()
     if q:
-        qs = qs.filter(Q(sku__icontains=q) | Q(name__icontains=q))
+        qs = qs.filter(name__icontains=q)
     if in_stock_branch:
         qs = qs.filter(
             branch_stocks__branch_id=in_stock_branch, branch_stocks__quantity__gt=0
         )
-    qs = qs.order_by('sku')[:20]
+    qs = qs.order_by('name')[:20]
 
-    results = [{
-        'id': p.id,
-        'sku': p.sku,
-        'name': p.name,
-        'brand': p.brand.name if p.brand_id else '',
-        'label': f'{p.sku} — {p.name} ({p.brand.name if p.brand_id else "No Brand"})',
-    } for p in qs]
+    results = [{'id': p.id, 'name': p.name, 'label': p.name} for p in qs]
     return JsonResponse({'results': results})
 
 
@@ -78,33 +71,25 @@ def product_search(request):
 @staff_required
 @role_required(UserProfile.ADMIN, UserProfile.BRANCH_STAFF)
 def product_quick_create(request):
-    code = request.POST.get('code', '').strip()
-    brand_id = request.POST.get('brand')
-    name = request.POST.get('name', '').strip() or code
+    name = request.POST.get('name', '').strip()
 
-    if not code or not brand_id:
-        return JsonResponse({'success': False, 'message': 'Code and Brand are required.'})
+    if not name:
+        return JsonResponse({'success': False, 'message': 'Enter a product name/SKU.'})
 
-    existing = Product.objects.filter(sku__iexact=code, brand_id=brand_id).select_related('brand').first()
+    existing = Product.objects.filter(name__iexact=name).first()
     if existing:
-        return JsonResponse({'success': True, 'product': {
-            'id': existing.id, 'label': f'{existing.sku} — {existing.name} ({existing.brand.name})',
-        }})
+        return JsonResponse({'success': True, 'product': {'id': existing.id, 'label': existing.name}})
 
     category, _ = Category.objects.get_or_create(slug='uncategorized', defaults={'name': 'Uncategorized'})
-    slug_base = slugify(name) or slugify(code) or 'product'
+    slug_base = slugify(name) or 'product'
     slug = slug_base
     i = 1
     while Product.objects.filter(slug=slug).exists():
         slug = f'{slug_base}-{i}'
         i += 1
 
-    product = Product.objects.create(
-        name=name, slug=slug, sku=code, brand_id=brand_id, category=category,
-    )
-    return JsonResponse({'success': True, 'product': {
-        'id': product.id, 'label': f'{product.sku} — {product.name} ({product.brand.name})',
-    }})
+    product = Product.objects.create(name=name, slug=slug, category=category)
+    return JsonResponse({'success': True, 'product': {'id': product.id, 'label': product.name}})
 
 
 # ── OVERVIEW ──────────────────────────────────────────────
@@ -115,9 +100,10 @@ def overview(request):
     profile = _profile(request)
     branch_filter = request.GET.get('branch', '')
     product_filter = request.GET.get('product', '')
-    brand_filter = request.GET.get('brand', '')
+    q = request.GET.get('q', '').strip()
+    show_zero = request.GET.get('show_zero') == '1'
 
-    rows_qs = BranchStock.objects.select_related('product', 'product__brand', 'branch')
+    rows_qs = BranchStock.objects.select_related('product', 'branch')
     rows_qs = rows_qs.filter(branch_id__in=visible_branches(profile).values_list('id', flat=True))
 
     if profile.role == UserProfile.BRANCH_STAFF:
@@ -127,8 +113,10 @@ def overview(request):
         rows_qs = rows_qs.filter(branch_id=branch_filter)
     if product_filter:
         rows_qs = rows_qs.filter(product_id=product_filter)
-    if brand_filter:
-        rows_qs = rows_qs.filter(product__brand_id=brand_filter)
+    if q:
+        rows_qs = rows_qs.filter(product__name__icontains=q)
+    if not show_zero:
+        rows_qs = rows_qs.exclude(quantity=0)
 
     include_money = _is_admin(profile)
     grouped = profile.role == UserProfile.VIEWER and not branch_filter
@@ -137,9 +125,9 @@ def overview(request):
     if grouped:
         totals = {}
         for row in rows_qs:
-            key = (row.product_id, row.product.brand_id)
+            key = row.product_id
             if key not in totals:
-                totals[key] = {'product': row.product, 'brand': row.product.brand, 'quantity': 0}
+                totals[key] = {'product': row.product, 'quantity': 0}
             totals[key]['quantity'] += row.quantity
         display_rows = sorted(totals.values(), key=lambda r: r['product'].name)
     else:
@@ -177,100 +165,13 @@ def overview(request):
         'stats': stats,
         'profit_data': profit_data,
         'branches': _branch_choices(profile),
-        'brands': Brand.objects.filter(is_active=True),
         'branch_filter': branch_filter,
         'product_filter': product_filter,
-        'brand_filter': brand_filter,
+        'q': q,
+        'show_zero': show_zero,
         'is_admin': _is_admin(profile),
         'is_branch_staff': profile.role == UserProfile.BRANCH_STAFF,
     })
-
-
-# ── OPENING STOCK ─────────────────────────────────────────
-@login_required(login_url='/dashboard/login/')
-@staff_required
-@role_required(UserProfile.ADMIN, UserProfile.BRANCH_STAFF, UserProfile.VIEWER)
-def opening_stock_list(request):
-    profile = _profile(request)
-    qs = OpeningStock.objects.select_related('product', 'branch', 'created_by', 'updated_by').filter(is_deleted=False)
-    qs = qs.filter(branch_id__in=visible_branches(profile).values_list('id', flat=True))
-    branch_filter = request.GET.get('branch', '')
-    if profile.role == UserProfile.BRANCH_STAFF:
-        branch_filter = str(profile.branch_id)
-    if branch_filter:
-        qs = qs.filter(branch_id=branch_filter)
-    qs = qs.order_by('-effective_date', '-created_at')
-
-    paginator = Paginator(qs, 20)
-    page_obj = paginator.get_page(request.GET.get('page', 1))
-    return render(request, 'dashboard/stock_opening_list.html', {
-        'entries': page_obj.object_list,
-        'page_obj': page_obj,
-        'branches': _branch_choices(profile),
-        'branch_filter': branch_filter,
-        'include_money': _is_admin(profile),
-        'can_mutate': profile.role in (UserProfile.ADMIN, UserProfile.BRANCH_STAFF),
-        'is_admin': _is_admin(profile),
-    })
-
-
-@login_required(login_url='/dashboard/login/')
-@staff_required
-@role_required(UserProfile.ADMIN, UserProfile.BRANCH_STAFF)
-def opening_stock_add(request):
-    profile = _profile(request)
-    if request.method == 'POST':
-        branch_id = request.POST.get('branch') if _is_admin(profile) else profile.branch_id
-        require_branch_match(profile, int(branch_id))
-        entry = OpeningStock.objects.create(
-            product_id=request.POST.get('product'),
-            branch_id=branch_id,
-            quantity=int(request.POST.get('quantity', 0) or 0),
-            price=request.POST.get('price', '0'),
-            effective_date=_parse_date(request.POST.get('effective_date'), timezone.localdate()),
-            created_by=request.user,
-        )
-        recompute_branch_stock(entry.product_id, entry.branch_id)
-        return redirect('dashboard:stock_ledger:opening_stock_list')
-    return render(request, 'dashboard/stock_opening_form.html', {
-        'entry': None,
-        'branches': _branch_choices(profile),
-        'is_admin': _is_admin(profile),
-    })
-
-
-@login_required(login_url='/dashboard/login/')
-@staff_required
-@role_required(UserProfile.ADMIN, UserProfile.BRANCH_STAFF)
-def opening_stock_edit(request, pk):
-    profile = _profile(request)
-    entry = get_object_or_404(OpeningStock, pk=pk, is_deleted=False)
-    require_branch_match(profile, entry.branch_id)
-    if request.method == 'POST':
-        entry.quantity = int(request.POST.get('quantity', entry.quantity) or entry.quantity)
-        entry.price = request.POST.get('price', entry.price)
-        entry.effective_date = _parse_date(request.POST.get('effective_date'), entry.effective_date)
-        entry.updated_by = request.user
-        entry.save()
-        recompute_branch_stock(entry.product_id, entry.branch_id)
-        return redirect('dashboard:stock_ledger:opening_stock_list')
-    return render(request, 'dashboard/stock_opening_form.html', {
-        'entry': entry,
-        'branches': _branch_choices(profile),
-        'is_admin': _is_admin(profile),
-    })
-
-
-@login_required(login_url='/dashboard/login/')
-@staff_required
-@role_required(UserProfile.ADMIN, UserProfile.BRANCH_STAFF)
-def opening_stock_delete(request, pk):
-    profile = _profile(request)
-    entry = get_object_or_404(OpeningStock, pk=pk, is_deleted=False)
-    require_branch_match(profile, entry.branch_id)
-    entry.soft_delete(request.user)
-    recompute_branch_stock(entry.product_id, entry.branch_id)
-    return JsonResponse({'success': True})
 
 
 # ── PURCHASES ─────────────────────────────────────────────
@@ -282,10 +183,13 @@ def purchase_list(request):
     qs = StockPurchase.objects.select_related('product', 'branch', 'created_by', 'updated_by').filter(is_deleted=False)
     qs = qs.filter(branch_id__in=visible_branches(profile).values_list('id', flat=True))
     branch_filter = request.GET.get('branch', '')
+    q = request.GET.get('q', '').strip()
     if profile.role == UserProfile.BRANCH_STAFF:
         branch_filter = str(profile.branch_id)
     if branch_filter:
         qs = qs.filter(branch_id=branch_filter)
+    if q:
+        qs = qs.filter(Q(product__name__icontains=q) | Q(product_name_snapshot__icontains=q))
     qs = qs.order_by('-purchase_date', '-created_at')
 
     paginator = Paginator(qs, 20)
@@ -295,6 +199,7 @@ def purchase_list(request):
         'page_obj': page_obj,
         'branches': _branch_choices(profile),
         'branch_filter': branch_filter,
+        'q': q,
         'include_money': _is_admin(profile),
         'can_mutate': profile.role in (UserProfile.ADMIN, UserProfile.BRANCH_STAFF),
     })
@@ -417,10 +322,13 @@ def sale_list(request):
     qs = StockSale.objects.select_related('product', 'branch', 'created_by', 'updated_by').filter(is_deleted=False)
     qs = qs.filter(branch_id__in=visible_branches(profile).values_list('id', flat=True))
     branch_filter = request.GET.get('branch', '')
+    q = request.GET.get('q', '').strip()
     if profile.role == UserProfile.BRANCH_STAFF:
         branch_filter = str(profile.branch_id)
     if branch_filter:
         qs = qs.filter(branch_id=branch_filter)
+    if q:
+        qs = qs.filter(Q(product__name__icontains=q) | Q(product_name_snapshot__icontains=q))
     qs = qs.order_by('-sale_date', '-created_at')
 
     paginator = Paginator(qs, 20)
@@ -430,6 +338,7 @@ def sale_list(request):
         'page_obj': page_obj,
         'branches': _branch_choices(profile),
         'branch_filter': branch_filter,
+        'q': q,
         'include_money': _is_admin(profile),
         'can_mutate': profile.role in (UserProfile.ADMIN, UserProfile.BRANCH_STAFF),
     })
@@ -444,7 +353,9 @@ def sale_add(request):
     Unlike purchases, each item is validated against currently-available stock
     — and since two rows in the same submission could both target the same
     product, the running total sold per product within this one request is
-    tracked so the sum can't oversell even though each row looks fine alone."""
+    tracked so the sum can't oversell even though each row looks fine alone.
+    Cost price is never taken from the form — it's pulled from
+    latest_unit_price() at save time, since the system already knows it."""
     profile = _profile(request)
     if request.method == 'POST':
         branch_id = int(request.POST.get('branch')) if _is_admin(profile) else profile.branch_id
@@ -456,16 +367,15 @@ def sale_add(request):
 
         item_products = request.POST.getlist('item_product')
         item_quantities = request.POST.getlist('item_quantity')
-        item_prices = request.POST.getlist('item_price')
         item_selling_prices = request.POST.getlist('item_selling_price')
 
         items = []
         item_error = None
         remaining_by_product = {}
-        for product_id, quantity_raw, price_raw, selling_price_raw in zip(
-            item_products, item_quantities, item_prices, item_selling_prices
+        for product_id, quantity_raw, selling_price_raw in zip(
+            item_products, item_quantities, item_selling_prices
         ):
-            if not product_id or not quantity_raw or not price_raw or not selling_price_raw:
+            if not product_id or not quantity_raw or not selling_price_raw:
                 continue
             try:
                 quantity = int(quantity_raw)
@@ -483,7 +393,7 @@ def sale_add(request):
                 item_error = f'Not enough stock for "{name}" to sell {quantity} of it here.'
                 break
 
-            items.append((product_id, quantity, price_raw, selling_price_raw))
+            items.append((product_id, quantity, selling_price_raw))
 
         if not items and not item_error:
             item_error = 'Add at least one item.'
@@ -505,10 +415,10 @@ def sale_add(request):
             created_entries = [
                 StockSale.objects.create(
                     product_id=product_id, branch_id=branch_id, quantity=quantity,
-                    price=price_raw, selling_price=selling_price_raw,
+                    price=latest_unit_price(product_id, branch_id), selling_price=selling_price_raw,
                     sale_date=sale_date, customer=customer, notes=notes, created_by=request.user,
                 )
-                for product_id, quantity, price_raw, selling_price_raw in items
+                for product_id, quantity, selling_price_raw in items
             ]
             affected_pairs = {(e.product_id, e.branch_id) for e in created_entries}
             for aff_product_id, aff_branch_id in affected_pairs:
@@ -541,7 +451,6 @@ def sale_edit(request, pk):
             })
 
         entry.quantity = new_quantity
-        entry.price = request.POST.get('price', entry.price)
         entry.selling_price = request.POST.get('selling_price', entry.selling_price)
         entry.sale_date = _parse_date(request.POST.get('sale_date'), entry.sale_date)
         entry.customer = request.POST.get('customer', entry.customer).strip()
@@ -569,50 +478,6 @@ def sale_delete(request, pk):
     return JsonResponse({'success': True})
 
 
-# ── OPENING STOCK BULK IMPORT (one-time setup) ───────────
-@login_required(login_url='/dashboard/login/')
-@staff_required
-@role_required(UserProfile.ADMIN)
-def opening_stock_import(request):
-    result = None
-    if request.method == 'POST':
-        uploaded = request.FILES.get('workbook')
-        if not uploaded:
-            return render(request, 'dashboard/stock_import.html', {'error': 'Choose an .xlsx file to upload.'})
-        result = import_opening_stock_workbook(uploaded, request.user, filename=uploaded.name)
-    return render(request, 'dashboard/stock_import.html', {'result': result})
-
-
-@login_required(login_url='/dashboard/login/')
-@staff_required
-@role_required(UserProfile.ADMIN)
-def opening_stock_import_template(request):
-    buf = build_template_workbook()
-    response = HttpResponse(
-        buf.read(),
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    )
-    response['Content-Disposition'] = 'attachment; filename="opening_stock_template.xlsx"'
-    return response
-
-
-@login_required(login_url='/dashboard/login/')
-@staff_required
-@role_required(UserProfile.ADMIN)
-def import_batches(request):
-    batches = OpeningStockImportBatch.objects.filter(is_deleted=False).select_related('uploaded_by')
-    return render(request, 'dashboard/stock_import_batches.html', {'batches': batches})
-
-
-@login_required(login_url='/dashboard/login/')
-@staff_required
-@role_required(UserProfile.ADMIN)
-def import_batch_delete(request, pk):
-    batch = get_object_or_404(OpeningStockImportBatch, pk=pk, is_deleted=False)
-    delete_import_batch(batch, request.user)
-    return JsonResponse({'success': True})
-
-
 # ── TRANSFERS ─────────────────────────────────────────────
 @login_required(login_url='/dashboard/login/')
 @staff_required
@@ -625,8 +490,12 @@ def transfer_list(request):
         qs = StockTransfer.objects.select_related('product', 'from_branch', 'to_branch').filter(
             Q(from_branch_id=profile.branch_id) | Q(to_branch_id=profile.branch_id)
         )
+    q = request.GET.get('q', '').strip()
+    if q:
+        qs = qs.filter(Q(product__name__icontains=q) | Q(product_name_snapshot__icontains=q))
     return render(request, 'dashboard/stock_transfers.html', {
         'transfers': qs,
+        'q': q,
         'is_admin': _is_admin(profile),
         'my_branch_id': profile.branch_id,
     })
@@ -935,13 +804,24 @@ def branch_stock_set_threshold(request, pk):
     return JsonResponse({'success': True, 'threshold': row.low_stock_threshold})
 
 
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN)
+def branch_stock_delete(request, pk):
+    row = get_object_or_404(BranchStock, pk=pk)
+    if row.quantity != 0:
+        return JsonResponse({'success': False, 'message': 'Only zero-quantity rows can be removed.'})
+    row.delete()
+    return JsonResponse({'success': True})
+
+
 # ── EXPORTS ───────────────────────────────────────────────
 @login_required(login_url='/dashboard/login/')
 @staff_required
 @role_required(UserProfile.ADMIN, UserProfile.BRANCH_STAFF, UserProfile.VIEWER)
 def export_stock(request, fmt):
     profile = _profile(request)
-    rows = BranchStock.objects.select_related('product', 'product__brand', 'branch').filter(
+    rows = BranchStock.objects.select_related('product', 'branch').filter(
         branch_id__in=visible_branches(profile).values_list('id', flat=True)
     )
     branch_filter = request.GET.get('branch', '')
@@ -998,6 +878,7 @@ def export_history(request, kind, fmt):
 def history(request):
     profile = _profile(request)
     branch_filter = request.GET.get('branch', '')
+    q = request.GET.get('q', '').strip()
     if profile.role == UserProfile.BRANCH_STAFF:
         branch_filter = str(profile.branch_id)
 
@@ -1016,12 +897,16 @@ def history(request):
     if branch_filter:
         purchases = purchases.filter(branch_id=branch_filter)
         sales = sales.filter(branch_id=branch_filter)
+    if q:
+        purchases = purchases.filter(Q(product__name__icontains=q) | Q(product_name_snapshot__icontains=q))
+        sales = sales.filter(Q(product__name__icontains=q) | Q(product_name_snapshot__icontains=q))
 
     return render(request, 'dashboard/stock_history.html', {
         'purchases': purchases.order_by('-purchase_date', '-created_at'),
         'sales': sales.order_by('-sale_date', '-created_at'),
         'branches': _branch_choices(profile),
         'branch_filter': branch_filter,
+        'q': q,
         'date_from': date_from,
         'date_to': date_to,
         'include_money': _is_admin(profile),

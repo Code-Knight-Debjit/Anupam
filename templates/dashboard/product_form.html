@@ -25,13 +25,14 @@
         <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1.25rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">Basic Information</h3>
         <div class="form-grid">
           <div class="form-group">
-            <label>Product Name *</label>
-            <input class="form-input" type="text" name="name" required value="{{ product.name|default:'' }}" placeholder="e.g. Tapered Roller Bearing"/>
+            <label>Name / SKU *</label>
+            <input class="form-input" type="text" name="name" required value="{{ product.name|default:'' }}" placeholder="e.g. 6205-2RS Timken"/>
+            <p style="font-size:0.75rem;color:var(--muted);margin-top:0.35rem;">Type the part code and brand together as free text — this identifies the product everywhere (Stock Ledger, bulk import, public site).</p>
           </div>
           <div class="form-row">
             <div class="form-group">
               <label>Category *</label>
-              <select class="form-input" name="category" required>
+              <select class="form-input" name="category" id="id_category" required>
                 <option value="">Select a category…</option>
                 {% for cat in categories %}
                 <option value="{{ cat.pk }}" {% if product and product.category_id == cat.pk %}selected{% endif %}>
@@ -41,19 +42,16 @@
               </select>
             </div>
             <div class="form-group">
-              <label>Brand * <span style="font-weight:400;text-transform:none;color:var(--muted);">(type to search or create)</span></label>
-              <div class="brand-combobox">
-                <input type="text" class="form-input brand-combobox-input" placeholder="Type a brand name…" autocomplete="off" value="{{ product.brand.name|default:'' }}"/>
-                <input type="hidden" name="brand" class="brand-combobox-value" value="{{ product.brand_id|default:'' }}" required/>
-                <div class="product-combobox-results"></div>
-              </div>
-              {% if brand_error %}<p style="font-size:0.75rem;color:#dc2626;margin-top:0.35rem;">{{ brand_error }}</p>{% endif %}
+              <label>Sub Category</label>
+              <select class="form-input" name="subcategory" id="id_subcategory">
+                <option value="">None</option>
+                {% for sub in subcategories %}
+                <option value="{{ sub.pk }}" data-category="{{ sub.category_id }}" {% if product and product.subcategory_id == sub.pk %}selected{% endif %}>
+                  {{ sub.name }}
+                </option>
+                {% endfor %}
+              </select>
             </div>
-          </div>
-          <div class="form-group">
-            <label>SKU / Part Number</label>
-            <input class="form-input" type="text" name="sku" value="{{ product.sku|default:'' }}" placeholder="e.g. 6001-ZZ"/>
-            <p style="font-size:0.75rem;color:var(--muted);margin-top:0.35rem;">Used to match rows when bulk-importing Opening Stock from Excel.</p>
           </div>
           <div class="form-group">
             <label>Description</label>
@@ -61,6 +59,52 @@
           </div>
         </div>
       </div>
+
+      {% if not product %}
+      <!-- Opening Stock -->
+      <div class="card card-pad">
+        <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:0.5rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">Opening Stock</h3>
+        <p style="font-size:0.78rem;color:var(--muted);margin:-0.25rem 0 1rem;">Optional — leave Qty blank for a branch that shouldn't get an opening balance yet.</p>
+        {% for branch in branches %}
+        <div class="form-row" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:0.75rem;">
+          <div class="form-group">
+            <label>{{ branch.name }} — Opening Qty</label>
+            <input class="form-input" type="number" min="0" name="opening_qty_{{ branch.pk }}" placeholder="0"/>
+          </div>
+          <div class="form-group">
+            <label>Cost Price</label>
+            <input class="form-input" type="number" step="0.01" min="0" name="opening_price_{{ branch.pk }}" placeholder="0.00"/>
+          </div>
+          <div class="form-group">
+            <label>Low Stock Threshold</label>
+            <input class="form-input" type="number" min="0" name="threshold_{{ branch.pk }}" placeholder="0"/>
+          </div>
+        </div>
+        {% empty %}
+        <p style="font-size:0.85rem;color:var(--muted);">No active branches yet.</p>
+        {% endfor %}
+      </div>
+      {% else %}
+      <!-- Stock per branch -->
+      <div class="card card-pad">
+        <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:0.5rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">Stock per Branch</h3>
+        <p style="font-size:0.78rem;color:var(--muted);margin:-0.25rem 0 1rem;">Quantity is read-only here — record Purchases/Sales/Transfers to change it. Low Stock Threshold can be adjusted directly.</p>
+        {% for branch, bs in branch_rows %}
+        <div class="form-row" style="grid-template-columns:1fr 1fr;margin-bottom:0.75rem;align-items:end;">
+          <div class="form-group">
+            <label>{{ branch.name }} — Current Qty</label>
+            <input class="form-input" value="{{ bs.quantity|default:0 }}" disabled/>
+          </div>
+          <div class="form-group">
+            <label>Low Stock Threshold</label>
+            <input class="form-input" type="number" min="0" name="threshold_{{ branch.pk }}" value="{{ bs.low_stock_threshold|default:0 }}"/>
+          </div>
+        </div>
+        {% empty %}
+        <p style="font-size:0.85rem;color:var(--muted);">No active branches yet.</p>
+        {% endfor %}
+      </div>
+      {% endif %}
 
       <!-- Specifications -->
       <div class="card card-pad">
@@ -95,6 +139,13 @@
       <!-- Publish -->
       <div class="card card-pad">
         <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1.25rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">Publish</h3>
+        <label class="form-check" style="margin-bottom:1rem;">
+          <input type="checkbox" name="is_visible" {% if not product or product.is_visible %}checked{% endif %}/>
+          <div>
+            <div class="form-check-label">👁 Visible</div>
+            <div style="font-size:0.75rem;color:var(--muted);">Uncheck to hide this product from the public site without deleting it.</div>
+          </div>
+        </label>
         <label class="form-check" style="margin-bottom:1.5rem;">
           <input type="checkbox" name="is_featured" {% if product and product.is_featured %}checked{% endif %}/>
           <div>
@@ -163,11 +214,14 @@
       </div>
 
       <div class="card card-pad">
-        <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">Additional Images</h3>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">
+          <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;">Additional Images</h3>
+          {% if product %}<button type="button" class="btn btn-ghost btn-sm" onclick="openImageLibrary()">📚 Choose from Library</button>{% endif %}
+        </div>
         <div style="border:2px dashed var(--border);border-radius:8px;padding:1.25rem;text-align:center;cursor:pointer;transition:border-color 0.2s;"
              onclick="document.getElementById('gallery-upload').click()"
              id="gallery-drop-zone">
-          <div style="font-size:1.8rem;margin-bottom:0.4rem;">📚</div>
+          <div style="font-size:1.8rem;margin-bottom:0.4rem;">📤</div>
           <div style="font-size:0.83rem;font-weight:600;color:var(--on);">Click to upload multiple images</div>
           <div style="font-size:0.75rem;color:var(--muted);margin-top:0.25rem;">Select several files to build the slideshow on the product page.</div>
           <p id="gallery-name" style="font-size:0.75rem;color:var(--orange);margin-top:0.5rem;"></p>
@@ -175,7 +229,7 @@
         <input type="file" id="gallery-upload" name="gallery_images" accept="image/*" multiple style="display:none;" onchange="document.getElementById('gallery-name').textContent = this.files.length ? this.files.length + ' file(s) selected' : ''"/>
 
         {% if product and product.images.all %}
-        <div style="margin-top:1rem;display:grid;gap:0.75rem;">
+        <div id="product-images-list" style="margin-top:1rem;display:grid;gap:0.75rem;">
           {% for img in product.images.all %}
           <div id="product-image-{{ img.pk }}" style="display:grid;grid-template-columns:72px 1fr auto;gap:0.75rem;align-items:center;padding:0.75rem;border:1px solid var(--border);border-radius:8px;">
             <img src="{{ img.image.url }}" alt="{{ img.caption|default:product.name }}" style="width:72px;height:56px;object-fit:cover;border-radius:6px;"/>
@@ -192,6 +246,18 @@
     </div>
   </div>
 </form>
+
+{% if product %}
+<!-- Image Library Modal -->
+<div class="dash-modal-overlay" id="image-library-modal">
+  <div class="dash-modal" style="max-width:640px;">
+    <button class="dash-modal-close" onclick="closeImageLibrary()">✕</button>
+    <div class="dash-modal-title">Choose from Library</div>
+    <input class="form-input" type="text" id="image-library-search" placeholder="Search by product name…" style="margin-bottom:1rem;"/>
+    <div id="image-library-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:0.6rem;max-height:400px;overflow-y:auto;"></div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -217,6 +283,26 @@ if (excelToggle && excelPanel) {
   };
   excelToggle.addEventListener('change', syncExcelPanel);
   syncExcelPanel();
+}
+
+// Sub Category options filtered to the selected Category
+const categorySelect = document.getElementById('id_category');
+const subcategorySelect = document.getElementById('id_subcategory');
+function syncSubcategoryOptions() {
+  if (!categorySelect || !subcategorySelect) return;
+  const catId = categorySelect.value;
+  let hasSelected = false;
+  [...subcategorySelect.options].forEach(opt => {
+    if (!opt.value) { opt.hidden = false; return; }
+    const show = !catId || opt.dataset.category === catId;
+    opt.hidden = !show;
+    if (show && opt.selected) hasSelected = true;
+  });
+  if (!hasSelected) subcategorySelect.value = '';
+}
+if (categorySelect) {
+  categorySelect.addEventListener('change', syncSubcategoryOptions);
+  syncSubcategoryOptions();
 }
 
 // Drag & drop
@@ -248,5 +334,65 @@ async function deleteProductImage(imageId, button) {
     showToast('Product image deleted', 'success');
   }
 }
+
+{% if product %}
+let imageLibraryDebounce = null;
+function openImageLibrary() {
+  document.getElementById('image-library-modal').classList.add('open');
+  searchImageLibrary('');
+}
+function closeImageLibrary() {
+  document.getElementById('image-library-modal').classList.remove('open');
+}
+document.getElementById('image-library-search')?.addEventListener('input', e => {
+  clearTimeout(imageLibraryDebounce);
+  imageLibraryDebounce = setTimeout(() => searchImageLibrary(e.target.value.trim()), 250);
+});
+async function searchImageLibrary(q) {
+  const res = await fetch(`{% url 'dashboard:product_image_library' %}?q=${encodeURIComponent(q)}`);
+  const data = await res.json();
+  const grid = document.getElementById('image-library-grid');
+  if (!data.results.length) {
+    grid.innerHTML = '<p style="font-size:0.8rem;color:var(--muted);grid-column:1/-1;">No images found.</p>';
+    return;
+  }
+  grid.innerHTML = data.results.map(img => `
+    <div style="cursor:pointer;border:1px solid var(--border);border-radius:8px;overflow:hidden;" onclick="attachLibraryImage(${img.id})" title="${img.product_name}">
+      <img src="${img.url}" style="width:100%;height:80px;object-fit:cover;display:block;"/>
+    </div>
+  `).join('');
+}
+async function attachLibraryImage(sourceImageId) {
+  const url = `{% url 'dashboard:product_image_attach_existing' product.pk|default:0 %}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': getCsrf() },
+    body: `source_image_id=${sourceImageId}`,
+  });
+  const data = await res.json();
+  if (data.success) {
+    const list = document.getElementById('product-images-list') || (() => {
+      const el = document.createElement('div');
+      el.id = 'product-images-list';
+      el.style.cssText = 'margin-top:1rem;display:grid;gap:0.75rem;';
+      document.getElementById('gallery-upload').insertAdjacentElement('afterend', el);
+      return el;
+    })();
+    const row = document.createElement('div');
+    row.id = `product-image-${data.image.id}`;
+    row.style.cssText = 'display:grid;grid-template-columns:72px 1fr auto;gap:0.75rem;align-items:center;padding:0.75rem;border:1px solid var(--border);border-radius:8px;';
+    row.innerHTML = `
+      <img src="${data.image.url}" style="width:72px;height:56px;object-fit:cover;border-radius:6px;"/>
+      <div><div style="font-size:0.83rem;font-weight:600;">Added from library</div></div>
+      <button type="button" class="btn btn-danger btn-sm" onclick="deleteProductImage(${data.image.id}, this)">Delete</button>
+    `;
+    list.appendChild(row);
+    closeImageLibrary();
+    showToast('Image attached', 'success');
+  } else {
+    showToast('Could not attach image', 'error');
+  }
+}
+{% endif %}
 </script>
 {% endblock %}

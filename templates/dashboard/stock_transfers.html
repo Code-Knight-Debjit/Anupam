@@ -14,6 +14,11 @@
   {% if is_admin %}<a href="{% url 'dashboard:stock_ledger:transfer_create' %}" class="btn btn-primary">+ Create Transfer</a>{% endif %}
 </div>
 
+<form method="GET" class="filter-bar">
+  <input class="filter-input" type="text" name="q" value="{{ q }}" placeholder="🔍  Search products…"/>
+  <button type="submit" class="btn btn-ghost">Filter</button>
+</form>
+
 <div class="table-wrap">
   <table>
     <thead>
@@ -30,7 +35,7 @@
     <tbody>
       {% for t in transfers %}
       <tr id="transfer-row-{{ t.pk }}">
-        <td class="td-name">{{ t.product|product_label }}</td>
+        <td class="td-name">{{ t|ledger_product_label }}</td>
         <td>{{ t.from_branch.name }}</td>
         <td>{{ t.to_branch.name }}</td>
         <td>{{ t.quantity }}</td>
