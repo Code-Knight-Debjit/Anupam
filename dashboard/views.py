@@ -25,7 +25,7 @@ staff_required = user_passes_test(lambda u: u.is_staff, login_url='/dashboard/lo
 def _post_login_redirect(user, next_url=None):
     profile = getattr(user, 'stock_profile', None)
     if profile and profile.role != UserProfile.ADMIN:
-        return redirect('dashboard:stock_ledger:overview')
+        return redirect('dashboard:stock_ledger:dashboard')
     return redirect(next_url or '/dashboard/')
 
 

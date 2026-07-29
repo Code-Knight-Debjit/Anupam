@@ -18,7 +18,10 @@ from .models import (
     StockSale, StockTransfer, UserProfile,
 )
 from .permissions import require_branch_match, role_required
-from .services import get_available_quantity, latest_unit_price, profit_summary, recompute_branch_stock, visible_branches
+from .services import (
+    get_available_quantity, historical_stock_matrix, latest_unit_price,
+    profit_summary, recompute_branch_stock, visible_branches,
+)
 
 staff_required = user_passes_test(lambda u: u.is_staff, login_url='/dashboard/login/')
 
@@ -92,10 +95,43 @@ def product_quick_create(request):
     return JsonResponse({'success': True, 'product': {'id': product.id, 'label': product.name}})
 
 
-# ── OVERVIEW ──────────────────────────────────────────────
+# ── DASHBOARD (everybody) ─────────────────────────────────
 @login_required(login_url='/dashboard/login/')
 @staff_required
 @role_required(UserProfile.ADMIN, UserProfile.BRANCH_STAFF, UserProfile.VIEWER)
+def stock_dashboard(request):
+    """Company-wide, point-in-time stock picture — visible to every role,
+    unlike Overview (Admin-only). One row per product, one column per active
+    branch showing what that branch's stock was at the end of the selected
+    date (reconstructed from ledger history), plus a grand-total column."""
+    q = request.GET.get('q', '').strip()
+    as_of = _parse_date(request.GET.get('date'), timezone.localdate())
+
+    branches = list(Branch.objects.filter(is_active=True).order_by('name'))
+    branch_ids = [b.id for b in branches]
+    matrix = historical_stock_matrix(as_of, branch_ids=branch_ids)
+
+    products = Product.objects.order_by('name')
+    if q:
+        products = products.filter(name__icontains=q)
+
+    rows = []
+    for product in products:
+        qtys = [matrix.get((product.id, b.id), 0) for b in branches]
+        rows.append({'product': product, 'qtys': qtys, 'total': sum(qtys)})
+
+    return render(request, 'dashboard/stock_dashboard.html', {
+        'rows': rows,
+        'branches': branches,
+        'q': q,
+        'as_of': as_of,
+    })
+
+
+# ── OVERVIEW (Admin only) ─────────────────────────────────
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN)
 def overview(request):
     profile = _profile(request)
     branch_filter = request.GET.get('branch', '')

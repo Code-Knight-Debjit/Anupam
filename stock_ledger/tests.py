@@ -1,4 +1,5 @@
 import json
+from datetime import date, datetime
 from io import BytesIO
 
 from django.contrib.auth.models import User
@@ -6,12 +7,13 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from openpyxl import Workbook
 
 from products.models import Category, Product, SubCategory
 from .excel_import import import_products_workbook
 from .models import Branch, BranchStock, OpeningStock, StockPurchase, StockSale, StockTransfer, UserProfile
-from .services import recompute_branch_stock, latest_unit_price
+from .services import historical_stock_matrix, recompute_branch_stock, latest_unit_price
 
 
 def make_products_workbook_upload(rows, filename='upload.xlsx', extra_headers=None):
@@ -663,3 +665,105 @@ class ProductDeleteTests(StockLedgerTestBase):
         purchase.refresh_from_db()
         self.assertIsNone(purchase.product_id)
         self.assertEqual(purchase.product_name_snapshot, original_name)
+
+
+class StockDashboardPermissionTests(StockLedgerTestBase):
+    """Overview is Admin-only; the new company-wide Dashboard is for everybody."""
+
+    def test_overview_is_admin_only(self):
+        for user in (self.blr_staff, self.viewer):
+            self.client.force_login(user)
+            response = self.client.get(reverse('dashboard:stock_ledger:overview'))
+            self.assertEqual(response.status_code, 403)
+
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('dashboard:stock_ledger:overview'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_dashboard_is_visible_to_every_role(self):
+        for user in (self.admin, self.blr_staff, self.viewer):
+            self.client.force_login(user)
+            response = self.client.get(reverse('dashboard:stock_ledger:dashboard'))
+            self.assertEqual(response.status_code, 200)
+
+    def test_non_admin_login_redirects_to_dashboard_not_overview(self):
+        response = self.client.post(reverse('dashboard:login'), {
+            'username': 'blrstaff', 'password': 'testpass123',
+        })
+        self.assertRedirects(response, reverse('dashboard:stock_ledger:dashboard'))
+
+
+class StockDashboardMatrixTests(StockLedgerTestBase):
+    """historical_stock_matrix reconstructs stock as of a given date from
+    ledger entries dated on or before it, independent of BranchStock's
+    always-current live cache."""
+
+    def test_matrix_reflects_only_entries_on_or_before_as_of_date(self):
+        OpeningStock.objects.create(
+            product=self.product, branch=self.blr, quantity=100, price=10,
+            effective_date=date(2026, 1, 1), created_by=self.admin,
+        )
+        StockPurchase.objects.create(
+            product=self.product, branch=self.blr, quantity=20, price=10,
+            purchase_date=date(2026, 2, 1), created_by=self.admin,
+        )
+        StockSale.objects.create(
+            product=self.product, branch=self.blr, quantity=15, price=10, selling_price=15,
+            sale_date=date(2026, 3, 1), created_by=self.admin,
+        )
+
+        # Before the purchase: only the opening balance counts.
+        matrix = historical_stock_matrix(date(2026, 1, 15))
+        self.assertEqual(matrix.get((self.product.id, self.blr.id), 0), 100)
+
+        # After the purchase, before the sale.
+        matrix = historical_stock_matrix(date(2026, 2, 15))
+        self.assertEqual(matrix.get((self.product.id, self.blr.id), 0), 120)
+
+        # After all three entries.
+        matrix = historical_stock_matrix(date(2026, 3, 15))
+        self.assertEqual(matrix.get((self.product.id, self.blr.id), 0), 105)
+
+        # Before anything happened.
+        matrix = historical_stock_matrix(date(2025, 12, 1))
+        self.assertEqual(matrix.get((self.product.id, self.blr.id), 0), 0)
+
+    def test_transfer_in_transit_counts_at_neither_branch(self):
+        OpeningStock.objects.create(
+            product=self.product, branch=self.blr, quantity=50, price=10,
+            effective_date=date(2026, 1, 1), created_by=self.admin,
+        )
+        recompute_branch_stock(self.product.id, self.blr.id)
+        transfer = StockTransfer.objects.create(
+            product=self.product, from_branch=self.blr, to_branch=self.maa, quantity=20, created_by=self.admin,
+        )
+        transfer.status = StockTransfer.DISPATCHED
+        transfer.dispatched_at = timezone.make_aware(datetime(2026, 2, 1, 10, 0, 0))
+        transfer.save()
+
+        # Between dispatch and receipt: gone from BLR, not yet arrived at MAA.
+        matrix = historical_stock_matrix(date(2026, 2, 10))
+        self.assertEqual(matrix.get((self.product.id, self.blr.id), 0), 30)
+        self.assertEqual(matrix.get((self.product.id, self.maa.id), 0), 0)
+
+        transfer.status = StockTransfer.RECEIVED
+        transfer.received_quantity = 20
+        transfer.received_at = timezone.make_aware(datetime(2026, 2, 5, 10, 0, 0))
+        transfer.save()
+
+        matrix = historical_stock_matrix(date(2026, 2, 10))
+        self.assertEqual(matrix.get((self.product.id, self.blr.id), 0), 30)
+        self.assertEqual(matrix.get((self.product.id, self.maa.id), 0), 20)
+
+    def test_dashboard_view_renders_pivoted_columns(self):
+        OpeningStock.objects.create(
+            product=self.product, branch=self.blr, quantity=40, price=10,
+            effective_date=date(2026, 1, 1), created_by=self.admin,
+        )
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('dashboard:stock_ledger:dashboard'), {'date': '2026-01-15'})
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn(self.product.name, content)
+        self.assertIn(self.blr.name, content)
+        self.assertIn(self.maa.name, content)
