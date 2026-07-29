@@ -5,7 +5,8 @@ from . import views
 app_name = 'stock_ledger'
 
 urlpatterns = [
-    path('', views.overview, name='overview'),
+    path('', views.stock_dashboard, name='dashboard'),
+    path('overview/', views.overview, name='overview'),
 
     # Product combobox backend
     path('products/search/', views.product_search, name='product_search'),

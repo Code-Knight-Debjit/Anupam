@@ -13,6 +13,56 @@ def visible_branches(profile):
     return Branch.objects.filter(is_active=True)
 
 
+def historical_stock_matrix(as_of_date, branch_ids=None):
+    """Reconstructs {(product_id, branch_id): quantity} as it stood at the end
+    of as_of_date, from ledger entries dated on or before that day — a
+    read-only report calculation, distinct from recompute_branch_stock's live
+    cache (BranchStock.quantity), which always reflects right now.
+
+    Known limitation: StockTransfer only records a single `received_at`
+    timestamp, set once a transfer reaches RECEIVED — a transfer sitting in
+    PARTIALLY_RECEIVED doesn't carry a date for each partial increment, so its
+    received_quantity only counts here once the transfer is fully RECEIVED
+    (undercounting the receiving branch for an in-progress partial receipt as
+    of the queried date). Dispatch (leaving the sending branch) is precise —
+    dispatched_at is a single, well-defined event."""
+    from collections import defaultdict
+
+    totals = defaultdict(int)
+
+    def _add(qs, product_field, branch_field, amount_field, sign):
+        qs = qs.exclude(**{f'{product_field}__isnull': True})
+        for row in qs.values(product_field, branch_field).annotate(total=Sum(amount_field)):
+            totals[(row[product_field], row[branch_field])] += sign * row['total']
+
+    opening_qs = OpeningStock.objects.filter(is_deleted=False, effective_date__lte=as_of_date)
+    purchase_qs = StockPurchase.objects.filter(is_deleted=False, purchase_date__lte=as_of_date)
+    sale_qs = StockSale.objects.filter(is_deleted=False, sale_date__lte=as_of_date)
+    transfer_in_qs = StockTransfer.objects.filter(status=StockTransfer.RECEIVED, received_at__date__lte=as_of_date)
+    transfer_out_qs = StockTransfer.objects.filter(
+        status__in=[
+            StockTransfer.DISPATCHED, StockTransfer.PARTIALLY_RECEIVED,
+            StockTransfer.RECEIVED, StockTransfer.ISSUE_REPORTED,
+        ],
+        dispatched_at__date__lte=as_of_date,
+    )
+
+    if branch_ids is not None:
+        opening_qs = opening_qs.filter(branch_id__in=branch_ids)
+        purchase_qs = purchase_qs.filter(branch_id__in=branch_ids)
+        sale_qs = sale_qs.filter(branch_id__in=branch_ids)
+        transfer_in_qs = transfer_in_qs.filter(to_branch_id__in=branch_ids)
+        transfer_out_qs = transfer_out_qs.filter(from_branch_id__in=branch_ids)
+
+    _add(opening_qs, 'product_id', 'branch_id', 'quantity', 1)
+    _add(purchase_qs, 'product_id', 'branch_id', 'quantity', 1)
+    _add(sale_qs, 'product_id', 'branch_id', 'quantity', -1)
+    _add(transfer_in_qs, 'product_id', 'to_branch_id', 'received_quantity', 1)
+    _add(transfer_out_qs, 'product_id', 'from_branch_id', 'quantity', -1)
+
+    return totals
+
+
 @transaction.atomic
 def recompute_branch_stock(product_id, branch_id):
     """Recomputes BranchStock.quantity for (product, branch) from scratch, from
