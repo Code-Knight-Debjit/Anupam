@@ -14,6 +14,7 @@
 </div>
 
 <form method="GET" class="filter-bar">
+  <input class="filter-input" type="text" name="q" value="{{ q }}" placeholder="🔍  Search products…"/>
   {% if branches|length > 1 %}
   <select class="filter-input" name="branch" onchange="this.form.submit()">
     <option value="">All Branches</option>
@@ -54,7 +55,7 @@
     <tbody>
       {% for e in purchases %}
       <tr>
-        <td class="td-name">{{ e.product|product_label }}</td>
+        <td class="td-name">{{ e|ledger_product_label }}</td>
         <td>{{ e.branch.name }}</td>
         <td>{{ e.quantity }}</td>
         {% if include_money %}<td>₹{{ e.price|floatformat:2 }}</td><td>₹{{ e.total_price|floatformat:2 }}</td>{% endif %}
@@ -94,7 +95,7 @@
     <tbody>
       {% for e in sales %}
       <tr>
-        <td class="td-name">{{ e.product|product_label }}</td>
+        <td class="td-name">{{ e|ledger_product_label }}</td>
         <td>{{ e.branch.name }}</td>
         <td>{{ e.quantity }}</td>
         {% if include_money %}

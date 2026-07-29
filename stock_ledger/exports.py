@@ -59,13 +59,13 @@ def _pdf_response(filename, title, headers, rows):
 def export_branch_stock(rows, include_money, fmt):
     """rows: iterable of BranchStock with .product/.branch selected, plus an
     injected `unit_price`/`value` pair from the caller when include_money."""
-    headers = ['Product', 'SKU', 'Brand', 'Branch', 'Location', 'Quantity (Pcs)']
+    headers = ['Product', 'Branch', 'Location', 'Quantity (Pcs)']
     if include_money:
         headers += ['Unit Price', 'Total Value']
 
     data = []
     for r in rows:
-        line = [r.product.name, r.product.sku, r.product.brand.name if r.product.brand_id else '', r.branch.name, r.location or '', r.quantity]
+        line = [r.product.name, r.branch.name, r.location or '', r.quantity]
         if include_money:
             line += [f'{r.unit_price:.2f}', f'{r.value:.2f}']
         data.append(line)
@@ -73,6 +73,10 @@ def export_branch_stock(rows, include_money, fmt):
     if fmt == 'pdf':
         return _pdf_response('stock_overview.pdf', 'Stock Ledger — Current Stock', headers, data)
     return _xlsx_response('stock_overview.xlsx', headers, data)
+
+
+def _row_product_name(r):
+    return r.product.name if r.product_id else (r.product_name_snapshot or '(deleted product)')
 
 
 def export_ledger_history(kind, rows, include_money, fmt):
@@ -83,7 +87,7 @@ def export_ledger_history(kind, rows, include_money, fmt):
             headers += ['Price', 'Total Price']
         data = []
         for r in rows:
-            line = [r.product.name, r.branch.name, r.quantity, r.effective_date]
+            line = [_row_product_name(r), r.branch.name, r.quantity, r.effective_date]
             if include_money:
                 line += [f'{r.price:.2f}', f'{r.total_price:.2f}']
             data.append(line)
@@ -93,7 +97,7 @@ def export_ledger_history(kind, rows, include_money, fmt):
             headers += ['Price', 'Total Price']
         data = []
         for r in rows:
-            line = [r.product.name, r.branch.name, r.quantity, r.purchase_date, r.supplier]
+            line = [_row_product_name(r), r.branch.name, r.quantity, r.purchase_date, r.supplier]
             if include_money:
                 line += [f'{r.price:.2f}', f'{r.total_price:.2f}']
             data.append(line)
@@ -103,7 +107,7 @@ def export_ledger_history(kind, rows, include_money, fmt):
             headers += ['Cost Price', 'Selling Price', 'Profit']
         data = []
         for r in rows:
-            line = [r.product.name, r.branch.name, r.quantity, r.sale_date, r.customer]
+            line = [_row_product_name(r), r.branch.name, r.quantity, r.sale_date, r.customer]
             if include_money:
                 line += [f'{r.price:.2f}', f'{r.selling_price:.2f}', f'{r.total_profit:.2f}']
             data.append(line)

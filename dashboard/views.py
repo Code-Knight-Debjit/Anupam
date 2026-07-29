@@ -1,8 +1,9 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth import authenticate, login, logout
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_POST, require_GET
+from django.db import transaction
 from django.db.models import Count, Q, Max
 from django.utils import timezone
 from django.utils.text import slugify
@@ -10,11 +11,13 @@ from datetime import timedelta
 import json
 
 from products.excel_table import ExcelTableError, clear_excel_table_file, parse_excel_table_file, store_excel_table_file
-from products.models import Brand, Category, Product, ProductImage, Enquiry
+from products.models import Category, Product, ProductImage, SubCategory, Enquiry
 from contact.models import ContactMessage, ChatMessage
 from core.models import GalleryImage, IndustryCard
-from stock_ledger.models import StockTransfer, UserProfile
+from stock_ledger.excel_import import build_products_template_workbook, import_products_workbook
+from stock_ledger.models import Branch, BranchStock, OpeningStock, StockTransfer, UserProfile
 from stock_ledger.permissions import role_required
+from stock_ledger.services import recompute_branch_stock
 
 staff_required = user_passes_test(lambda u: u.is_staff, login_url='/dashboard/login/')
 
@@ -109,28 +112,28 @@ def dashboard_home(request):
 def product_list(request):
     q = request.GET.get('q', '')
     cat_filter = request.GET.get('category', '')
-    brand_filter = request.GET.get('brand', '')
-    products = Product.objects.select_related('category', 'brand').order_by('-created_at')
+    subcat_filter = request.GET.get('subcategory', '')
+    products = Product.objects.select_related('category', 'subcategory').order_by('-created_at')
     if q:
         products = products.filter(Q(name__icontains=q) | Q(description__icontains=q))
     if cat_filter:
         products = products.filter(category__slug=cat_filter)
-    if brand_filter:
-        products = products.filter(brand__slug=brand_filter)
+    if subcat_filter:
+        products = products.filter(subcategory__slug=subcat_filter)
     categories = Category.objects.all()
-    brands = Brand.objects.filter(is_active=True)
+    subcategories = SubCategory.objects.select_related('category').all()
     page_size = getattr(__import__("django.conf", fromlist=["settings"]).settings, "DASHBOARD_PAGE_SIZE", 20)
     from django.core.paginator import Paginator
     paginator = Paginator(products, page_size)
     page_obj  = paginator.get_page(request.GET.get("page", 1))
     return render(request, "dashboard/products.html", {
-        "products":     page_obj.object_list,
-        "page_obj":     page_obj,
-        "categories":   categories,
-        "brands":       brands,
-        "q":            q,
-        "cat_filter":   cat_filter,
-        "brand_filter": brand_filter,
+        "products":       page_obj.object_list,
+        "page_obj":       page_obj,
+        "categories":     categories,
+        "subcategories":  subcategories,
+        "q":              q,
+        "cat_filter":     cat_filter,
+        "subcat_filter":  subcat_filter,
     })
 
 
@@ -139,9 +142,9 @@ def product_list(request):
 @role_required(UserProfile.ADMIN)
 def product_add(request):
     categories = Category.objects.all()
-    brands = Brand.objects.filter(is_active=True)
+    subcategories = SubCategory.objects.select_related('category').all()
+    branches = Branch.objects.filter(is_active=True).order_by('name')
     excel_error = None
-    brand_error = None
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
         slug = slugify(name)
@@ -163,31 +166,27 @@ def product_add(request):
             finally:
                 uploaded_excel.seek(0)
 
-        brand_id = request.POST.get('brand')
-        if not brand_id:
-            brand_error = 'Brand is required.'
-
         product = Product(
             name=name,
             slug=slug,
             category_id=request.POST.get('category'),
-            brand_id=brand_id or None,
-            sku=request.POST.get('sku', '').strip(),
+            subcategory_id=request.POST.get('subcategory') or None,
             description=request.POST.get('description', ''),
             is_featured=request.POST.get('is_featured') == 'on',
+            is_visible=request.POST.get('is_visible') == 'on',
             needs_excel_table=wants_excel_table,
         )
 
         if wants_excel_table and not uploaded_excel:
             excel_error = 'Upload an .xlsx file when Needs Excel Table is enabled.'
 
-        if excel_error or brand_error:
+        if excel_error:
             return render(request, 'dashboard/product_form.html', {
                 'categories': categories,
-                'brands': brands,
+                'subcategories': subcategories,
+                'branches': branches,
                 'product': product,
                 'excel_error': excel_error,
-                'brand_error': brand_error,
             })
 
         if request.FILES.get('image'):
@@ -216,10 +215,37 @@ def product_add(request):
 
         product.save()
 
+        # Opening stock: one optional qty/cost/threshold trio per active branch.
+        for branch in branches:
+            qty_raw = request.POST.get(f'opening_qty_{branch.pk}', '').strip()
+            price_raw = request.POST.get(f'opening_price_{branch.pk}', '').strip()
+            threshold_raw = request.POST.get(f'threshold_{branch.pk}', '').strip()
+
+            if qty_raw and price_raw:
+                try:
+                    qty = int(qty_raw)
+                except ValueError:
+                    qty = 0
+                if qty > 0:
+                    OpeningStock.objects.create(
+                        product=product, branch=branch, quantity=qty, price=price_raw, created_by=request.user,
+                    )
+                    recompute_branch_stock(product.id, branch.id)
+
+            if threshold_raw:
+                try:
+                    threshold = max(0, int(threshold_raw))
+                except ValueError:
+                    threshold = 0
+                BranchStock.objects.update_or_create(
+                    product=product, branch=branch, defaults={'low_stock_threshold': threshold},
+                )
+
         return redirect('dashboard:products')
     return render(request, 'dashboard/product_form.html', {
         'categories': categories,
-        'brands': brands,
+        'subcategories': subcategories,
+        'branches': branches,
         'product': None,
     })
 
@@ -230,21 +256,16 @@ def product_add(request):
 def product_edit(request, pk):
     product = get_object_or_404(Product, pk=pk)
     categories = Category.objects.all()
-    brands = Brand.objects.filter(is_active=True)
+    subcategories = SubCategory.objects.select_related('category').all()
+    branches = Branch.objects.filter(is_active=True).order_by('name')
     excel_error = None
-    brand_error = None
     if request.method == 'POST':
         product.name = request.POST.get('name', product.name).strip()
         product.category_id = request.POST.get('category', product.category_id)
-        product.sku = request.POST.get('sku', product.sku).strip()
+        product.subcategory_id = request.POST.get('subcategory') or None
         product.description = request.POST.get('description', '')
         product.is_featured = request.POST.get('is_featured') == 'on'
-
-        brand_id = request.POST.get('brand')
-        if not brand_id:
-            brand_error = 'Brand is required.'
-        else:
-            product.brand_id = brand_id
+        product.is_visible = request.POST.get('is_visible') == 'on'
 
         uploaded_excel = request.FILES.get('excel_table_file')
         parsed_excel = None
@@ -265,13 +286,15 @@ def product_edit(request, pk):
         if product.needs_excel_table and not uploaded_excel and not product.excel_table_file:
             excel_error = 'Upload an .xlsx file when Needs Excel Table is enabled.'
 
-        if excel_error or brand_error:
+        if excel_error:
+            stock_by_branch = {bs.branch_id: bs for bs in BranchStock.objects.filter(product=product)}
             return render(request, 'dashboard/product_form.html', {
                 'categories': categories,
-                'brands': brands,
+                'subcategories': subcategories,
+                'branches': branches,
+                'branch_rows': [(b, stock_by_branch.get(b.id)) for b in branches],
                 'product': product,
                 'excel_error': excel_error,
-                'brand_error': brand_error,
             })
 
         spec_keys   = request.POST.getlist('spec_key')
@@ -294,101 +317,24 @@ def product_edit(request, pk):
                     order=existing_max + offset,
                 )
 
+        for branch in branches:
+            threshold_raw = request.POST.get(f'threshold_{branch.pk}', '').strip()
+            if threshold_raw:
+                try:
+                    threshold = max(0, int(threshold_raw))
+                except ValueError:
+                    continue
+                BranchStock.objects.filter(product=product, branch=branch).update(low_stock_threshold=threshold)
+
         return redirect('dashboard:products')
+    stock_by_branch = {bs.branch_id: bs for bs in BranchStock.objects.filter(product=product)}
     return render(request, 'dashboard/product_form.html', {
         'categories': categories,
-        'brands': brands,
+        'subcategories': subcategories,
+        'branches': branches,
+        'branch_rows': [(b, stock_by_branch.get(b.id)) for b in branches],
         'product': product,
     })
-
-
-# ── BRANDS ────────────────────────────────────────────────
-@login_required(login_url='/dashboard/login/')
-@staff_required
-@role_required(UserProfile.ADMIN)
-def brand_list(request):
-    brands = Brand.objects.annotate(product_count=Count('products')).order_by('order', 'name')
-    return render(request, 'dashboard/brands.html', {'brands': brands})
-
-
-@login_required(login_url='/dashboard/login/')
-@staff_required
-@role_required(UserProfile.ADMIN)
-def brand_add(request):
-    if request.method == 'POST':
-        name = request.POST.get('name', '').strip()
-        slug = slugify(name)
-        base = slug; i = 1
-        while Brand.objects.filter(slug=slug).exists():
-            slug = f"{base}-{i}"; i += 1
-        brand = Brand(
-            name=name, slug=slug,
-            is_active=request.POST.get('is_active') == 'on',
-            order=int(request.POST.get('order', 0) or 0),
-        )
-        brand.save()
-        return redirect('dashboard:brands')
-    return render(request, 'dashboard/brand_form.html', {'brand': None})
-
-
-@login_required(login_url='/dashboard/login/')
-@staff_required
-@role_required(UserProfile.ADMIN)
-def brand_edit(request, pk):
-    brand = get_object_or_404(Brand, pk=pk)
-    if request.method == 'POST':
-        brand.name = request.POST.get('name', brand.name).strip()
-        brand.is_active = request.POST.get('is_active') == 'on'
-        brand.order = int(request.POST.get('order', 0) or 0)
-        brand.save()
-        return redirect('dashboard:brands')
-    return render(request, 'dashboard/brand_form.html', {'brand': brand})
-
-
-@login_required(login_url='/dashboard/login/')
-@staff_required
-@role_required(UserProfile.ADMIN)
-@require_POST
-def brand_delete(request, pk):
-    brand = get_object_or_404(Brand, pk=pk)
-    if brand.products.exists():
-        return JsonResponse({'success': False, 'message': 'Cannot delete a brand that still has products assigned.'})
-    brand.delete()
-    return JsonResponse({'success': True})
-
-
-@login_required(login_url='/dashboard/login/')
-@staff_required
-@role_required(UserProfile.ADMIN, UserProfile.BRANCH_STAFF)
-@require_GET
-def brand_search(request):
-    q = request.GET.get('q', '').strip()
-    qs = Brand.objects.filter(is_active=True)
-    if q:
-        qs = qs.filter(name__icontains=q)
-    qs = qs.order_by('name')[:20]
-    return JsonResponse({'results': [{'id': b.id, 'name': b.name} for b in qs]})
-
-
-@login_required(login_url='/dashboard/login/')
-@staff_required
-@role_required(UserProfile.ADMIN, UserProfile.BRANCH_STAFF)
-@require_POST
-def brand_quick_create(request):
-    name = request.POST.get('name', '').strip()
-    if not name:
-        return JsonResponse({'success': False, 'message': 'Enter a brand name.'})
-
-    existing = Brand.objects.filter(name__iexact=name).first()
-    if existing:
-        return JsonResponse({'success': True, 'brand': {'id': existing.id, 'name': existing.name}})
-
-    slug = slugify(name)
-    base = slug; i = 1
-    while Brand.objects.filter(slug=slug).exists():
-        slug = f'{base}-{i}'; i += 1
-    brand = Brand.objects.create(name=name, slug=slug, is_active=True)
-    return JsonResponse({'success': True, 'brand': {'id': brand.id, 'name': brand.name}})
 
 
 @login_required(login_url='/dashboard/login/')
@@ -396,7 +342,26 @@ def brand_quick_create(request):
 @role_required(UserProfile.ADMIN)
 @require_POST
 def product_delete(request, pk):
-    get_object_or_404(Product, pk=pk).delete()
+    """Deletion is only allowed once the product is a clean slate: zero stock
+    everywhere and no in-progress transfer referencing it. Historical
+    Opening/Purchase/Sale/Transfer rows are kept (product FK just goes null —
+    on_delete=SET_NULL — with the name preserved via product_name_snapshot),
+    only the now-empty BranchStock rows for this product are removed."""
+    product = get_object_or_404(Product, pk=pk)
+
+    nonzero = BranchStock.objects.filter(product=product).exclude(quantity=0).select_related('branch')
+    if nonzero.exists():
+        parts = ', '.join(f'{row.quantity} units at {row.branch.name}' for row in nonzero)
+        return JsonResponse({'success': False, 'message': f'Still has stock — {parts}. Clear it out first.'})
+
+    if StockTransfer.objects.filter(
+        product=product, status__in=[StockTransfer.PENDING, StockTransfer.DISPATCHED, StockTransfer.PARTIALLY_RECEIVED]
+    ).exists():
+        return JsonResponse({'success': False, 'message': 'Has an in-progress transfer — resolve or cancel it first.'})
+
+    with transaction.atomic():
+        BranchStock.objects.filter(product=product).delete()
+        product.delete()
     return JsonResponse({'success': True})
 
 
@@ -419,6 +384,120 @@ def product_image_delete(request, pk):
     image = get_object_or_404(ProductImage, pk=pk)
     image.delete()
     return JsonResponse({'success': True})
+
+
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN)
+@require_GET
+def product_image_library(request):
+    q = request.GET.get('q', '').strip()
+    qs = ProductImage.objects.select_related('product').order_by('-created_at')
+    if q:
+        qs = qs.filter(product__name__icontains=q)
+    images = qs[:60]
+    return JsonResponse({'results': [
+        {'id': img.pk, 'url': img.image.url, 'product_name': img.product.name} for img in images
+    ]})
+
+
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN)
+@require_POST
+def product_image_attach_existing(request, pk):
+    """Reuses an already-uploaded ProductImage's stored file for a different
+    product, instead of re-uploading the same picture — the picker only
+    needs a pointer to the existing file, not a new copy on disk."""
+    product = get_object_or_404(Product, pk=pk)
+    source = get_object_or_404(ProductImage, pk=request.POST.get('source_image_id'))
+    existing_max = ProductImage.objects.filter(product=product).aggregate(max_order=Max('order'))['max_order'] or 0
+    new_image = ProductImage.objects.create(
+        product=product, image=source.image.name, caption=source.caption, order=existing_max + 1,
+    )
+    return JsonResponse({'success': True, 'image': {'id': new_image.pk, 'url': new_image.image.url}})
+
+
+# ── SUB CATEGORIES ────────────────────────────────────────
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN)
+def subcategory_list(request):
+    subcategories = SubCategory.objects.select_related('category').annotate(product_count=Count('products')).order_by('category__name', 'order', 'name')
+    return render(request, 'dashboard/subcategories.html', {'subcategories': subcategories})
+
+
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN)
+def subcategory_add(request):
+    categories = Category.objects.all()
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        slug = slugify(name)
+        base = slug; i = 1
+        while SubCategory.objects.filter(slug=slug).exists():
+            slug = f"{base}-{i}"; i += 1
+        subcategory = SubCategory.objects.create(
+            name=name, slug=slug,
+            category_id=request.POST.get('category'),
+            order=int(request.POST.get('order', 0) or 0),
+        )
+        return redirect('dashboard:subcategories')
+    return render(request, 'dashboard/subcategory_form.html', {'subcategory': None, 'categories': categories})
+
+
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN)
+def subcategory_edit(request, pk):
+    subcategory = get_object_or_404(SubCategory, pk=pk)
+    categories = Category.objects.all()
+    if request.method == 'POST':
+        subcategory.name = request.POST.get('name', subcategory.name).strip()
+        subcategory.category_id = request.POST.get('category', subcategory.category_id)
+        subcategory.order = int(request.POST.get('order', 0) or 0)
+        subcategory.save()
+        return redirect('dashboard:subcategories')
+    return render(request, 'dashboard/subcategory_form.html', {'subcategory': subcategory, 'categories': categories})
+
+
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN)
+@require_POST
+def subcategory_delete(request, pk):
+    get_object_or_404(SubCategory, pk=pk).delete()
+    return JsonResponse({'success': True})
+
+
+# ── PRODUCTS BULK UPLOAD ──────────────────────────────────
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN)
+def product_import(request):
+    result = None
+    error = None
+    if request.method == 'POST':
+        uploaded = request.FILES.get('workbook')
+        if not uploaded:
+            error = 'Choose an .xlsx file to upload.'
+        else:
+            result = import_products_workbook(uploaded, request.user, filename=uploaded.name)
+    return render(request, 'dashboard/product_import.html', {'result': result, 'error': error})
+
+
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@role_required(UserProfile.ADMIN)
+def product_import_template(request):
+    buf = build_products_template_workbook()
+    response = HttpResponse(
+        buf.read(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = 'attachment; filename="products_bulk_upload_template.xlsx"'
+    return response
 
 
 # ── CATEGORIES ────────────────────────────────────────────

@@ -13,6 +13,10 @@ urlpatterns = [
     path('products/<int:pk>/edit/',          views.product_edit,            name='product_edit'),
     path('products/<int:pk>/delete/',        views.product_delete,          name='product_delete'),
     path('products/<int:pk>/toggle-featured/', views.product_toggle_featured, name='product_toggle_featured'),
+    path('products/import/',       views.product_import,          name='product_import'),
+    path('products/import/template/', views.product_import_template, name='product_import_template'),
+    path('products/images/library/', views.product_image_library, name='product_image_library'),
+    path('products/<int:pk>/images/attach/', views.product_image_attach_existing, name='product_image_attach_existing'),
 
     # Categories
     path('categories/',            views.category_list,           name='categories'),
@@ -20,13 +24,11 @@ urlpatterns = [
     path('categories/<int:pk>/edit/',        views.category_edit,           name='category_edit'),
     path('categories/<int:pk>/delete/',      views.category_delete,         name='category_delete'),
 
-    # Brands
-    path('brands/',                 views.brand_list,              name='brands'),
-    path('brands/add/',             views.brand_add,               name='brand_add'),
-    path('brands/<int:pk>/edit/',   views.brand_edit,              name='brand_edit'),
-    path('brands/<int:pk>/delete/', views.brand_delete,            name='brand_delete'),
-    path('brands/search/',          views.brand_search,            name='brand_search'),
-    path('brands/quick-create/',    views.brand_quick_create,      name='brand_quick_create'),
+    # Sub Categories
+    path('subcategories/',                 views.subcategory_list,   name='subcategories'),
+    path('subcategories/add/',             views.subcategory_add,    name='subcategory_add'),
+    path('subcategories/<int:pk>/edit/',   views.subcategory_edit,   name='subcategory_edit'),
+    path('subcategories/<int:pk>/delete/', views.subcategory_delete, name='subcategory_delete'),
 
     # Content
     path('industries/',              views.industry_list,          name='industries'),

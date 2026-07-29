@@ -18,16 +18,18 @@
   </div>
 </div>
 
-{% if branches|length > 1 %}
 <form method="GET" class="filter-bar">
+  <input class="filter-input" type="text" name="q" value="{{ q }}" placeholder="🔍  Search products…"/>
+  {% if branches|length > 1 %}
   <select class="filter-input" name="branch" onchange="this.form.submit()">
     <option value="">All Branches</option>
     {% for b in branches %}
     <option value="{{ b.pk }}" {% if branch_filter == b.pk|stringformat:"s" %}selected{% endif %}>{{ b.name }}</option>
     {% endfor %}
   </select>
+  {% endif %}
+  <button type="submit" class="btn btn-ghost">Filter</button>
 </form>
-{% endif %}
 
 <div class="table-wrap">
   <table>
@@ -46,7 +48,7 @@
     <tbody>
       {% for e in entries %}
       <tr id="purchase-row-{{ e.pk }}">
-        <td class="td-name">{{ e.product|product_label }}</td>
+        <td class="td-name">{{ e|ledger_product_label }}</td>
         <td>{{ e.branch.name }}</td>
         <td>{{ e.quantity }}</td>
         {% if include_money %}<td>₹{{ e.price|floatformat:2 }}</td><td>₹{{ e.total_price|floatformat:2 }}</td>{% endif %}
@@ -61,7 +63,7 @@
           <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.4rem;">
             <a href="{% url 'dashboard:stock_ledger:purchase_edit' e.pk %}" class="btn btn-ghost btn-sm btn-icon" title="Edit">✏️</a>
             <button class="btn btn-danger btn-sm btn-icon" title="Delete"
-              onclick="confirmDelete('{% url 'dashboard:stock_ledger:purchase_delete' e.pk %}', '{{ e.product.name|escapejs }}', () => document.getElementById('purchase-row-{{ e.pk }}').remove())">🗑</button>
+              onclick="confirmDelete('{% url 'dashboard:stock_ledger:purchase_delete' e.pk %}', '{{ e|ledger_product_label|escapejs }}', () => document.getElementById('purchase-row-{{ e.pk }}').remove())">🗑</button>
           </div>
         </td>
         {% endif %}

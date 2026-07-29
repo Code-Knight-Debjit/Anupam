@@ -1,16 +1,16 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Opening Stock Import{% endblock %}
-{% block page_title %}Opening Stock — Bulk Import{% endblock %}
-{% block breadcrumb %}<span class="topbar-breadcrumb">/ <a href="{% url 'dashboard:stock_ledger:opening_stock_list' %}" style="color:var(--muted);text-decoration:none;">Opening Stock</a> / Import</span>{% endblock %}
-{% block nav_stock_opening %}active{% endblock %}
+{% block title %}Products Bulk Upload{% endblock %}
+{% block page_title %}Products — Bulk Upload{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ <a href="{% url 'dashboard:products' %}" style="color:var(--muted);text-decoration:none;">Products</a> / Bulk Upload</span>{% endblock %}
+{% block nav_prods %}active{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div class="page-header-left">
-    <h1>Bulk Import Opening Stock</h1>
-    <p>One-time setup: upload existing stock levels in bulk. Uploaded batches can be found and removed later from <a href="{% url 'dashboard:stock_ledger:import_batches' %}">Import Batches</a>.</p>
+    <h1>Bulk Upload Products</h1>
+    <p>Create products and their opening stock in bulk — one row per Product + Branch.</p>
   </div>
-  <a href="{% url 'dashboard:stock_ledger:opening_stock_import_template' %}" class="btn btn-ghost">⬇ Download Template</a>
+  <a href="{% url 'dashboard:product_import_template' %}" class="btn btn-ghost">⬇ Download Template</a>
 </div>
 
 {% if error %}
@@ -23,9 +23,10 @@
 <div class="card card-pad" style="max-width:720px;margin-bottom:1.25rem;">
   <h3 style="font-family:var(--font-d);font-size:0.95rem;font-weight:700;margin-bottom:1rem;">Import Result</h3>
   <p style="font-size:0.875rem;margin-bottom:0.5rem;">
-    <span class="pill pill-resolved">{{ result.imported }} imported</span>
-    {% if result.created_products %}<span class="pill" style="background:rgba(59,130,246,0.12);color:#1d4ed8;">{{ result.created_products }} new product{{ result.created_products|pluralize }} added to catalogue</span>{% endif %}
+    <span class="pill pill-resolved">{{ result.imported }} opening stock row{{ result.imported|pluralize }} imported</span>
+    {% if result.created_products %}<span class="pill" style="background:rgba(59,130,246,0.12);color:#1d4ed8;">{{ result.created_products }} new product{{ result.created_products|pluralize }} added</span>{% endif %}
     {% if result.created_categories %}<span class="pill" style="background:rgba(168,85,247,0.12);color:#7e22ce;">{{ result.created_categories }} new categor{{ result.created_categories|pluralize:"y,ies" }} added</span>{% endif %}
+    {% if result.created_subcategories %}<span class="pill" style="background:rgba(168,85,247,0.12);color:#7e22ce;">{{ result.created_subcategories }} new sub categor{{ result.created_subcategories|pluralize:"y,ies" }} added</span>{% endif %}
     <span class="pill pill-unread">{{ result.skipped }} skipped</span>
   </p>
 
@@ -67,10 +68,11 @@
         <label>Excel Workbook (.xlsx) *</label>
         <input class="form-input" type="file" name="workbook" accept=".xlsx" required/>
         <p style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem;">
-          Columns: <strong>ID</strong> (SKU, e.g. 6001-ZZ), <strong>Brand</strong>, <strong>Category</strong>, <strong>Branch</strong>, <strong>Quantity</strong>, <strong>Price</strong>, <strong>Location</strong> (physical rack spot, optional),
+          Columns: <strong>Name/SKU</strong>, <strong>Category</strong>, <strong>SubCategory</strong> (optional), <strong>Branch</strong>,
+          <strong>Opening Quantity</strong>, <strong>Cost Price</strong>, <strong>Low Stock Threshold</strong> (optional), <strong>Visible</strong> (optional, defaults to TRUE),
           then any further columns — each extra header becomes a <strong>Technical Specification</strong> name (e.g. "Bore Diameter") shown on the public product page, with the cell below as that product's value.
-          A product that doesn't exist yet under that exact Brand is created automatically, and so is its Category if that's new too — that's the normal case for a first-time opening balance.
-          Brand and Branch must already exist, and a product that already has an opening stock at that branch has that part skipped as a duplicate (not double-counted) — though Location/specs still get applied.
+          A product with that exact Name/SKU that doesn't exist yet is created automatically, and so is its Category/SubCategory if new.
+          Branch must already exist. A product that already has an opening stock at that branch has the stock part of the row skipped as a duplicate (not double-counted) — Threshold/Visible/specs still apply.
         </p>
       </div>
     </div>

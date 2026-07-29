@@ -57,6 +57,7 @@
 
 <!-- Filters -->
 <form method="GET" class="filter-bar">
+  <input class="filter-input" type="text" name="q" value="{{ q }}" placeholder="🔍  Search products…"/>
   {% if is_admin %}
   <select class="filter-input" name="branch" onchange="this.form.submit()">
     <option value="">All Branches</option>
@@ -65,16 +66,14 @@
     {% endfor %}
   </select>
   {% endif %}
-  <select class="filter-input" name="brand" onchange="this.form.submit()">
-    <option value="">All Brands</option>
-    {% for b in brands %}
-    <option value="{{ b.pk }}" {% if brand_filter == b.pk|stringformat:"s" %}selected{% endif %}>{{ b.name }}</option>
-    {% endfor %}
-  </select>
   {% if include_money %}
   <input class="filter-input" type="date" name="date_from" value="{{ profit_data.date_from|date:'Y-m-d' }}" style="min-width:150px;"/>
   <input class="filter-input" type="date" name="date_to" value="{{ profit_data.date_to|date:'Y-m-d' }}" style="min-width:150px;"/>
   {% endif %}
+  <label class="form-check" style="margin:0;">
+    <input type="checkbox" name="show_zero" value="1" {% if show_zero %}checked{% endif %} onchange="this.form.submit()"/>
+    <div class="form-check-label" style="font-size:0.8rem;">Show zero-stock rows</div>
+  </label>
   <button type="submit" class="btn btn-ghost">Filter</button>
   <a href="{% url 'dashboard:stock_ledger:overview' %}" class="btn btn-ghost">✕ Clear</a>
 </form>
@@ -84,29 +83,26 @@
     <thead>
       <tr>
         <th>Product</th>
-        <th>Brand</th>
         {% if not grouped %}<th>Branch</th><th>Location</th>{% endif %}
         <th>Quantity (Pcs)</th>
         {% if include_money %}<th>Unit Price</th><th>Value</th>{% endif %}
-        {% if is_admin and not grouped %}<th>Low Stock Threshold</th>{% endif %}
+        {% if is_admin and not grouped %}<th>Low Stock Threshold</th><th style="text-align:right;">Actions</th>{% endif %}
       </tr>
     </thead>
     <tbody>
       {% if grouped %}
         {% for row in rows %}
         <tr>
-          <td class="td-name">{{ row.product.sku }} — {{ row.product.name }}</td>
-          <td>{{ row.brand.name|default:"—" }}</td>
+          <td class="td-name">{{ row.product.name }}</td>
           <td>{{ row.quantity }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="3"><div class="empty-state"><div class="empty-state-icon">📦</div><h3>No stock recorded yet</h3></div></td></tr>
+        <tr><td colspan="2"><div class="empty-state"><div class="empty-state-icon">📦</div><h3>No stock recorded yet</h3></div></td></tr>
         {% endfor %}
       {% else %}
         {% for row in rows %}
         <tr id="branch-stock-row-{{ row.pk }}">
-          <td class="td-name">{{ row.product.sku }} — {{ row.product.name }}</td>
-          <td>{{ row.product.brand.name|default:"—" }}</td>
+          <td class="td-name">{{ row.product.name }}</td>
           <td>{{ row.branch.name }}</td>
           <td class="td-sub">{{ row.location|default:"—" }}</td>
           <td>
@@ -125,6 +121,12 @@
             <input type="number" min="0" class="form-input" style="width:90px;padding:0.35rem 0.5rem;"
                    value="{{ row.low_stock_threshold }}"
                    onchange="setThreshold({{ row.pk }}, this.value)"/>
+          </td>
+          <td style="text-align:right;">
+            {% if row.quantity == 0 %}
+            <button class="btn btn-danger btn-sm btn-icon" title="Remove this zero-stock row"
+              onclick="confirmDelete('{% url 'dashboard:stock_ledger:branch_stock_delete' row.pk %}', '{{ row.product.name|escapejs }} @ {{ row.branch.name|escapejs }}', () => document.getElementById('branch-stock-row-{{ row.pk }}').remove())">🗑</button>
+            {% endif %}
           </td>
           {% endif %}
         </tr>

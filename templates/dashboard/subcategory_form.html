@@ -1,0 +1,43 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{% if subcategory %}Edit{% else %}Add{% endif %} Sub Category{% endblock %}
+{% block page_title %}{% if subcategory %}Edit Sub Category{% else %}Add Sub Category{% endif %}{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ <a href="{% url 'dashboard:subcategories' %}" style="color:var(--muted);text-decoration:none;">Sub Categories</a> / {% if subcategory %}Edit{% else %}New{% endif %}</span>{% endblock %}
+{% block nav_subcats %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>{% if subcategory %}Edit "{{ subcategory.name }}"{% else %}Add New Sub Category{% endif %}</h1>
+  </div>
+  <a href="{% url 'dashboard:subcategories' %}" class="btn btn-ghost">← Back</a>
+</div>
+
+<form method="POST" style="max-width:640px;">
+  {% csrf_token %}
+  <div class="card card-pad">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Category *</label>
+        <select class="form-input" name="category" required>
+          <option value="">Select a category…</option>
+          {% for cat in categories %}
+          <option value="{{ cat.pk }}" {% if subcategory and subcategory.category_id == cat.pk %}selected{% endif %}>{{ cat.icon }} {{ cat.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Sub Category Name *</label>
+        <input class="form-input" type="text" name="name" required value="{{ subcategory.name|default:'' }}" placeholder="e.g. Ball Bearings"/>
+      </div>
+      <div class="form-group">
+        <label>Display Order</label>
+        <input class="form-input" type="number" name="order" value="{{ subcategory.order|default:0 }}" min="0" max="100"/>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.875rem;margin-top:1.5rem;">
+      {% if subcategory %}Save Changes{% else %}Add Sub Category{% endif %}
+    </button>
+    <a href="{% url 'dashboard:subcategories' %}" class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:0.5rem;">Cancel</a>
+  </div>
+</form>
+{% endblock %}

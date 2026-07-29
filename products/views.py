@@ -24,7 +24,7 @@ def product_list(request):
     active_category = request.GET.get('category', '')
     q               = request.GET.get('q', '').strip()
 
-    products = Product.objects.select_related('category').order_by('category__order', 'name')
+    products = Product.objects.select_related('category').filter(is_visible=True).order_by('category__order', 'name')
     if active_category:
         products = products.filter(category__slug=active_category)
     if q:
@@ -60,10 +60,10 @@ def product_list(request):
 
 def product_detail(request, slug):
     """Public product detail page with specs and related products."""
-    product  = get_object_or_404(Product.objects.prefetch_related('images'), slug=slug)
+    product  = get_object_or_404(Product.objects.prefetch_related('images'), slug=slug, is_visible=True)
     related  = (
         Product.objects
-        .filter(category=product.category)
+        .filter(category=product.category, is_visible=True)
         .exclude(pk=product.pk)
         .order_by('?')[:4]
     )
@@ -194,7 +194,8 @@ def product_search_api(request):
         .filter(
             Q(name__icontains=q)
             | Q(description__icontains=q)
-            | Q(category__name__icontains=q)
+            | Q(category__name__icontains=q),
+            is_visible=True,
         )
         .select_related('category')
         .order_by('name')[:8]

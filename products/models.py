@@ -32,28 +32,29 @@ class Category(models.Model):
         return self.name
 
 
-class Brand(models.Model):
-    name = models.CharField(max_length=120)
+class SubCategory(models.Model):
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='subcategories')
+    name = models.CharField(max_length=200)
     slug = models.SlugField(unique=True)
-    is_active = models.BooleanField(default=True)
     order = models.IntegerField(default=0)
 
     class Meta:
+        verbose_name_plural = 'Sub categories'
         ordering = ['order', 'name']
 
     def __str__(self):
-        return self.name
+        return f'{self.category.name} / {self.name}'
 
 
 class Product(models.Model):
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='products')
-    brand = models.ForeignKey(Brand, on_delete=models.PROTECT, related_name='products')
-    name = models.CharField(max_length=200)
-    slug = models.SlugField(unique=True)
-    sku = models.CharField(
-        max_length=64, db_index=True,
-        help_text="Part/model code (e.g. 6001-ZZ). Identifies this product in the Stock Ledger and the Opening Stock Excel import."
+    subcategory = models.ForeignKey(SubCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name='products')
+    name = models.CharField(
+        max_length=300, unique=True,
+        help_text="Name / SKU — identifies this product everywhere (Stock Ledger, bulk import, public site). "
+                   "Type the part code and brand together as free text, e.g. \"6205-2RS Timken\"."
     )
+    slug = models.SlugField(unique=True)
     description = models.TextField(blank=True)
     specifications = models.JSONField(default=dict, blank=True)
     needs_excel_table = models.BooleanField(default=False)
@@ -61,10 +62,8 @@ class Product(models.Model):
     excel_table_data = models.JSONField(default=dict, blank=True)
     image = models.ImageField(upload_to='products/', blank=True, null=True)
     is_featured = models.BooleanField(default=False)
+    is_visible = models.BooleanField(default=True, help_text="Uncheck to hide this product from the public site without deleting it.")
     created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = [('sku', 'brand')]
 
     def __str__(self):
         return self.name
