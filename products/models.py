@@ -56,6 +56,11 @@ class Product(models.Model):
     )
     slug = models.SlugField(unique=True)
     description = models.TextField(blank=True)
+    mrp = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='MRP',
+        help_text="Maximum Retail Price. Optional — leave blank for products without a published MRP.",
+    )
     specifications = models.JSONField(default=dict, blank=True)
     needs_excel_table = models.BooleanField(default=False)
     excel_table_file = models.FileField(upload_to=product_excel_upload_to, blank=True, null=True)

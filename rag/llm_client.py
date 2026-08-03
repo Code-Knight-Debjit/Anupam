@@ -167,7 +167,7 @@ def _call_ollama(prompt, temperature, max_tokens, cfg, model_override):
 # ── FALLBACK MESSAGES ─────────────────────────────────────────────────────────
 
 def _fallback(reason: str, detail: str = '') -> str:
-    base = 'Please contact us at info@anupambearings.com or call +91-98844-00741.'
+    base = 'Please contact us at info@anupambearings.com or call 9840088509.'
     messages = {
         'connection_error':    f'Our AI assistant is temporarily offline. {base}',
         'groq_failed':         f'Our AI service is temporarily unavailable. {base}',

@@ -129,12 +129,15 @@ function addSaleItemRow() {
   row.style.cssText = 'display:grid;grid-template-columns:1fr 90px 110px 110px 32px;gap:0.5rem;margin-bottom:0.5rem;align-items:start;';
   const branchAttr = {{ is_admin|yesno:"true,false" }} ? 'data-branch-select="#id_branch"' : 'data-fixed-branch="{{ branches.0.pk|default:"" }}"';
   row.innerHTML = `
-    <div class="product-combobox" data-restrict-stock="true" ${branchAttr}>
+    <div class="product-combobox" data-restrict-stock="true" data-qty-input="[name='item_quantity']" ${branchAttr}>
       <input type="text" class="form-input product-combobox-input" placeholder="Type a code or name…" autocomplete="off"/>
       <input type="hidden" name="item_product" class="product-combobox-value"/>
       <div class="product-combobox-results"></div>
     </div>
-    <input class="form-input" type="number" name="item_quantity" min="1" placeholder="Qty"/>
+    <div>
+      <input class="form-input" type="number" name="item_quantity" min="1" placeholder="Qty"/>
+      <p class="qty-stock-hint"></p>
+    </div>
     <input class="form-input" type="number" step="0.01" min="0" name="item_selling_price" placeholder="Selling"/>
     <input class="form-input line-total" type="text" value="0.00" disabled/>
     <button type="button" class="btn btn-danger btn-icon btn-sm" onclick="removeSaleItemRow(this)" title="Remove item">✕</button>
@@ -146,8 +149,11 @@ function addSaleItemRow() {
 function removeSaleItemRow(btn) {
   const container = document.getElementById('sale-item-rows');
   if (container.children.length <= 1) { showToast('Keep at least one item.', 'error'); return; }
+  const form = btn.closest('form');
   btn.closest('.sale-item-row').remove();
   recomputeSaleTotals();
+  // The removed row may have been the one blocking submit.
+  refreshOversellState(form);
 }
 
 function recomputeSaleTotals() {

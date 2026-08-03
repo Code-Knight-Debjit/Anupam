@@ -129,7 +129,7 @@ def run_rag_pipeline(self, query: str, history: list = None, session_id: str = "
         logger.error(f"LLM call failed: {e}", exc_info=True)
         reply = (
             "I'm having trouble right now. Please contact us directly at "
-            "info@anupambearings.com or call +91-98844-00741."
+            "info@anupambearings.com or call 9840088509."
         )
 
     # ── STEP 4: Cache the result ─────────────────────────────────────────────

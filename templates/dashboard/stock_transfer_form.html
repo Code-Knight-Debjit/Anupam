@@ -41,7 +41,7 @@
       </div>
       <div class="form-group">
         <label>Product * <span style="font-weight:400;text-transform:none;color:var(--muted);">(pick From Branch first — only its in-stock items are searchable)</span></label>
-        <div class="product-combobox" data-restrict-stock="true" data-branch-select="#id_from_branch">
+        <div class="product-combobox" data-restrict-stock="true" data-qty-input="[name='quantity']" data-branch-select="#id_from_branch">
           <input type="text" class="form-input product-combobox-input" placeholder="Type a code or name…" autocomplete="off"/>
           <input type="hidden" name="product" class="product-combobox-value" required/>
           <div class="product-combobox-results"></div>
@@ -50,6 +50,7 @@
       <div class="form-group">
         <label>Quantity (Pcs) *</label>
         <input class="form-input" type="number" name="quantity" min="1" required/>
+        <p class="qty-stock-hint"></p>
       </div>
       <div class="form-group">
         <label>Notes</label>

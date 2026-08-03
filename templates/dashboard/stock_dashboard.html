@@ -25,7 +25,7 @@
       <tr>
         <th>Product</th>
         {% for branch in branches %}<th>{{ branch.name }}</th>{% endfor %}
-        <th>Quantity</th>
+        <th>MRP</th>
       </tr>
     </thead>
     <tbody>
@@ -33,7 +33,7 @@
       <tr>
         <td class="td-name">{{ row.product.name }}</td>
         {% for qty in row.qtys %}<td>{{ qty }}</td>{% endfor %}
-        <td style="font-weight:700;">{{ row.total }}</td>
+        <td style="font-weight:700;">{% if row.product.mrp %}₹{{ row.product.mrp|floatformat:2 }}{% else %}—{% endif %}</td>
       </tr>
       {% empty %}
       <tr><td colspan="{{ branches|length|add:2 }}"><div class="empty-state"><div class="empty-state-icon">📦</div><h3>No products found</h3></div></td></tr>

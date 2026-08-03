@@ -8,6 +8,7 @@ from django.db.models import Count, Q, Max
 from django.utils import timezone
 from django.utils.text import slugify
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 import json
 
 from products.excel_table import ExcelTableError, clear_excel_table_file, parse_excel_table_file, store_excel_table_file
@@ -20,6 +21,17 @@ from stock_ledger.permissions import role_required
 from stock_ledger.services import recompute_branch_stock
 
 staff_required = user_passes_test(lambda u: u.is_staff, login_url='/dashboard/login/')
+
+
+def _parse_mrp(raw):
+    """MRP is optional — blank/unparseable input stores NULL rather than erroring."""
+    value = (raw or '').strip()
+    if not value:
+        return None
+    try:
+        return Decimal(value)
+    except (InvalidOperation, ValueError):
+        return None
 
 
 def _post_login_redirect(user, next_url=None):
@@ -172,6 +184,7 @@ def product_add(request):
             category_id=request.POST.get('category'),
             subcategory_id=request.POST.get('subcategory') or None,
             description=request.POST.get('description', ''),
+            mrp=_parse_mrp(request.POST.get('mrp')),
             is_featured=request.POST.get('is_featured') == 'on',
             is_visible=request.POST.get('is_visible') == 'on',
             needs_excel_table=wants_excel_table,
@@ -264,6 +277,7 @@ def product_edit(request, pk):
         product.category_id = request.POST.get('category', product.category_id)
         product.subcategory_id = request.POST.get('subcategory') or None
         product.description = request.POST.get('description', '')
+        product.mrp = _parse_mrp(request.POST.get('mrp'))
         product.is_featured = request.POST.get('is_featured') == 'on'
         product.is_visible = request.POST.get('is_visible') == 'on'
 
@@ -483,7 +497,10 @@ def product_import(request):
         if not uploaded:
             error = 'Choose an .xlsx file to upload.'
         else:
-            result = import_products_workbook(uploaded, request.user, filename=uploaded.name)
+            result = import_products_workbook(
+                uploaded, request.user, filename=uploaded.name,
+                image_archive=request.FILES.get('image_archive'),
+            )
     return render(request, 'dashboard/product_import.html', {'result': result, 'error': error})
 
 

@@ -127,7 +127,7 @@ def chat(request):
             logger.error(f'Direct RAG also failed: {e2}', exc_info=True)
             result = {
                 'reply': ('I encountered an error. Please contact us at '
-                          'info@anupambearings.com or call +91-98844-00741.'),
+                          'info@anupambearings.com or call 9840088509.'),
                 'sources': [], 'cached': False, 'chunks_found': 0,
             }
 
@@ -227,7 +227,7 @@ def chat_result(request, task_id):
             return JsonResponse({
                 'status': 'failure',
                 'reply': ('The request failed. Please contact us at '
-                          'info@anupambearings.com or call +91-98844-00741.'),
+                          'info@anupambearings.com or call 9840088509.'),
             })
         else:
             return JsonResponse({'status': result.state.lower()})

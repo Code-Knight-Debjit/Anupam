@@ -421,6 +421,21 @@
     .product-combobox-item:hover, .product-combobox-item.active { background: var(--surface); }
     .product-combobox-item.create-new { color: var(--orange-dk); font-weight: 600; }
     .product-combobox-empty { padding: 0.875rem; font-size: 0.8rem; color: var(--muted); }
+    .product-combobox-item { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+    .product-combobox-stock {
+      flex: none;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    /* ── STOCK / OVERSELL HINTS ── */
+    .qty-stock-hint { font-size: 0.7rem; color: var(--muted); margin-top: 0.3rem; line-height: 1.3; }
+    .qty-stock-hint:empty { display: none; }
+    .qty-stock-hint.is-error { color: #dc2626; font-weight: 600; }
+    .form-input.input-error { border-color: #dc2626; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
     /* ── CHAT BUBBLES ── */
     .chat-bubble-wrap { display: flex; margin-bottom: 1rem; }
@@ -892,6 +907,7 @@ function initProductComboboxes() {
 
     input.addEventListener('input', () => {
       hidden.value = '';
+      applyComboboxStockLimit(box, null);
       clearTimeout(productComboboxDebounce);
       productComboboxDebounce = setTimeout(() => searchProductCombobox(box, input.value.trim()), 250);
     });
@@ -914,7 +930,11 @@ function initProductComboboxes() {
     const branchSelectSel = box.dataset.branchSelect;
     if (branchSelectSel) {
       const el = document.querySelector(branchSelectSel);
-      if (el) el.addEventListener('change', () => { hidden.value = ''; input.value = ''; });
+      if (el) el.addEventListener('change', () => {
+        hidden.value = '';
+        input.value = '';
+        applyComboboxStockLimit(box, null);
+      });
     }
 
     wireComboboxFormGuard(box);
@@ -936,6 +956,16 @@ function wireComboboxFormGuard(box) {
     if (missingProduct) {
       e.preventDefault();
       showToast('Select or create a product first.', 'error');
+      return;
+    }
+    // Belt-and-braces: the submit button is already disabled while a row is
+    // over its limit, but Enter can still submit a form past a disabled button.
+    const oversold = [...form.querySelectorAll('input[data-available-qty]')].some(input => {
+      return input.value !== '' && Number(input.value) > Number(input.dataset.availableQty);
+    });
+    if (oversold) {
+      e.preventDefault();
+      showToast('One or more items exceed the stock available at this branch.', 'error');
     }
   });
 }
@@ -961,7 +991,11 @@ function renderProductComboboxResults(box, q, matches) {
   const exactMatch = matches.find(m => m.label.toLowerCase() === typed);
   let html = '';
   matches.forEach(m => {
-    html += `<div class="product-combobox-item" data-id="${m.id}" data-label="${m.label.replace(/"/g, '&quot;')}">${m.label}</div>`;
+    // available_qty is only sent for stock-restricted pickers (Sales/Transfers).
+    // On Purchases it's null and the row renders exactly as it always did.
+    const hasQty = m.available_qty !== null && m.available_qty !== undefined;
+    const qtyHtml = hasQty ? `<span class="product-combobox-stock">${m.available_qty} in stock</span>` : '';
+    html += `<div class="product-combobox-item" data-id="${m.id}" data-label="${m.label.replace(/"/g, '&quot;')}"${hasQty ? ` data-available-qty="${m.available_qty}"` : ''}>${m.label}${qtyHtml}</div>`;
   });
   if (!matches.length) {
     html += `<div class="product-combobox-empty">${q ? (creatable ? 'No matching product.' : 'No matching in-stock product.') : (creatable ? 'No products yet.' : 'Nothing in stock yet.')}</div>`;
@@ -977,11 +1011,89 @@ function renderProductComboboxResults(box, q, matches) {
       box.querySelector('.product-combobox-input').value = el.dataset.label;
       box.querySelector('.product-combobox-value').value = el.dataset.id;
       results.classList.remove('open');
+      applyComboboxStockLimit(box, el.dataset.availableQty);
     });
   });
   const createEl = results.querySelector('.product-combobox-item[data-create]');
   if (createEl) {
     createEl.addEventListener('click', () => createProductInline(box, createEl.dataset.create));
+  }
+}
+
+// ── OVERSELL GUARDRAILS ───────────────────────────────────
+// Client-side only, and deliberately not authoritative: someone else can sell
+// the same stock in another tab between page load and submit, so the server
+// check stays the real guard. This just stops staff finding out after submit.
+function comboboxQtyInput(box) {
+  const selector = box.dataset.qtyInput;
+  if (!selector) return null;
+  // Multi-item rows scope to their own row; single-product forms to the form.
+  const scope = box.closest('.sale-item-row') || box.closest('form');
+  return scope ? scope.querySelector(selector) : null;
+}
+
+function applyComboboxStockLimit(box, rawQty) {
+  const qtyInput = comboboxQtyInput(box);
+  if (!qtyInput) return;
+  const available = (rawQty === undefined || rawQty === null || rawQty === '') ? null : Number(rawQty);
+
+  if (available === null || Number.isNaN(available)) {
+    qtyInput.removeAttribute('max');
+    delete qtyInput.dataset.availableQty;
+  } else {
+    qtyInput.max = available;
+    qtyInput.dataset.availableQty = available;
+  }
+
+  if (!qtyInput.dataset.oversellWired) {
+    qtyInput.dataset.oversellWired = '1';
+    qtyInput.addEventListener('input', () => validateQtyInput(qtyInput));
+  }
+  validateQtyInput(qtyInput);
+}
+
+function qtyHintFor(qtyInput) {
+  let hint = qtyInput.parentElement.querySelector('.qty-stock-hint');
+  if (!hint) {
+    hint = document.createElement('p');
+    hint.className = 'qty-stock-hint';
+    qtyInput.parentElement.appendChild(hint);
+  }
+  return hint;
+}
+
+function validateQtyInput(qtyInput) {
+  const hint = qtyHintFor(qtyInput);
+  const raw = qtyInput.dataset.availableQty;
+  const available = (raw === undefined || raw === '') ? null : Number(raw);
+  const typed = Number(qtyInput.value);
+
+  if (available === null) {
+    hint.textContent = '';
+    hint.classList.remove('is-error');
+    qtyInput.classList.remove('input-error');
+  } else if (qtyInput.value !== '' && typed > available) {
+    hint.textContent = `Only ${available} available at this branch.`;
+    hint.classList.add('is-error');
+    qtyInput.classList.add('input-error');
+  } else {
+    hint.textContent = `${available} available at this branch.`;
+    hint.classList.remove('is-error');
+    qtyInput.classList.remove('input-error');
+  }
+  refreshOversellState(qtyInput.closest('form'));
+}
+
+function refreshOversellState(form) {
+  if (!form) return;
+  const over = [...form.querySelectorAll('input[data-available-qty]')].some(input => {
+    const available = Number(input.dataset.availableQty);
+    return input.value !== '' && Number(input.value) > available;
+  });
+  const submit = form.querySelector('button[type="submit"]');
+  if (submit) {
+    submit.disabled = over;
+    submit.title = over ? 'One or more items exceed the stock available at this branch.' : '';
   }
 }
 

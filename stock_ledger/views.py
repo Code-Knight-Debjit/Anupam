@@ -64,9 +64,22 @@ def product_search(request):
         qs = qs.filter(
             branch_stocks__branch_id=in_stock_branch, branch_stocks__quantity__gt=0
         )
-    qs = qs.order_by('name')[:20]
+    products = list(qs.order_by('name')[:20])
 
-    results = [{'id': p.id, 'name': p.name, 'label': p.name} for p in qs]
+    # Only meaningful when a branch is in play (Sales/Transfers). Purchases
+    # search unrestricted, so there's no single branch to report stock for and
+    # available_qty stays null — the picker then shows no quantity at all.
+    quantities = {}
+    if in_stock_branch:
+        quantities = dict(
+            BranchStock.objects.filter(branch_id=in_stock_branch, product__in=products)
+            .values_list('product_id', 'quantity')
+        )
+
+    results = [
+        {'id': p.id, 'name': p.name, 'label': p.name, 'available_qty': quantities.get(p.id)}
+        for p in products
+    ]
     return JsonResponse({'results': results})
 
 
@@ -103,7 +116,7 @@ def stock_dashboard(request):
     """Company-wide, point-in-time stock picture — visible to every role,
     unlike Overview (Admin-only). One row per product, one column per active
     branch showing what that branch's stock was at the end of the selected
-    date (reconstructed from ledger history), plus a grand-total column."""
+    date (reconstructed from ledger history), plus the product's MRP."""
     q = request.GET.get('q', '').strip()
     as_of = _parse_date(request.GET.get('date'), timezone.localdate())
 
@@ -118,7 +131,7 @@ def stock_dashboard(request):
     rows = []
     for product in products:
         qtys = [matrix.get((product.id, b.id), 0) for b in branches]
-        rows.append({'product': product, 'qtys': qtys, 'total': sum(qtys)})
+        rows.append({'product': product, 'qtys': qtys})
 
     return render(request, 'dashboard/stock_dashboard.html', {
         'rows': rows,
