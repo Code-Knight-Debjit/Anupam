@@ -72,14 +72,19 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     <<: *django-env
+    # collectstatic must run at START, not at build: the static_files volume
+    # below is mounted over /app/staticfiles at runtime and Docker only seeds a
+    # named volume the first time it's created. Collecting at build time means
+    # every later deploy serves whatever CSS/JS the volume already held.
     command: >
-      gunicorn anupam_bearings.wsgi:application
-        --bind 0.0.0.0:8000
-        --workers 1
-        --worker-class sync
-        --timeout 120
-        --access-logfile -
-        --error-logfile -
+      sh -c "python manage.py collectstatic --noinput --clear &&
+      exec gunicorn anupam_bearings.wsgi:application
+      --bind 0.0.0.0:8000
+      --workers 1
+      --worker-class sync
+      --timeout 120
+      --access-logfile -
+      --error-logfile -"
     volumes:
       - ./static:/app/static
       - ./media:/app/media
