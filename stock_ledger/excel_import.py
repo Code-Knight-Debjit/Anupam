@@ -1,7 +1,12 @@
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
+import hashlib
+import os
+import zipfile
 
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
@@ -13,7 +18,9 @@ from products.models import Category, Product, SubCategory
 from .models import Branch, BranchStock, OpeningStock
 from .services import recompute_branch_stock
 
-FIXED_HEADERS = ['Name/SKU', 'Category', 'SubCategory', 'Branch', 'Opening Quantity', 'Cost Price', 'Low Stock Threshold', 'Visible']
+FIXED_HEADERS = ['Name/SKU', 'Category', 'SubCategory', 'Branch', 'Opening Quantity', 'Cost Price', 'Low Stock Threshold', 'Visible', 'MRP', 'Image Serial No']
+IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'}
+BULK_IMAGE_DIR = 'products/bulk'
 HEADER_FILL = PatternFill(start_color='0E0E11', end_color='0E0E11', fill_type='solid')
 HEADER_FONT = Font(color='FFFFFF', bold=True)
 
@@ -28,8 +35,11 @@ class ImportResult:
     created_categories: int = 0
     created_subcategories: int = 0
     skipped: int = 0
+    images_attached: int = 0      # product records pointed at an image
+    unique_images: int = 0        # distinct files actually written to storage
     errors: list = field(default_factory=list)      # list of (row_number, reason) — bad data, can't proceed
     duplicates: list = field(default_factory=list)   # list of (row_number, reason) — already added previously
+    image_warnings: list = field(default_factory=list)  # list of (row_number, reason) — non-fatal: product imported without its image
 
 
 def build_products_template_workbook() -> BytesIO:
@@ -38,8 +48,10 @@ def build_products_template_workbook() -> BytesIO:
     (auto-created under the row's Category if it's new, same as Category
     itself); Opening Quantity + Cost Price together create that product's
     opening balance at that branch (skipped if it already has one there —
-    reported as a duplicate, not double-counted); Low Stock Threshold and
-    Visible apply regardless. Anything after Visible is a Technical
+    reported as a duplicate, not double-counted); Low Stock Threshold,
+    Visible and MRP apply regardless. Image Serial No is the optional key
+    for the bulk image upload: the matching file in the images .zip is named
+    after it (1 → 1.jpg). Anything after Image Serial No is a Technical
     Specification: the header is the spec name, the cell below is this
     product's value — shown on the public product page. Add as many of these
     columns as needed; re-uploading an existing product with new spec columns
@@ -62,13 +74,15 @@ def build_products_template_workbook() -> BytesIO:
     ws['F1'].comment = Comment('Price per unit for the opening balance. Required if Opening Quantity is given.', 'Anupam Bearings')
     ws['G1'].comment = Comment('Optional. Low-stock alert threshold at this branch.', 'Anupam Bearings')
     ws['H1'].comment = Comment('Optional, defaults to TRUE. Set to FALSE to hide this product from the public site.', 'Anupam Bearings')
-    ws['I1'].comment = Comment('Anything after Visible is a Technical Specification: the header is the spec name, the cell below is this product\'s value — shown on the public product page. Add as many of these columns as you need.', 'Anupam Bearings')
+    ws['I1'].comment = Comment('Optional. Maximum Retail Price for this product, e.g. 1250.00. Set once per product — the same value applies across every branch row for that product.', 'Anupam Bearings')
+    ws['J1'].comment = Comment('Optional. Key for bulk image upload: put the same number here and name the image file after it in the images .zip (e.g. 1 here, 1.jpg in the zip). Supported: .jpg, .jpeg, .png, .webp, .gif, .bmp.', 'Anupam Bearings')
+    ws['K1'].comment = Comment('Anything after Image Serial No is a Technical Specification: the header is the spec name, the cell below is this product\'s value — shown on the public product page. Add as many of these columns as you need.', 'Anupam Bearings')
 
-    ws.append(['6001-ZZ Timken', 'Bearings', 'Ball Bearings', 'Bengaluru', 100, 45.50, 10, 'TRUE', '12mm', '28mm'])
+    ws.append(['6001-ZZ Timken', 'Bearings', 'Ball Bearings', 'Bengaluru', 100, 45.50, 10, 'TRUE', 1250.00, 1, '12mm', '28mm'])
     for cell in ws[2]:
         cell.font = Font(italic=True, color='888888')
 
-    widths = [28, 16, 16, 14, 16, 12, 18, 10, 16, 16]
+    widths = [28, 16, 16, 14, 16, 12, 18, 10, 12, 16, 16, 16]
     for i, width in enumerate(widths, start=1):
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = width
     ws.freeze_panes = 'A2'
@@ -176,8 +190,85 @@ def _get_or_create_product(name, category, subcategory, specifications):
     return product, created
 
 
+def _normalize_serial(value):
+    """Serials are matched as text, but Excel hands back numbers — a cell
+    holding 1 may arrive as int 1 or float 1.0, and both must match "1.jpg"."""
+    if value in (None, ''):
+        return ''
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def _build_header_map(header_row):
+    """Locates the fixed columns by header name rather than position, so a
+    workbook built from an older template — one with no MRP / Image Serial No
+    columns — still imports correctly instead of reading its first two spec
+    columns as those fields. Any header that isn't a fixed one is a spec."""
+    fixed_lookup = {h.lower(): h for h in FIXED_HEADERS}
+    columns = {}
+    spec_columns = []
+    for index, raw in enumerate(header_row):
+        if raw in (None, ''):
+            continue
+        label = str(raw).strip()
+        key = label.lower()
+        if key in fixed_lookup and fixed_lookup[key] not in columns:
+            columns[fixed_lookup[key]] = index
+        else:
+            spec_columns.append((label, index))
+    return columns, spec_columns
+
+
+def _store_shared_image(basename, data, cache):
+    """Writes each distinct image to storage exactly once and returns its path.
+
+    The point of the bulk image upload is that many products legitimately share
+    one photo, and disk on the host is limited — so products reference a single
+    stored file instead of each getting its own byte-for-byte copy. The name is
+    derived from a hash of the content, which makes it stable across re-imports:
+    uploading the same zip again re-uses the file already on disk rather than
+    piling up 1.png, 1_a8f2.png, 1_b31c.png and so on.
+    """
+    digest = hashlib.sha256(data).hexdigest()[:16]
+    if digest in cache:
+        return cache[digest]
+    ext = os.path.splitext(basename)[1].lower() or '.jpg'
+    path = f'{BULK_IMAGE_DIR}/{digest}{ext}'
+    if not default_storage.exists(path):
+        default_storage.save(path, ContentFile(data))
+    cache[digest] = path
+    return path
+
+
+def _read_image_archive(uploaded_zip):
+    """Reads the optional images .zip into {serial: (filename, bytes)}, keyed
+    on each file's name minus its extension. Returns ({}, error) if the upload
+    isn't a readable zip — a bad archive shouldn't abort the whole import."""
+    if not uploaded_zip:
+        return {}, None
+    images = {}
+    try:
+        with zipfile.ZipFile(uploaded_zip) as archive:
+            for info in archive.infolist():
+                if info.is_dir():
+                    continue
+                basename = os.path.basename(info.filename)
+                if not basename or basename.startswith('.') or '__MACOSX' in info.filename:
+                    continue
+                stem, ext = os.path.splitext(basename)
+                if ext.lower() not in IMAGE_EXTENSIONS:
+                    continue
+                serial = stem.strip()
+                if serial and serial not in images:
+                    images[serial] = (basename, archive.read(info))
+    except (zipfile.BadZipFile, OSError):
+        return {}, 'Could not read the images .zip — upload a valid zip archive. Products were imported without images.'
+    return images, None
+
+
 @transaction.atomic
-def import_products_workbook(uploaded_file, user, filename=''):
+def import_products_workbook(uploaded_file, user, filename='', image_archive=None):
     """Parses a Products bulk-upload workbook: Name/SKU | Category |
     SubCategory | Branch | Opening Quantity | Cost Price | Low Stock
     Threshold | Visible, one row per (Product, Branch) pair. Category and
@@ -189,14 +280,22 @@ def import_products_workbook(uploaded_file, user, filename=''):
     ws = wb.active
 
     header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), ())
-    spec_names = [str(h).strip() for h in header_row[len(FIXED_HEADERS):] if h not in (None, '')]
+    columns, spec_columns = _build_header_map(header_row)
+
+    images, archive_error = _read_image_archive(image_archive)
 
     errors = []
     duplicates = []
+    image_warnings = []
     valid_rows = []  # (product, branch, quantity, price, threshold, is_new_product)
     created_categories = 0
     created_subcategories = 0
     created_products_total = 0
+    images_attached = 0
+    imaged_product_ids = set()
+    stored_image_paths = {}  # content hash -> storage path, so each image is written once
+    if archive_error:
+        image_warnings.append((0, archive_error))
 
     rows = list(ws.iter_rows(min_row=2, values_only=True))
     for idx, row in enumerate(rows, start=2):
@@ -204,12 +303,15 @@ def import_products_workbook(uploaded_file, user, filename=''):
             continue
 
         def cell(i):
-            return row[i] if len(row) > i else None
+            return row[i] if i is not None and len(row) > i else None
 
-        name = str(cell(0)).strip() if cell(0) is not None else ''
-        category_name = str(cell(1)).strip() if cell(1) is not None else ''
-        subcategory_name = str(cell(2)).strip() if cell(2) is not None else ''
-        branch_name = str(cell(3)).strip() if cell(3) is not None else ''
+        def col(header):
+            return cell(columns.get(header))
+
+        name = str(col('Name/SKU')).strip() if col('Name/SKU') is not None else ''
+        category_name = str(col('Category')).strip() if col('Category') is not None else ''
+        subcategory_name = str(col('SubCategory')).strip() if col('SubCategory') is not None else ''
+        branch_name = str(col('Branch')).strip() if col('Branch') is not None else ''
 
         if not name or not category_name or not branch_name:
             errors.append((idx, 'Missing Name/SKU, Category, or Branch.'))
@@ -224,29 +326,35 @@ def import_products_workbook(uploaded_file, user, filename=''):
 
         quantity = None
         price = None
-        if cell(4) not in (None, ''):
-            quantity = _parse_int(cell(4), idx, 'Opening Quantity', errors)
+        if col('Opening Quantity') not in (None, ''):
+            quantity = _parse_int(col('Opening Quantity'), idx, 'Opening Quantity', errors)
             if quantity is not None and quantity > 0:
-                if cell(5) in (None, ''):
+                if col('Cost Price') in (None, ''):
                     errors.append((idx, 'Cost Price is required when Opening Quantity is given.'))
                     continue
-                price = _parse_decimal(cell(5), idx, 'Cost Price', errors)
+                price = _parse_decimal(col('Cost Price'), idx, 'Cost Price', errors)
                 if price is None:
                     continue
             else:
                 quantity = None
 
         threshold = None
-        if cell(6) not in (None, ''):
-            threshold = _parse_int(cell(6), idx, 'Low Stock Threshold', errors)
+        if col('Low Stock Threshold') not in (None, ''):
+            threshold = _parse_int(col('Low Stock Threshold'), idx, 'Low Stock Threshold', errors)
             if threshold is None:
                 continue
 
-        is_visible = _parse_bool(cell(7), default=True)
+        is_visible = _parse_bool(col('Visible'), default=True)
+
+        mrp = None
+        if col('MRP') not in (None, ''):
+            mrp = _parse_decimal(col('MRP'), idx, 'MRP', errors)
+            if mrp is None:
+                continue
 
         specifications = {}
-        for spec_index, spec_name in enumerate(spec_names):
-            value = cell(len(FIXED_HEADERS) + spec_index)
+        for spec_name, spec_index in spec_columns:
+            value = cell(spec_index)
             if value not in (None, ''):
                 specifications[spec_name] = str(value).strip()
 
@@ -267,6 +375,27 @@ def import_products_workbook(uploaded_file, user, filename=''):
             product.is_visible = is_visible
             product.save(update_fields=['is_visible'])
 
+        if mrp is not None and product.mrp != mrp:
+            product.mrp = mrp
+            product.save(update_fields=['mrp'])
+
+        # One product can span several branch rows — only attach its image once.
+        serial = _normalize_serial(col('Image Serial No'))
+        if serial and product.id not in imaged_product_ids:
+            match = images.get(serial)
+            if match:
+                image_name, image_bytes = match
+                # Assign the shared path rather than product.image.save(), which
+                # would write a fresh copy of the bytes for every product.
+                path = _store_shared_image(image_name, image_bytes, stored_image_paths)
+                if product.image.name != path:
+                    product.image.name = path
+                    product.save(update_fields=['image'])
+                imaged_product_ids.add(product.id)
+                images_attached += 1
+            elif image_archive and not archive_error:
+                image_warnings.append((idx, f'No image named "{serial}" found in the zip for "{name}" — imported without an image.'))
+
         if quantity and price is not None:
             if OpeningStock.objects.filter(product=product, branch=branch, is_deleted=False).exists():
                 duplicates.append((idx, f'"{name}" at {branch.name} already has an opening stock — skipped to avoid double-counting.'))
@@ -285,6 +414,8 @@ def import_products_workbook(uploaded_file, user, filename=''):
         skipped=len(errors) + len(duplicates), errors=errors, duplicates=duplicates,
         created_categories=created_categories, created_subcategories=created_subcategories,
         created_products=created_products_total,
+        images_attached=images_attached, image_warnings=image_warnings,
+        unique_images=len(stored_image_paths),
     )
 
     affected_pairs = set()

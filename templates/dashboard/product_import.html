@@ -27,8 +27,23 @@
     {% if result.created_products %}<span class="pill" style="background:rgba(59,130,246,0.12);color:#1d4ed8;">{{ result.created_products }} new product{{ result.created_products|pluralize }} added</span>{% endif %}
     {% if result.created_categories %}<span class="pill" style="background:rgba(168,85,247,0.12);color:#7e22ce;">{{ result.created_categories }} new categor{{ result.created_categories|pluralize:"y,ies" }} added</span>{% endif %}
     {% if result.created_subcategories %}<span class="pill" style="background:rgba(168,85,247,0.12);color:#7e22ce;">{{ result.created_subcategories }} new sub categor{{ result.created_subcategories|pluralize:"y,ies" }} added</span>{% endif %}
+    {% if result.images_attached %}<span class="pill" style="background:rgba(16,185,129,0.12);color:#047857;">{{ result.images_attached }} product{{ result.images_attached|pluralize }} imaged from {{ result.unique_images }} file{{ result.unique_images|pluralize }}</span>{% endif %}
     <span class="pill pill-unread">{{ result.skipped }} skipped</span>
   </p>
+
+  {% if result.image_warnings %}
+  <h4 style="font-size:0.8rem;font-weight:700;margin:1rem 0 0.5rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;">Images Not Matched</h4>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Row</th><th>Reason</th></tr></thead>
+      <tbody>
+        {% for row_number, reason in result.image_warnings %}
+        <tr><td>{% if row_number %}{{ row_number }}{% else %}—{% endif %}</td><td class="td-sub">{{ reason }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 
   {% if result.duplicates %}
   <h4 style="font-size:0.8rem;font-weight:700;margin:1rem 0 0.5rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;">Already Added Previously</h4>
@@ -70,9 +85,22 @@
         <p style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem;">
           Columns: <strong>Name/SKU</strong>, <strong>Category</strong>, <strong>SubCategory</strong> (optional), <strong>Branch</strong>,
           <strong>Opening Quantity</strong>, <strong>Cost Price</strong>, <strong>Low Stock Threshold</strong> (optional), <strong>Visible</strong> (optional, defaults to TRUE),
+          <strong>MRP</strong> (optional), <strong>Image Serial No</strong> (optional),
           then any further columns — each extra header becomes a <strong>Technical Specification</strong> name (e.g. "Bore Diameter") shown on the public product page, with the cell below as that product's value.
           A product with that exact Name/SKU that doesn't exist yet is created automatically, and so is its Category/SubCategory if new.
-          Branch must already exist. A product that already has an opening stock at that branch has the stock part of the row skipped as a duplicate (not double-counted) — Threshold/Visible/specs still apply.
+          Branch must already exist. A product that already has an opening stock at that branch has the stock part of the row skipped as a duplicate (not double-counted) — Threshold/Visible/MRP/specs still apply.
+          Columns are matched by header name, so a workbook made from an older template still imports.
+        </p>
+      </div>
+      <div class="form-group">
+        <label>Product Images (.zip)</label>
+        <input class="form-input" type="file" name="image_archive" accept=".zip"/>
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem;">
+          Optional. A zip of images named after the <strong>Image Serial No</strong> column — put <code>1</code> in that column and
+          <code>1.jpg</code> in the zip and it becomes that product's main image. Supported: .jpg, .jpeg, .png, .webp, .gif, .bmp.
+          <strong>Give many products the same serial to share one photo</strong> — the file is stored once and every product points at it,
+          so 200 products sharing an image cost one image worth of disk, not 200. Re-uploading the same zip re-uses what's already stored.
+          A serial with no matching file is reported as a warning — the product is still created, just without an image.
         </p>
       </div>
     </div>

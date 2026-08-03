@@ -76,26 +76,26 @@
 <!-- ── PRODUCT HERO ── -->
 <section class="section-pad surface-base">
   <div class="container">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-8);align-items:start;">
+    <div class="product-hero-grid">
 
       <!-- Image -->
       <div class="anim-slide-left" style="position:relative;">
-        <div style="display:grid;grid-template-columns:100px minmax(0,1fr);gap:1rem;align-items:start;">
-          <div style="display:flex;flex-direction:column;gap:0.75rem;max-height:540px;overflow:auto;padding-right:0.15rem;">
+        <div class="product-image-rail">
+          <div class="product-thumb-rail">
             {% if product_images %}
               {% for image in product_images %}
-              <button type="button" class="product-thumb-button{% if forloop.first %} active{% endif %}" data-product-thumb="{{ forloop.counter0 }}" style="border:none;background:none;padding:0;cursor:pointer;">
+              <button type="button" class="product-thumb-button{% if forloop.first %} active{% endif %}" data-product-thumb="{{ forloop.counter0 }}">
                 <img src="{{ image.image.url }}" alt="{{ image.caption|default:product.name }}" loading="lazy" width="160" height="160" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:var(--radius-sm);display:block;opacity:{% if forloop.first %}1{% else %}.65{% endif %};border:2px solid {% if forloop.first %}var(--primary-container){% else %}transparent{% endif %};"/>
               </button>
               {% endfor %}
             {% elif product.image %}
-              <button type="button" class="product-thumb-button active" data-product-thumb="0" style="border:none;background:none;padding:0;cursor:pointer;">
+              <button type="button" class="product-thumb-button active" data-product-thumb="0">
                 <img src="{{ product.image.url }}" alt="{{ product.name }}" width="160" height="160" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:var(--radius-sm);display:block;border:2px solid var(--primary-container);"/>
               </button>
             {% endif %}
           </div>
 
-          <div style="background:var(--gradient-dark);border-radius:var(--radius-sm);aspect-ratio:4/3;overflow:hidden;position:relative;">
+          <div class="product-main-stage">
             {% if product_images %}
               {% for image in product_images %}
               <figure class="product-main-slide{% if forloop.first %} active{% endif %}" data-product-slide="{{ forloop.counter0 }}" style="position:absolute;inset:0;margin:0;opacity:{% if forloop.first %}1{% else %}0{% endif %};transition:opacity .35s ease;">
@@ -139,7 +139,7 @@
                   style="font-size:1rem;padding:1rem 2rem;">
             📋 Enquire Now
           </button>
-          <a href="tel:+919884400741" class="btn-ghost" style="font-size:1rem;padding:1rem 2rem;">
+          <a href="tel:+919840088509" class="btn-ghost" style="font-size:1rem;padding:1rem 2rem;">
             📞 Call Us
           </a>
         </div>
@@ -148,9 +148,9 @@
         <div style="background:var(--surface-container-low);border-radius:var(--radius-sm);padding:var(--sp-3);">
           <div class="label-sm" style="color:var(--secondary);margin-bottom:.75rem;">Get a Quote</div>
           <div style="display:flex;flex-direction:column;gap:.5rem;font-size:.85rem;">
-            <a href="mailto:sales@anupambearings.com" style="color:var(--primary-container);text-decoration:none;">✉ sales@anupambearings.com</a>
-            <a href="tel:+919884400741"  style="color:var(--on-surface);text-decoration:none;">📞 +91-98844-00741 (Bengaluru)</a>
-            <a href="tel:04446912265"    style="color:var(--on-surface);text-decoration:none;">📞 044-4691-2265 (Chennai)</a>
+            <a href="mailto:info@anupambearings.com" style="color:var(--primary-container);text-decoration:none;">✉ info@anupambearings.com</a>
+            <a href="tel:+919840088509"  style="color:var(--on-surface);text-decoration:none;">📞 9840088509, 9877113860 (Bengaluru)</a>
+            <a href="tel:+919840088509"  style="color:var(--on-surface);text-decoration:none;">📞 9840088509, 9840637056 (Chennai)</a>
           </div>
         </div>
       </div>

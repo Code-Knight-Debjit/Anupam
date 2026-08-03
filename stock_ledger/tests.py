@@ -1,17 +1,23 @@
 import json
+import shutil
+import tempfile
+import zipfile
 from datetime import date, datetime
+from decimal import Decimal
 from io import BytesIO
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import Workbook
 
+from django.core.files.storage import default_storage
+
 from products.models import Category, Product, SubCategory
-from .excel_import import import_products_workbook
+from .excel_import import BULK_IMAGE_DIR, import_products_workbook
 from .models import Branch, BranchStock, OpeningStock, StockPurchase, StockSale, StockTransfer, UserProfile
 from .services import historical_stock_matrix, recompute_branch_stock, latest_unit_price
 
@@ -30,6 +36,43 @@ def make_products_workbook_upload(rows, filename='upload.xlsx', extra_headers=No
     wb.save(buf)
     buf.seek(0)
     return SimpleUploadedFile(filename, buf.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+def make_full_workbook_upload(rows, filename='upload.xlsx', extra_headers=None):
+    """Current template shape, including the MRP and Image Serial No columns.
+    rows: [Name/SKU, Category, SubCategory, Branch, Opening Quantity, Cost Price,
+    Low Stock Threshold, Visible, MRP, Image Serial No, *specs]."""
+    wb = Workbook()
+    ws = wb.active
+    headers = ['Name/SKU', 'Category', 'SubCategory', 'Branch', 'Opening Quantity',
+               'Cost Price', 'Low Stock Threshold', 'Visible', 'MRP', 'Image Serial No']
+    if extra_headers:
+        headers += extra_headers
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return SimpleUploadedFile(filename, buf.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+# Smallest valid PNG — enough for ImageField to store without Pillow complaints.
+TINY_PNG = bytes.fromhex(
+    '89504e470d0a1a0a0000000d4948445200000001000000010806000000'
+    '1f15c4890000000a49444154789c6360000002000100ffff0300000600'
+    '05572bd8b40000000049454e44ae426082'
+)
+
+
+def make_image_zip(names, filename='images.zip'):
+    """names: list of file names to place in the archive, e.g. ['1.jpg', '2.png']."""
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, 'w') as archive:
+        for name in names:
+            archive.writestr(name, TINY_PNG)
+    buf.seek(0)
+    return SimpleUploadedFile(filename, buf.read(), content_type='application/zip')
 
 
 def make_user(username, role, branch=None, is_staff=True):
@@ -351,6 +394,173 @@ class ProductSearchTests(StockLedgerTestBase):
 
         response = self.client.get(url, {'q': '6001', 'in_stock_branch': self.maa.id})
         self.assertEqual(len(response.json()['results']), 0)
+
+
+class ProductSearchAvailableQtyTests(StockLedgerTestBase):
+    """Item 12 — the picker shows how much is on hand before staff commit to a qty."""
+
+    def test_available_qty_returned_for_stock_restricted_search(self):
+        OpeningStock.objects.create(product=self.product, branch=self.blr, quantity=42, price=1, created_by=self.admin)
+        recompute_branch_stock(self.product.id, self.blr.id)
+
+        self.client.force_login(self.blr_staff)
+        response = self.client.get(
+            reverse('dashboard:stock_ledger:product_search'),
+            {'q': '6001', 'in_stock_branch': self.blr.id},
+        )
+        results = response.json()['results']
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['available_qty'], 42)
+
+    def test_available_qty_is_null_when_search_is_not_branch_restricted(self):
+        # Purchases search unrestricted — there's no single branch to report.
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('dashboard:stock_ledger:product_search'), {'q': '6001'})
+        results = response.json()['results']
+        self.assertEqual(len(results), 1)
+        self.assertIsNone(results[0]['available_qty'])
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ProductImportMrpAndImageTests(StockLedgerTestBase):
+    """Items 9 and 10 — the MRP column and zip-based image matching."""
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls._overridden_settings['MEDIA_ROOT'], ignore_errors=True)
+        super().tearDownClass()
+
+    def test_mrp_column_is_imported(self):
+        upload = make_full_workbook_upload([
+            ['MRP-SKU-1 Timken', self.category.name, '', self.blr.name, 10, 5, '', '', 1250.50, ''],
+        ])
+        import_products_workbook(upload, self.admin)
+        product = Product.objects.get(name='MRP-SKU-1 Timken')
+        self.assertEqual(product.mrp, Decimal('1250.50'))
+
+    def test_blank_mrp_leaves_field_null(self):
+        upload = make_full_workbook_upload([
+            ['MRP-SKU-2 Timken', self.category.name, '', self.blr.name, 10, 5, '', '', '', ''],
+        ])
+        import_products_workbook(upload, self.admin)
+        self.assertIsNone(Product.objects.get(name='MRP-SKU-2 Timken').mrp)
+
+    def test_image_is_attached_by_serial_number(self):
+        upload = make_full_workbook_upload([
+            ['IMG-SKU-1 Timken', self.category.name, '', self.blr.name, 10, 5, '', '', '', 1],
+        ])
+        result = import_products_workbook(upload, self.admin, image_archive=make_image_zip(['1.png']))
+
+        self.assertEqual(result.images_attached, 1)
+        self.assertEqual(result.image_warnings, [])
+        self.assertTrue(Product.objects.get(name='IMG-SKU-1 Timken').image)
+
+    def test_serial_with_no_matching_file_warns_but_still_imports_product(self):
+        upload = make_full_workbook_upload([
+            ['IMG-SKU-2 Timken', self.category.name, '', self.blr.name, 10, 5, '', '', '', 99],
+        ])
+        result = import_products_workbook(upload, self.admin, image_archive=make_image_zip(['1.png']))
+
+        self.assertEqual(result.images_attached, 0)
+        self.assertEqual(len(result.image_warnings), 1)
+        self.assertEqual(len(result.errors), 0)
+        product = Product.objects.get(name='IMG-SKU-2 Timken')
+        self.assertFalse(product.image)
+
+    def test_import_without_zip_produces_no_image_warnings(self):
+        upload = make_full_workbook_upload([
+            ['IMG-SKU-3 Timken', self.category.name, '', self.blr.name, 10, 5, '', '', '', 1],
+        ])
+        result = import_products_workbook(upload, self.admin)
+        self.assertEqual(result.images_attached, 0)
+        self.assertEqual(result.image_warnings, [])
+
+    def test_image_attached_once_when_product_spans_several_branch_rows(self):
+        upload = make_full_workbook_upload([
+            ['IMG-SKU-4 Timken', self.category.name, '', self.blr.name, 10, 5, '', '', '', 1],
+            ['IMG-SKU-4 Timken', self.category.name, '', self.maa.name, 4, 5, '', '', '', 1],
+        ])
+        result = import_products_workbook(upload, self.admin, image_archive=make_image_zip(['1.png']))
+        self.assertEqual(result.images_attached, 1)
+
+    def test_products_sharing_a_serial_reference_one_stored_file(self):
+        """The whole point of the bulk image upload: reusing one photo across
+        many products must cost one file on disk, not one copy per product."""
+        upload = make_full_workbook_upload([
+            ['SHARE-1 Timken', self.category.name, '', self.blr.name, 1, 5, '', '', '', 7],
+            ['SHARE-2 Timken', self.category.name, '', self.blr.name, 1, 5, '', '', '', 7],
+            ['SHARE-3 Timken', self.category.name, '', self.blr.name, 1, 5, '', '', '', 7],
+        ])
+        result = import_products_workbook(upload, self.admin, image_archive=make_image_zip(['7.png']))
+
+        self.assertEqual(result.images_attached, 3)
+        self.assertEqual(result.unique_images, 1)
+
+        names = {Product.objects.get(name=f'SHARE-{i} Timken').image.name for i in (1, 2, 3)}
+        self.assertEqual(len(names), 1, 'all three products must point at the same stored file')
+
+        path = names.pop()
+        self.assertTrue(path)
+        stored = [f for f in default_storage.listdir(BULK_IMAGE_DIR)[1]]
+        self.assertEqual(len(stored), 1, f'expected exactly one file on disk, found {stored}')
+
+    def test_reimporting_the_same_zip_does_not_duplicate_files_on_disk(self):
+        rows = [['REIMP-1 Timken', self.category.name, '', self.blr.name, '', '', '', '', '', 3]]
+        import_products_workbook(make_full_workbook_upload(rows), self.admin,
+                                 image_archive=make_image_zip(['3.png']))
+        first = Product.objects.get(name='REIMP-1 Timken').image.name
+
+        import_products_workbook(make_full_workbook_upload(rows), self.admin,
+                                 image_archive=make_image_zip(['3.png']))
+        second = Product.objects.get(name='REIMP-1 Timken').image.name
+
+        self.assertEqual(first, second)
+        stored = default_storage.listdir(BULK_IMAGE_DIR)[1]
+        self.assertEqual(len(stored), 1, f're-import should re-use the stored file, found {stored}')
+
+    def test_unreadable_zip_warns_but_products_still_import(self):
+        upload = make_full_workbook_upload([
+            ['IMG-SKU-5 Timken', self.category.name, '', self.blr.name, 10, 5, '', '', '', 1],
+        ])
+        not_a_zip = SimpleUploadedFile('images.zip', b'this is not a zip', content_type='application/zip')
+        result = import_products_workbook(upload, self.admin, image_archive=not_a_zip)
+
+        self.assertEqual(result.images_attached, 0)
+        self.assertEqual(len(result.image_warnings), 1)
+        self.assertTrue(Product.objects.filter(name='IMG-SKU-5 Timken').exists())
+
+
+class ProductImportOldTemplateCompatTests(StockLedgerTestBase):
+    """Columns are matched by header name, so a workbook saved from the template
+    that predates MRP / Image Serial No must not have its first two spec columns
+    misread as those fields."""
+
+    def test_old_template_spec_columns_are_still_read_as_specs(self):
+        upload = make_products_workbook_upload(
+            [['OLD-TPL-1 Timken', self.category.name, '', self.blr.name, 10, 5, '', '', '12mm', '28mm']],
+            extra_headers=['Bore Diameter', 'Outer Diameter'],
+        )
+        import_products_workbook(upload, self.admin)
+
+        product = Product.objects.get(name='OLD-TPL-1 Timken')
+        self.assertEqual(product.specifications.get('Bore Diameter'), '12mm')
+        self.assertEqual(product.specifications.get('Outer Diameter'), '28mm')
+        self.assertIsNone(product.mrp)
+
+    def test_columns_in_a_different_order_still_import(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.append(['Branch', 'Name/SKU', 'MRP', 'Category', 'Opening Quantity', 'Cost Price'])
+        ws.append([self.blr.name, 'REORDER-1 Timken', 999.00, self.category.name, 3, 2])
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        upload = SimpleUploadedFile('reordered.xlsx', buf.read())
+
+        result = import_products_workbook(upload, self.admin)
+
+        self.assertEqual(result.imported, 1)
+        self.assertEqual(Product.objects.get(name='REORDER-1 Timken').mrp, Decimal('999.00'))
 
 
 class ProductBulkImportTests(StockLedgerTestBase):

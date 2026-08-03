@@ -472,7 +472,7 @@ document.addEventListener('DOMContentLoaded', () => {
         typingEl.remove();
 
         if (!reply) {
-          reply = "The response is taking too long. Please try again or contact us at +91-98844-00741.";
+          reply = "The response is taking too long. Please try again or contact us at 9840088509.";
         }
 
         addAssistantMessage(reply);
@@ -480,7 +480,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       } catch (err) {
         typingEl.remove();
-        addAssistantMessage("I'm having connection issues. Please call us at +91-98844-00741.");
+        addAssistantMessage("I'm having connection issues. Please call us at 9840088509.");
       } finally {
         chatInput.disabled = false;
         chatSend.disabled  = false;

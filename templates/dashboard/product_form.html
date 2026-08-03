@@ -57,6 +57,11 @@
             <label>Description</label>
             <textarea class="form-input" name="description" placeholder="Describe the product, its features, and use cases…" style="min-height:120px;">{{ product.description|default:'' }}</textarea>
           </div>
+          <div class="form-group">
+            <label>MRP</label>
+            <input class="form-input" type="number" name="mrp" step="0.01" min="0" placeholder="0.00" value="{{ product.mrp|default_if_none:'' }}"/>
+            <p style="font-size:0.75rem;color:var(--muted);margin-top:0.35rem;">Maximum Retail Price — optional. Shown on the Stock Dashboard.</p>
+          </div>
         </div>
       </div>
 
