@@ -16,7 +16,7 @@ from openpyxl import Workbook
 
 from django.core.files.storage import default_storage
 
-from products.models import Category, Product, SubCategory
+from products.models import Category, Product, ProductImage, SubCategory
 from .excel_import import BULK_IMAGE_DIR, import_products_workbook
 from .models import Branch, BranchStock, OpeningStock, StockPurchase, StockSale, StockTransfer, UserProfile
 from .services import historical_stock_matrix, recompute_branch_stock, latest_unit_price
@@ -46,6 +46,28 @@ def make_full_workbook_upload(rows, filename='upload.xlsx', extra_headers=None):
     ws = wb.active
     headers = ['Name/SKU', 'Category', 'SubCategory', 'Branch', 'Opening Quantity',
                'Cost Price', 'Low Stock Threshold', 'Visible', 'MRP', 'Image Serial No']
+    if extra_headers:
+        headers += extra_headers
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return SimpleUploadedFile(filename, buf.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+def make_gallery_workbook_upload(rows, filename='upload.xlsx', extra_headers=None):
+    """Same shape as make_full_workbook_upload but also includes the two
+    Additional Image Serial No columns.
+    rows: [Name/SKU, Category, SubCategory, Branch, Opening Quantity, Cost Price,
+    Low Stock Threshold, Visible, MRP, Image Serial No, Additional Image Serial No 1,
+    Additional Image Serial No 2, *specs]."""
+    wb = Workbook()
+    ws = wb.active
+    headers = ['Name/SKU', 'Category', 'SubCategory', 'Branch', 'Opening Quantity',
+               'Cost Price', 'Low Stock Threshold', 'Visible', 'MRP', 'Image Serial No',
+               'Additional Image Serial No 1', 'Additional Image Serial No 2']
     if extra_headers:
         headers += extra_headers
     ws.append(headers)
@@ -528,6 +550,72 @@ class ProductImportMrpAndImageTests(StockLedgerTestBase):
         self.assertEqual(result.images_attached, 0)
         self.assertEqual(len(result.image_warnings), 1)
         self.assertTrue(Product.objects.filter(name='IMG-SKU-5 Timken').exists())
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ProductImportAdditionalImagesTests(StockLedgerTestBase):
+    """Main image (Image Serial No) plus two Additional (gallery) image slots."""
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls._overridden_settings['MEDIA_ROOT'], ignore_errors=True)
+        super().tearDownClass()
+
+    def test_additional_images_attached_as_gallery(self):
+        upload = make_gallery_workbook_upload([
+            ['GAL-SKU-1 Timken', self.category.name, '', self.blr.name, 10, 5, '', '', '', 1, 2, 3],
+        ])
+        result = import_products_workbook(
+            upload, self.admin, image_archive=make_image_zip(['1.png', '2.png', '3.png']),
+        )
+
+        self.assertEqual(result.images_attached, 1)
+        self.assertEqual(result.gallery_images_attached, 2)
+        self.assertEqual(result.image_warnings, [])
+        product = Product.objects.get(name='GAL-SKU-1 Timken')
+        self.assertTrue(product.image)
+        self.assertEqual(ProductImage.objects.filter(product=product).count(), 2)
+
+    def test_missing_additional_file_warns_but_still_imports(self):
+        upload = make_gallery_workbook_upload([
+            ['GAL-SKU-2 Timken', self.category.name, '', self.blr.name, 10, 5, '', '', '', 1, 99, ''],
+        ])
+        result = import_products_workbook(
+            upload, self.admin, image_archive=make_image_zip(['1.png']),
+        )
+
+        self.assertEqual(result.gallery_images_attached, 0)
+        self.assertEqual(len(result.image_warnings), 1)
+        product = Product.objects.get(name='GAL-SKU-2 Timken')
+        self.assertEqual(ProductImage.objects.filter(product=product).count(), 0)
+
+    def test_gallery_attached_once_when_product_spans_several_branch_rows(self):
+        upload = make_gallery_workbook_upload([
+            ['GAL-SKU-3 Timken', self.category.name, '', self.blr.name, 10, 5, '', '', '', '', 2, 3],
+            ['GAL-SKU-3 Timken', self.category.name, '', self.maa.name, 4, 5, '', '', '', '', 2, 3],
+        ])
+        result = import_products_workbook(
+            upload, self.admin, image_archive=make_image_zip(['2.png', '3.png']),
+        )
+        self.assertEqual(result.gallery_images_attached, 2)
+        product = Product.objects.get(name='GAL-SKU-3 Timken')
+        self.assertEqual(ProductImage.objects.filter(product=product).count(), 2)
+
+    def test_reimport_replaces_existing_gallery(self):
+        rows_first = [['GAL-SKU-4 Timken', self.category.name, '', self.blr.name, '', '', '', '', '', '', 2, 3]]
+        import_products_workbook(
+            make_gallery_workbook_upload(rows_first), self.admin,
+            image_archive=make_image_zip(['2.png', '3.png']),
+        )
+        product = Product.objects.get(name='GAL-SKU-4 Timken')
+        self.assertEqual(ProductImage.objects.filter(product=product).count(), 2)
+
+        rows_second = [['GAL-SKU-4 Timken', self.category.name, '', self.blr.name, '', '', '', '', '', '', 5, '']]
+        import_products_workbook(
+            make_gallery_workbook_upload(rows_second), self.admin,
+            image_archive=make_image_zip(['5.png']),
+        )
+        self.assertEqual(ProductImage.objects.filter(product=product).count(), 1)
 
 
 class ProductImportOldTemplateCompatTests(StockLedgerTestBase):

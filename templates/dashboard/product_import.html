@@ -27,7 +27,9 @@
     {% if result.created_products %}<span class="pill" style="background:rgba(59,130,246,0.12);color:#1d4ed8;">{{ result.created_products }} new product{{ result.created_products|pluralize }} added</span>{% endif %}
     {% if result.created_categories %}<span class="pill" style="background:rgba(168,85,247,0.12);color:#7e22ce;">{{ result.created_categories }} new categor{{ result.created_categories|pluralize:"y,ies" }} added</span>{% endif %}
     {% if result.created_subcategories %}<span class="pill" style="background:rgba(168,85,247,0.12);color:#7e22ce;">{{ result.created_subcategories }} new sub categor{{ result.created_subcategories|pluralize:"y,ies" }} added</span>{% endif %}
-    {% if result.images_attached %}<span class="pill" style="background:rgba(16,185,129,0.12);color:#047857;">{{ result.images_attached }} product{{ result.images_attached|pluralize }} imaged from {{ result.unique_images }} file{{ result.unique_images|pluralize }}</span>{% endif %}
+    {% if result.images_attached %}<span class="pill" style="background:rgba(16,185,129,0.12);color:#047857;">{{ result.images_attached }} main image{{ result.images_attached|pluralize }} set</span>{% endif %}
+    {% if result.gallery_images_attached %}<span class="pill" style="background:rgba(16,185,129,0.12);color:#047857;">{{ result.gallery_images_attached }} additional image{{ result.gallery_images_attached|pluralize }} set</span>{% endif %}
+    {% if result.unique_images %}<span class="pill" style="background:rgba(16,185,129,0.12);color:#047857;">{{ result.unique_images }} file{{ result.unique_images|pluralize }} uploaded</span>{% endif %}
     <span class="pill pill-unread">{{ result.skipped }} skipped</span>
   </p>
 
@@ -85,7 +87,7 @@
         <p style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem;">
           Columns: <strong>Name/SKU</strong>, <strong>Category</strong>, <strong>SubCategory</strong> (optional), <strong>Branch</strong>,
           <strong>Opening Quantity</strong>, <strong>Cost Price</strong>, <strong>Low Stock Threshold</strong> (optional), <strong>Visible</strong> (optional, defaults to TRUE),
-          <strong>MRP</strong> (optional), <strong>Image Serial No</strong> (optional),
+          <strong>MRP</strong> (optional), <strong>Image Serial No</strong> (optional, Main image), <strong>Additional Image Serial No 1</strong> and <strong>Additional Image Serial No 2</strong> (optional, gallery images),
           then any further columns — each extra header becomes a <strong>Technical Specification</strong> name (e.g. "Bore Diameter") shown on the public product page, with the cell below as that product's value.
           A product with that exact Name/SKU that doesn't exist yet is created automatically, and so is its Category/SubCategory if new.
           Branch must already exist. A product that already has an opening stock at that branch has the stock part of the row skipped as a duplicate (not double-counted) — Threshold/Visible/MRP/specs still apply.
@@ -96,11 +98,13 @@
         <label>Product Images (.zip)</label>
         <input class="form-input" type="file" name="image_archive" accept=".zip"/>
         <p style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem;">
-          Optional. A zip of images named after the <strong>Image Serial No</strong> column — put <code>1</code> in that column and
-          <code>1.jpg</code> in the zip and it becomes that product's main image. Supported: .jpg, .jpeg, .png, .webp, .gif, .bmp.
+          Optional. A zip of images named after the <strong>Image Serial No</strong>, <strong>Additional Image Serial No 1</strong> and <strong>Additional Image Serial No 2</strong> columns —
+          put <code>1</code>, <code>2</code>, <code>3</code> in those columns and <code>1.jpg</code>, <code>2.jpg</code>, <code>3.jpg</code> in the zip and a product gets one Main image plus two Additional (gallery) images.
+          All three are optional and independent — fill in just the ones you have. Supported: .jpg, .jpeg, .png, .webp, .gif, .bmp.
           <strong>Give many products the same serial to share one photo</strong> — the file is stored once and every product points at it,
           so 200 products sharing an image cost one image worth of disk, not 200. Re-uploading the same zip re-uses what's already stored.
-          A serial with no matching file is reported as a warning — the product is still created, just without an image.
+          A serial with no matching file is reported as a warning — that image is skipped, the product is still created/updated.
+          Re-uploading a product's row with new Additional Image Serial values replaces its existing gallery images.
         </p>
       </div>
     </div>
