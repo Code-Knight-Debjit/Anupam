@@ -14,11 +14,15 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.comments import Comment
 
-from products.models import Category, Product, SubCategory
+from products.models import Category, Product, ProductImage, SubCategory
 from .models import Branch, BranchStock, OpeningStock
 from .services import recompute_branch_stock
 
-FIXED_HEADERS = ['Name/SKU', 'Category', 'SubCategory', 'Branch', 'Opening Quantity', 'Cost Price', 'Low Stock Threshold', 'Visible', 'MRP', 'Image Serial No']
+FIXED_HEADERS = [
+    'Name/SKU', 'Category', 'SubCategory', 'Branch', 'Opening Quantity', 'Cost Price',
+    'Low Stock Threshold', 'Visible', 'MRP', 'Image Serial No',
+    'Additional Image Serial No 1', 'Additional Image Serial No 2',
+]
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'}
 BULK_IMAGE_DIR = 'products/bulk'
 HEADER_FILL = PatternFill(start_color='0E0E11', end_color='0E0E11', fill_type='solid')
@@ -35,7 +39,8 @@ class ImportResult:
     created_categories: int = 0
     created_subcategories: int = 0
     skipped: int = 0
-    images_attached: int = 0      # product records pointed at an image
+    images_attached: int = 0      # product records pointed at a main image
+    gallery_images_attached: int = 0  # additional (gallery) images attached
     unique_images: int = 0        # distinct files actually written to storage
     errors: list = field(default_factory=list)      # list of (row_number, reason) — bad data, can't proceed
     duplicates: list = field(default_factory=list)   # list of (row_number, reason) — already added previously
@@ -49,13 +54,16 @@ def build_products_template_workbook() -> BytesIO:
     itself); Opening Quantity + Cost Price together create that product's
     opening balance at that branch (skipped if it already has one there —
     reported as a duplicate, not double-counted); Low Stock Threshold,
-    Visible and MRP apply regardless. Image Serial No is the optional key
-    for the bulk image upload: the matching file in the images .zip is named
-    after it (1 → 1.jpg). Anything after Image Serial No is a Technical
-    Specification: the header is the spec name, the cell below is this
-    product's value — shown on the public product page. Add as many of these
-    columns as needed; re-uploading an existing product with new spec columns
-    fills them in (existing keys are kept, new values win)."""
+    Visible and MRP apply regardless. Image Serial No, Additional Image
+    Serial No 1 and Additional Image Serial No 2 are the optional keys for
+    the bulk image upload: the matching file in the images .zip is named
+    after each (1 → 1.jpg). The first becomes the product's Main image, the
+    other two become its Additional (gallery) images. Anything after
+    Additional Image Serial No 2 is a Technical Specification: the header is
+    the spec name, the cell below is this product's value — shown on the
+    public product page. Add as many of these columns as needed;
+    re-uploading an existing product with new spec columns fills them in
+    (existing keys are kept, new values win)."""
     wb = Workbook()
 
     ws = wb.active
@@ -75,14 +83,16 @@ def build_products_template_workbook() -> BytesIO:
     ws['G1'].comment = Comment('Optional. Low-stock alert threshold at this branch.', 'Anupam Bearings')
     ws['H1'].comment = Comment('Optional, defaults to TRUE. Set to FALSE to hide this product from the public site.', 'Anupam Bearings')
     ws['I1'].comment = Comment('Optional. Maximum Retail Price for this product, e.g. 1250.00. Set once per product — the same value applies across every branch row for that product.', 'Anupam Bearings')
-    ws['J1'].comment = Comment('Optional. Key for bulk image upload: put the same number here and name the image file after it in the images .zip (e.g. 1 here, 1.jpg in the zip). Supported: .jpg, .jpeg, .png, .webp, .gif, .bmp.', 'Anupam Bearings')
-    ws['K1'].comment = Comment('Anything after Image Serial No is a Technical Specification: the header is the spec name, the cell below is this product\'s value — shown on the public product page. Add as many of these columns as you need.', 'Anupam Bearings')
+    ws['J1'].comment = Comment('Optional. Key for the bulk image upload — this becomes the product\'s Main image. Put a number here and name the matching file after it in the images .zip (e.g. 1 here, 1.jpg in the zip). Supported: .jpg, .jpeg, .png, .webp, .gif, .bmp.', 'Anupam Bearings')
+    ws['K1'].comment = Comment('Optional. Same idea as Image Serial No, but for this product\'s first Additional (gallery) image.', 'Anupam Bearings')
+    ws['L1'].comment = Comment('Optional. Same idea as Image Serial No, but for this product\'s second Additional (gallery) image.', 'Anupam Bearings')
+    ws['M1'].comment = Comment('Anything after Additional Image Serial No 2 is a Technical Specification: the header is the spec name, the cell below is this product\'s value — shown on the public product page. Add as many of these columns as you need.', 'Anupam Bearings')
 
-    ws.append(['6001-ZZ Timken', 'Bearings', 'Ball Bearings', 'Bengaluru', 100, 45.50, 10, 'TRUE', 1250.00, 1, '12mm', '28mm'])
+    ws.append(['6001-ZZ Timken', 'Bearings', 'Ball Bearings', 'Bengaluru', 100, 45.50, 10, 'TRUE', 1250.00, 1, 2, 3, '12mm', '28mm'])
     for cell in ws[2]:
         cell.font = Font(italic=True, color='888888')
 
-    widths = [28, 16, 16, 14, 16, 12, 18, 10, 12, 16, 16, 16]
+    widths = [28, 16, 16, 14, 16, 12, 18, 10, 12, 16, 16, 16, 16, 16]
     for i, width in enumerate(widths, start=1):
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = width
     ws.freeze_panes = 'A2'
@@ -292,7 +302,9 @@ def import_products_workbook(uploaded_file, user, filename='', image_archive=Non
     created_subcategories = 0
     created_products_total = 0
     images_attached = 0
+    gallery_images_attached = 0
     imaged_product_ids = set()
+    gallery_imaged_product_ids = set()
     stored_image_paths = {}  # content hash -> storage path, so each image is written once
     if archive_error:
         image_warnings.append((0, archive_error))
@@ -396,6 +408,32 @@ def import_products_workbook(uploaded_file, user, filename='', image_archive=Non
             elif image_archive and not archive_error:
                 image_warnings.append((idx, f'No image named "{serial}" found in the zip for "{name}" — imported without an image.'))
 
+        # Same one-shot-per-product rule as the main image, but for the
+        # Additional (gallery) slots — a re-upload replaces the product's
+        # existing gallery rather than piling more on top of it.
+        additional_serials = [
+            _normalize_serial(col('Additional Image Serial No 1')),
+            _normalize_serial(col('Additional Image Serial No 2')),
+        ]
+        additional_serials = [s for s in additional_serials if s]
+        if additional_serials and product.id not in gallery_imaged_product_ids:
+            gallery_imaged_product_ids.add(product.id)
+            gallery_paths = []
+            for add_serial in additional_serials:
+                match = images.get(add_serial)
+                if match:
+                    image_name, image_bytes = match
+                    gallery_paths.append(_store_shared_image(image_name, image_bytes, stored_image_paths))
+                elif image_archive and not archive_error:
+                    image_warnings.append((idx, f'No image named "{add_serial}" found in the zip for "{name}" — additional image skipped.'))
+            if gallery_paths:
+                ProductImage.objects.filter(product=product).delete()
+                for order, path in enumerate(gallery_paths, start=1):
+                    gallery_image = ProductImage(product=product, order=order)
+                    gallery_image.image.name = path
+                    gallery_image.save()
+                    gallery_images_attached += 1
+
         if quantity and price is not None:
             if OpeningStock.objects.filter(product=product, branch=branch, is_deleted=False).exists():
                 duplicates.append((idx, f'"{name}" at {branch.name} already has an opening stock — skipped to avoid double-counting.'))
@@ -414,8 +452,8 @@ def import_products_workbook(uploaded_file, user, filename='', image_archive=Non
         skipped=len(errors) + len(duplicates), errors=errors, duplicates=duplicates,
         created_categories=created_categories, created_subcategories=created_subcategories,
         created_products=created_products_total,
-        images_attached=images_attached, image_warnings=image_warnings,
-        unique_images=len(stored_image_paths),
+        images_attached=images_attached, gallery_images_attached=gallery_images_attached,
+        image_warnings=image_warnings, unique_images=len(stored_image_paths),
     )
 
     affected_pairs = set()
