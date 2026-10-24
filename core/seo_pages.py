@@ -29,7 +29,6 @@ SEO_KEYWORD_MAP = {
     ],
     'brand': [
         'Timken Bearings',
-        'SKF Bearings',
         'FAG Bearings',
         'NTN Bearings',
         'NSK Bearings',
@@ -80,23 +79,18 @@ RELATED_PAGES_MAP = {
         {'label': 'Spherical Roller Bearings', 'url': '/spherical-roller-bearings/'},
         {'label': 'Angular Contact Bearings', 'url': '/angular-contact-bearings/'},
         {'label': 'Bearings for Manufacturing', 'url': '/bearings-for-manufacturing/'},
-        {'label': 'SKF Bearings', 'url': '/skf-bearings/'},
+        {'label': 'FAG Bearings', 'url': '/fag-bearings/'},
     ],
     'timken-bearings': [
-        {'label': 'SKF Bearings', 'url': '/skf-bearings/'},
         {'label': 'FAG Bearings', 'url': '/fag-bearings/'},
+        {'label': 'NTN Bearings', 'url': '/ntn-bearings/'},
         {'label': 'Deep Groove Ball Bearings', 'url': '/deep-groove-ball-bearings/'},
         {'label': 'Bearing Supplier Bangalore', 'url': '/bearing-supplier-bangalore/'},
     ],
-    'skf-bearings': [
-        {'label': 'Timken Bearings', 'url': '/timken-bearings/'},
-        {'label': 'FAG Bearings', 'url': '/fag-bearings/'},
-        {'label': 'Spherical Roller Bearings', 'url': '/spherical-roller-bearings/'},
-        {'label': 'Bearing Supplier Chennai', 'url': '/bearing-supplier-chennai/'},
-    ],
+
     'fag-bearings': [
         {'label': 'Timken Bearings', 'url': '/timken-bearings/'},
-        {'label': 'SKF Bearings', 'url': '/skf-bearings/'},
+        {'label': 'NTN Bearings', 'url': '/ntn-bearings/'},
         {'label': 'Angular Contact Bearings', 'url': '/angular-contact-bearings/'},
         {'label': 'Bearing Distributor Karnataka', 'url': '/bearing-distributor-karnataka/'},
     ],
@@ -292,33 +286,7 @@ SEO_LANDING_PAGES = {
             },
         ],
     },
-    'skf-bearings': {
-        'title': 'SKF Bearings Supplier in India | Anupam Bearings',
-        'description': 'SKF bearings sourcing support for industrial maintenance, OEM procurement, and replacement programs across India from Anupam Bearings.',
-        'keywords': 'skf bearings india, skf bearings bangalore, skf bearings supplier india, skf bearing distributor',
-        'headline': 'SKF Bearings for Maintenance and OEM Demand',
-        'intro': 'SKF queries are usually driven by maintenance reliability, interchange accuracy, and the need for consistent industrial quality.',
-        'sections': [
-            {
-                'heading': 'What buyers need',
-                'body': 'Buyers typically need exact part matching, stock confirmation, and help translating older bearing codes into current equivalents.',
-            },
-            {
-                'heading': 'How we help',
-                'body': 'We support technical review, procurement alignment, and delivery coordination for industrial use cases.',
-            },
-        ],
-        'faq': [
-            {
-                'question': 'Can you help with SKF equivalents?',
-                'answer': 'Yes. We can assist with code matching and application checks.',
-            },
-            {
-                'question': 'Do you handle bulk industrial sourcing?',
-                'answer': 'Yes. We support recurring and project-based industrial demand.',
-            },
-        ],
-    },
+
     'fag-bearings': {
         'title': 'FAG Bearings Supplier in India | Anupam Bearings',
         'description': 'FAG bearings sourcing support for industrial replacement, machine uptime, and technical procurement in India from Anupam Bearings.',

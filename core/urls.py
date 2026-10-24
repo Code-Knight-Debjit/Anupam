@@ -11,7 +11,6 @@ urlpatterns = [
     path('spherical-roller-bearings/', views.seo_landing_page, kwargs={'slug': 'spherical-roller-bearings'}, name='spherical-roller-bearings'),
     path('cylindrical-roller-bearings/', views.seo_landing_page, kwargs={'slug': 'cylindrical-roller-bearings'}, name='cylindrical-roller-bearings'),
     path('timken-bearings/', views.seo_landing_page, kwargs={'slug': 'timken-bearings'}, name='timken-bearings'),
-    path('skf-bearings/', views.seo_landing_page, kwargs={'slug': 'skf-bearings'}, name='skf-bearings'),
     path('fag-bearings/', views.seo_landing_page, kwargs={'slug': 'fag-bearings'}, name='fag-bearings'),
     path('bearing-supplier-bangalore/', views.seo_landing_page, kwargs={'slug': 'bearing-supplier-bangalore'}, name='bearing-supplier-bangalore'),
     path('bearing-supplier-chennai/', views.seo_landing_page, kwargs={'slug': 'bearing-supplier-chennai'}, name='bearing-supplier-chennai'),

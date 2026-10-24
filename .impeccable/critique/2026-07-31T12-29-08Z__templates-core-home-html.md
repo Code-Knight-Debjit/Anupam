@@ -40,7 +40,7 @@ The *surface* is specific. The Timken product photography is excellent and genui
 
 The *structure* is completely interchangeable. Hero carousel → about split with animated stat counters → 5 category cards → 4 numbered "why us" cards → industries carousel → dark CTA banner → 6-column mega footer. That is the default 2019 industrial-distributor template. Replace the photos and the copy and this is any B2B supplier in any category.
 
-And the specific thing the business actually has never becomes a design idea. Anupam Bearings' real assets are 150,000 SKUs, two warehouses, and decades of matching a part number to a machine that is currently stopped. The interface expresses none of that. There is no part-number lookup, no SKF→Timken cross-reference, no bore/OD/width filter, no stock indicator, no "is this in Bengaluru or Chennai today". A maintenance engineer whose line is down at 2am — the actual buyer — has no path here except a search box and a contact form. The most valuable inventory in the business is presented as body copy.
+And the specific thing the business actually has never becomes a design idea. Anupam Bearings' real assets are 150,000 SKUs, two warehouses, and decades of matching a part number to a machine that is currently stopped. The interface expresses none of that. There is no part-number lookup, no No→Timken cross-reference, no bore/OD/width filter, no stock indicator, no "is this in Bengaluru or Chennai today". A maintenance engineer whose line is down at 2am — the actual buyer — has no path here except a search box and a contact form. The most valuable inventory in the business is presented as body copy.
 
 **Deterministic scan.** `detect.mjs` on `templates/base.html templates/core templates/products templates/contact`: **1 finding**, severity warning — `overused-font` at `templates/base.html:75` (Space Grotesk). Exit 0.
 
@@ -126,6 +126,6 @@ Biggest opportunity: stop treating the catalog as a grid of cards and start trea
 
 - The business's real advantage is 150,000 SKUs and two warehouses. Why is there no part-number search on the homepage — the one thing a maintenance engineer with a stopped line actually needs?
 - What would this site look like if the hero were a search field instead of a carousel?
-- A buyer holding an SKF part number needs the Timken equivalent. That cross-reference is the highest-value page you could build, and it does not exist. Why not?
+- A buyer holding an No part number needs the Timken equivalent. That cross-reference is the highest-value page you could build, and it does not exist. Why not?
 - The chatbot can take 45 seconds to answer. Would a "call this number now" button convert better than any of it?
 - If a visitor sees exactly one screen, is a rotating hero the right bet — or should slide 1 simply be the whole hero?
