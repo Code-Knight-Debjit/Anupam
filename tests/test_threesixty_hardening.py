@@ -274,3 +274,22 @@ class TestPostLoginRedirect:
         UserProfile.objects.filter(user=user).update(role=UserProfile.BRANCH_STAFF)
         res = self._login('stockguy', 'pw-stock-12345', '?next=/360/')
         assert res['Location'] == '/dashboard/stock/'
+
+
+class TestImportAfterSeed:
+    """Runbook order is seed_threesixty, then import_360_backup. Branch names are
+    unique, so the importer must adopt the seeded branches instead of crashing."""
+
+    def test_import_after_seed_adopts_existing_branches(self):
+        call_command('seed_threesixty', stdout=StringIO())
+        seeded = dict(Branch.objects.values_list('name', 'id'))
+        backup = json.loads(FIXTURE.read_text())
+
+        call_command('import_360_backup', str(FIXTURE), stdout=StringIO())
+
+        for b in backup['branches']:
+            branch = Branch.objects.get(name=b['name'])
+            assert branch.legacy_id == b['id']
+            if b['name'] in seeded:
+                assert branch.id == seeded[b['name']]  # same row, not a duplicate
+        assert Branch.objects.count() == len({b['name'] for b in backup['branches']} | set(seeded))

@@ -176,6 +176,21 @@ class Command(BaseCommand):
                 self.branch_by_name[existing.name] = existing
                 self._bump('branches', False)
                 continue
+            # Branch names are unique: adopt a same-named branch (e.g. one made by
+            # `seed_threesixty`) rather than crash, filling in only blank letterhead fields.
+            same_name = Branch.objects.filter(name=b.get('name', ''), legacy_id__isnull=True).first()
+            if same_name:
+                for attr, key in (('letterhead_name', 'companyName'), ('letterhead_address', 'address'),
+                                  ('letterhead_gstin', 'gstNumber'), ('letterhead_phone', 'phone'),
+                                  ('letterhead_email', 'email')):
+                    if not getattr(same_name, attr):
+                        setattr(same_name, attr, b.get(key, ''))
+                same_name.legacy_id = b['id']
+                same_name.save()
+                self.branch_by_legacy[b['id']] = same_name
+                self.branch_by_name[same_name.name] = same_name
+                self._bump('branches', False)
+                continue
             branch = Branch.objects.create(
                 name=b.get('name', ''),
                 letterhead_name=b.get('companyName', ''),
