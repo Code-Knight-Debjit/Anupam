@@ -1,0 +1,110 @@
+{
+  "app": "Anupam 360",
+  "version": 2,
+  "exportedAt": "2026-10-24T10:00:00.000Z",
+  "exportedBy": "Test Admin",
+  "branches": [
+    { "id": "b1", "name": "Chennai", "companyName": "Anupam Bearings — Chennai", "address": "12 Mount Road", "phone": "044-1234", "email": "chennai@anupam.test", "gstNumber": "33AAAAA0000A1Z5",
+      "numbering": { "enquiry": {"prefix": "ENQ", "suffix": "", "start": 1}, "quotation": {"prefix": "QUO", "suffix": "CHN", "start": 100} } },
+    { "id": "b2", "name": "Bengaluru" }
+  ],
+  "employees": [
+    { "id": "e1", "userId": "admin", "name": "Test Admin", "password": "secret123", "role": "Admin", "phone": "9000000001", "email": "admin@anupam.test", "empCode": "EMP1", "aadhaar": "123412341234", "pan": "ABCDE1234F", "dob": "1980-01-01", "doj": "2010-01-01", "workStart": "09:30", "workEnd": "18:30", "weeklyOff": "0" },
+    { "id": "e2", "userId": "sales1", "name": "Sales One", "password": "secret123", "role": "Sales Manager", "phone": "9000000002", "email": "sales1@anupam.test", "branches": ["b1"] }
+  ],
+  "sources": [{"id": "s1", "name": "Referral"}],
+  "jobTitles": [{"id": "j1", "name": "Purchase"}],
+  "industries": [{"id": "ind1", "name": "Conveyor Manufacturing"}],
+  "brands": [{"id": "br1", "name": "SKF"}],
+  "products": [{"id": "pr1", "name": "Deep Groove Ball Bearing"}],
+  "categories": [],
+  "units": [{"id": "u1", "name": "Nos"}],
+  "taxRates": [{"id": "t1", "name": "18"}],
+  "paymentTerms": [{"id": "pt1", "name": "Net 30 Days"}],
+  "languages": [{"id": "l1", "name": "Tamil"}, {"id": "l2", "name": "English"}],
+  "transportList": [],
+  "courierList": [],
+  "salesPersons": [{"id": "sp1", "name": "Field Rep", "phone": "9000000099"}],
+  "companies": [
+    {
+      "id": "c1", "name": "Acme Fabrications", "plant": "Unit 1", "address": "1 Industrial Estate", "area": "Guindy",
+      "website": "", "plantGeo": {"lat": 13.0827, "lng": 80.2707, "by": "Test Admin", "at": "2026-01-01T00:00:00.000Z"},
+      "hoGeo": null, "hoName": "", "hoAddress": "", "hoCity": "", "hoState": "", "hoPincode": "", "hoPhone": "",
+      "gstNumber": "33BBBBB0000B1Z5", "city": "Chennai", "state": "Tamil Nadu", "pincode": "600032",
+      "industry": "Conveyor Manufacturing", "source": "Referral", "potential": "High",
+      "assignedTo": ["Sales One"], "transportPreference": "", "courierPreference": "",
+      "preferredLanguages": ["Tamil", "English"], "interestedBrands": ["SKF"], "interestedProducts": ["Deep Groove Ball Bearing"],
+      "contacts": [
+        { "id": "ct1", "name": "Ravi Kumar", "jobTitle": "Purchase", "phone": "9000011111", "phone2": "", "email": "ravi@acme.test",
+          "interactions": [
+            { "id": "i1", "type": "Call", "date": "2026-02-01", "notes": "Initial call", "location": null, "docId": "d1",
+              "userId": "e2", "userName": "Sales One", "createdAt": "2026-02-01T09:00:00.000Z", "followupDate": "", "alsoMet": [], "visitGroup": "", "jointWith": [] }
+          ]
+        }
+      ],
+      "createdById": "e2", "createdByName": "Sales One", "createdByRole": "Sales Manager", "createdAt": "2026-01-15T00:00:00.000Z"
+    }
+  ],
+  "salesDocs": [
+    {
+      "id": "d1", "type": "enquiry", "docNumber": "ENQ-0001", "branch": "Chennai",
+      "customerId": "c1", "customerName": "Acme Fabrications", "contactId": "ct1", "contactName": "Ravi Kumar",
+      "date": "2026-02-02", "remarks": "", "items": [], "refId": null, "refNumber": null,
+      "source": "Referral", "orderStatus": "Pending",
+      "createdById": "e2", "createdByName": "Sales One", "createdByRole": "Sales Manager", "createdAt": "2026-02-02T09:00:00.000Z"
+    },
+    {
+      "id": "d2", "type": "quotation", "docNumber": "QUO-CHN-0100", "branch": "Chennai",
+      "customerId": "c1", "customerName": "Acme Fabrications", "contactId": "ct1", "contactName": "Ravi Kumar",
+      "date": "2026-02-05", "remarks": "", "refId": "d1", "refNumber": "ENQ-0001",
+      "items": [ { "itemName": "6205 Bearing", "make": "SKF", "qty": 10, "unit": "Nos", "rate": 100, "discount": 5, "tax": 18, "amount": 112.1, "value": 1121 } ],
+      "showDiscountInPdf": true, "packingCharges": 50, "packingTax": 18, "freightCharges": 0, "freightTax": 0,
+      "otherCharges": 0, "otherChargesTax": 0, "roundOff": 0, "subTotal": 1121, "totalAmount": 1230,
+      "orderStatus": "Pending", "salesPersonId": "sp1", "salesPersonName": "Field Rep", "salesPersonPhone": "9000000099",
+      "validTill": "2026-03-05", "refNo": "", "refDate": "", "paymentTerms": "Net 30 Days", "terms": ["Prices valid for 30 days."],
+      "callLog": [ { "id": "cl1", "message": "Followed up with customer", "userId": "e2", "userName": "Sales One", "timestamp": "2026-02-06T10:00:00.000Z" } ],
+      "createdById": "e2", "createdByName": "Sales One", "createdByRole": "Sales Manager", "createdAt": "2026-02-05T09:00:00.000Z"
+    }
+  ],
+  "docCounters": { "enquiry::Chennai": 1, "quotation::Chennai": 100 },
+  "payments": [
+    { "id": "p1", "branch": "Chennai", "customerId": "c1", "customerName": "Acme Fabrications", "contactId": "ct1", "contactName": "Ravi Kumar",
+      "amount": 1230, "date": "2026-02-10", "remarks": "Advance",
+      "receivedLog": [ { "id": "r1", "amount": 500, "date": "2026-02-12", "mode": "Cash", "remarks": "Part payment", "recordedById": "e1", "recordedByName": "Test Admin", "createdAt": "2026-02-12T10:00:00.000Z" } ],
+      "createdById": "e2", "createdByName": "Sales One", "createdAt": "2026-02-10T09:00:00.000Z" }
+  ],
+  "tasks": [
+    { "id": "tk1", "title": "Call Ravi Kumar — Acme Fabrications", "description": "Follow up", "assignedToId": "e2", "assignedToName": "Sales One",
+      "priority": "Medium", "status": "Open", "taskType": "Call", "dueDate": "2026-03-01",
+      "relatedCustomerId": "c1", "relatedCustomerName": "Acme Fabrications", "relatedContactId": "ct1", "relatedContactName": "Ravi Kumar",
+      "createdById": "e1", "createdByName": "Test Admin", "createdAt": "2026-02-20T00:00:00.000Z", "completedAt": "" }
+  ],
+  "notifications": [
+    { "id": "n1", "userId": "e2", "read": false, "createdAt": "2026-02-20T00:05:00.000Z", "type": "task", "text": "You were assigned a task.", "relatedCustomerId": "c1", "relatedCustomerName": "Acme Fabrications" }
+  ],
+  "approvals": [
+    { "id": "a1", "type": "edit", "companyId": "c1", "companyName": "Acme Fabrications", "note": "",
+      "requestedById": "e2", "requestedByName": "Sales One", "requestedByRole": "Sales Manager",
+      "requestedAt": "2026-02-21T00:00:00.000Z",
+      "proposedData": { "name": "Acme Fabrications", "potential": "Very High", "assignedTo": ["Sales One", "Test Admin"], "preferredLanguages": ["Tamil"] } }
+  ],
+  "callAssignments": [
+    { "id": "ca1", "customerId": "c1", "customerName": "Acme Fabrications", "contactId": "ct1", "contactName": "Ravi Kumar",
+      "weekOf": "2026-02-02", "status": "Pending", "remarks": "", "calledAt": "", "calledById": "", "calledByName": "",
+      "assignedToId": "e2", "assignedToName": "Sales One", "assignedById": "e1", "assignedByName": "Test Admin", "assignedAt": "2026-02-01T00:00:00.000Z",
+      "attempts": [ { "id": "att1", "reason": "No answer", "note": "", "at": "2026-02-03T10:00:00.000Z", "byId": "e2", "byName": "Sales One", "callAgainDate": "2026-02-10" } ] }
+  ],
+  "attendance": [
+    { "id": "att-rec-1", "userId": "e2", "userName": "Sales One", "date": "2026-02-02", "checkIn": "09:35", "checkOut": "18:40",
+      "inLoc": {"lat": 13.08, "lng": 80.27, "acc": 15}, "outLoc": {"lat": 13.08, "lng": 80.27, "acc": 12} }
+  ],
+  "leaveRequests": [
+    { "id": "lv1", "userId": "e2", "userName": "Sales One", "from": "2026-03-10", "to": "2026-03-11", "reason": "Personal", "status": "Pending", "requestedAt": "2026-02-25T00:00:00.000Z" }
+  ],
+  "holidays": [
+    { "id": "h1", "from": "2026-01-26", "to": "2026-01-26", "name": "Republic Day", "all": true, "branches": [], "createdById": "e1", "createdByName": "Test Admin", "createdAt": "2026-01-01T00:00:00.000Z" }
+  ],
+  "attendanceStart": "2026-01-01",
+  "stockProducts": [], "suppliers": [], "stockBills": [], "stockTransactions": [],
+  "printWatermark": {}, "docTheme": {}, "appLogo": "", "appLogoAspect": 1, "sidebarLogo": ""
+}

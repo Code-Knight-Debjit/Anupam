@@ -19,3 +19,8 @@ build/
 .idea/
 .vscode/
 
+
+# Local scratch / demo data
+demo360.sqlite3
+.serena/
+contact_management.html

@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     'dashboard',
     'stock_ledger',
     'django_celery_beat',
+    'threesixty',
 ]
 
 MIDDLEWARE = [
@@ -37,6 +38,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'threesixty.middleware.ThreeSixtyResponseHeadersMiddleware',
 ]
 
 ROOT_URLCONF = 'anupam_bearings.urls'

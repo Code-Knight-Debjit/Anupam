@@ -3,6 +3,7 @@ User-agent: *
 Disallow: /dashboard/
 Disallow: /api/
 Disallow: /admin/
+Disallow: /360/
 Disallow: /media/product_tables/
 # Block filtered product URLs — these are noindex in the view layer
 Disallow: /products/?

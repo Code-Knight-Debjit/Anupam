@@ -43,3 +43,10 @@ data/faiss_index/
 certs/
 node_modules/
 *.log
+
+# 360 migration source + demo data (not needed at runtime)
+contact_management.html
+demo360.sqlite3
+tests/fixtures/
+docs/
+.serena/

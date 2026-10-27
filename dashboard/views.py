@@ -6,10 +6,13 @@ from django.views.decorators.http import require_POST, require_GET
 from django.db import transaction
 from django.db.models import Count, Q, Max
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
+from django_ratelimit.core import is_ratelimited
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 import json
+import logging
 
 from products.excel_table import ExcelTableError, clear_excel_table_file, parse_excel_table_file, store_excel_table_file
 from products.models import Category, Product, ProductImage, SubCategory, Enquiry
@@ -34,24 +37,70 @@ def _parse_mrp(raw):
         return None
 
 
-def _post_login_redirect(user, next_url=None):
+def _post_login_redirect(request, user):
+    next_url = request.GET.get('next')
+    # `next` is attacker-controllable (it comes from the query string), so only
+    # follow it for same-site URLs.
+    if not url_has_allowed_host_and_scheme(
+            next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        next_url = None
     profile = getattr(user, 'stock_profile', None)
     if profile and profile.role != UserProfile.ADMIN:
+        # Anupam 360 staff have a limited stock role but no business on the stock
+        # dashboard — send them where they were going, or to 360.
+        if getattr(user, 'threesixty_profile', None):
+            return redirect(next_url or '/360/')
         return redirect('dashboard:stock_ledger:dashboard')
     return redirect(next_url or '/dashboard/')
 
 
+def _login_username_key(group, request):
+    return (request.POST.get('username') or '').strip().lower()[:150] or '-'
+
+
+def _login_client_ip_key(group, request):
+    # Behind nginx every request arrives from the proxy, so REMOTE_ADDR is
+    # useless; nginx overwrites X-Real-IP with the real client address.
+    return request.META.get('HTTP_X_REAL_IP') or request.META.get('REMOTE_ADDR', '-')
+
+
+logger = logging.getLogger(__name__)
+
+
+def _login_throttled(request):
+    """Throttle password guessing: per account (stops a distributed attack on
+    one user) and per client IP (stops one client spraying many usernames).
+    Best-effort — if the cache (Redis) is down, log and let the attempt
+    through rather than locking every staff member out of the dashboard."""
+    try:
+        # Both are evaluated (no short-circuit) so both counters always advance.
+        by_account = is_ratelimited(request, group='dashboard_login_account', key=_login_username_key,
+                                    rate='10/5m', method='POST', increment=True)
+        by_client = is_ratelimited(request, group='dashboard_login_client', key=_login_client_ip_key,
+                                   rate='30/5m', method='POST', increment=True)
+    except Exception:
+        logger.warning('Login rate limiting unavailable; allowing the attempt.', exc_info=True)
+        return False
+    return by_account or by_client
+
+
 def dashboard_login(request):
     if request.user.is_authenticated and request.user.is_staff:
-        return _post_login_redirect(request.user)
+        return _post_login_redirect(request, request.user)
     error = None
+    if request.method == 'POST' and _login_throttled(request):
+        response = render(request, 'dashboard/login.html', {
+            'error': 'Too many login attempts. Please wait a few minutes and try again.',
+        })
+        response.status_code = 429
+        return response
     if request.method == 'POST':
         username = request.POST.get('username', '')
         password = request.POST.get('password', '')
         user = authenticate(request, username=username, password=password)
         if user and user.is_staff:
             login(request, user)
-            return _post_login_redirect(user, request.GET.get('next'))
+            return _post_login_redirect(request, user)
         error = 'Invalid credentials or insufficient permissions.'
     return render(request, 'dashboard/login.html', {'error': error})
 

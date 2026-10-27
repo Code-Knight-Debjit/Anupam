@@ -10,6 +10,7 @@ urlpatterns = [
     # path('admin/', admin.site.urls),
   path('favicon.ico', core_views.favicon, name='favicon'),
     path('dashboard/', include('dashboard.urls')),
+    path('360/', include('threesixty.urls')),
     path('', include('core.urls')),
     path('products/', include('products.urls')),
     path('contact/', include('contact.urls')),

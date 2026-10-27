@@ -1,0 +1,95 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Anupam 360</title>
+  <link rel="icon" href="{% static 'images/favicon.ico' %}" type="image/x-icon">
+  <link rel="stylesheet" href="{% static 'threesixty/vendor/leaflet/leaflet.css' %}">
+  <link rel="stylesheet" href="{% static 'threesixty/css/app.css' %}">
+  <script>
+    window.THREESIXTY_VENDOR = {
+      leaflet: "{% static 'threesixty/vendor/leaflet/leaflet.js' %}",
+      xlsx: "{% static 'threesixty/vendor/xlsx/xlsx.full.min.js' %}",
+    };
+  </script>
+</head>
+<body>
+  <div id="app-shell">
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+    <aside id="app-sidebar">
+      <div class="brand">
+        <span class="brand-plate"><img src="{% static 'images/onlylogo.webp' %}" alt="Anupam Bearings" width="64" height="52"></span>
+        <span class="brand-product">Anupam 360</span>
+      </div>
+
+      <div class="nav-label">Dashboard</div>
+      <button class="nav-item" data-view="dashboard"><span>Dashboard</span><span class="nav-badge" id="dashBadge" style="display:none;"></span></button>
+      <button class="nav-item" data-view="tasks"><span>Task</span><span class="nav-badge" id="taskBadge" style="display:none;"></span></button>
+      <button class="nav-item" data-view="callinglist"><span>Outreach</span><span class="nav-badge" id="callingListBadge" style="display:none;"></span></button>
+      <button class="nav-item" data-view="attendance"><span>Attendance</span><span class="nav-badge" id="attBadge" style="display:none;"></span></button>
+
+      <div class="nav-label">Vendors</div>
+      <button class="nav-item" data-view="customers"><span>Customer</span></button>
+      <button class="nav-item" data-view="map"><span>Map &amp; Nearby</span></button>
+
+      <div class="nav-label">Sales</div>
+      <button class="nav-item" data-view="sales" data-subtab="enquiry" id="navEnquiry"><span>Enquiry</span><span class="nav-badge" id="navBadgeEnquiry" style="display:none;"></span></button>
+      <button class="nav-item" data-view="sales" data-subtab="quotation" id="navQuotation"><span>Quotation</span><span class="nav-badge" id="navBadgeQuotation" style="display:none;"></span></button>
+      <button class="nav-item" data-view="sales" data-subtab="proforma" id="navProforma"><span>Proforma Invoice</span><span class="nav-badge" id="navBadgeProforma" style="display:none;"></span></button>
+      <button class="nav-item" data-view="sales" data-subtab="dc" id="navDC"><span>Delivery Challan</span><span class="nav-badge" id="navBadgeDC" style="display:none;"></span></button>
+      <button class="nav-item" data-view="sales" data-subtab="po" id="navPO"><span>Pending PO</span><span class="nav-badge" id="navBadgePO" style="display:none;"></span></button>
+      <button class="nav-item" data-view="payments" id="navPayments"><span>Payment Collection</span><span class="nav-badge" id="navBadgePayments" style="display:none;"></span></button>
+      <button class="nav-item" data-view="labels" id="navLabels"><span>Print Label</span></button>
+
+      <div class="nav-label">Insights</div>
+      <button class="nav-item" data-view="reports"><span>Reports</span></button>
+
+      <div class="nav-label">&nbsp;</div>
+      <button class="nav-item" data-view="managelists" id="navManage"><span>Manage lists</span></button>
+
+      <div class="nav-label">Main panel</div>
+      <button class="nav-item" data-view="import" id="navImport"><span>Import Excel</span></button>
+      <button class="nav-item" data-view="users" id="navUsers"><span>Users</span></button>
+      <button class="nav-item" data-view="branches" id="navBranches"><span>Branch</span></button>
+
+      <div class="sidebar-footer">
+        <div class="user-chip">
+          <div>
+            <div id="curUserName">—</div>
+            <div class="role" id="curUserRole">—</div>
+          </div>
+        </div>
+        <button class="link-btn" id="logoutBtn">Log out</button>
+      </div>
+    </aside>
+
+    <div id="app-main">
+      <div id="app-topbar">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <button id="topbarBurger" aria-label="Menu">&#9776;</button>
+          <h1 id="pageTitle">Dashboard</h1>
+        </div>
+        <div class="notif-bell-wrap" style="position:relative;">
+          <button type="button" class="btn ghost sm" id="notifBellBtn" title="Notifications">
+            Notifications <span class="nav-badge" id="notifBadge" style="display:none;"></span>
+          </button>
+          <div id="notifDropdown" style="display:none;position:absolute;right:0;top:40px;width:320px;max-height:420px;overflow-y:auto;background:var(--surface-container-lowest);border-radius:var(--radius-md);box-shadow:var(--shadow-float);z-index:50;">
+            <div class="flex-between" style="padding:10px 14px;margin-bottom:0;">
+              <strong style="font-size:13px;">Notifications</strong>
+              <button class="link-btn" id="notifMarkAllBtn" style="color:var(--primary);">Mark all read</button>
+            </div>
+            <div id="notifList"></div>
+          </div>
+        </div>
+      </div>
+      <main id="app-view"><div class="empty-state">Loading…</div></main>
+    </div>
+  </div>
+
+  <script>window.THREESIXTY_USER = {{ profile.user.id }};</script>
+  <script type="module" src="{% static 'threesixty/js/app.js' %}"></script>
+</body>
+</html>
