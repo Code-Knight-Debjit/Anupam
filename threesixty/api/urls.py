@@ -104,6 +104,9 @@ urlpatterns = [
 
     path('attendance/', views_attendance.AttendanceRecordResource.as_view(), name='attendance'),
     path('attendance/<int:pk>/', views_attendance.AttendanceRecordResource.as_view(), name='attendance-detail'),
+    path('attendance/me/', views_attendance.my_attendance, name='attendance-me'),
+    path('attendance/summary/', views_attendance.attendance_summary, name='attendance-summary'),
+    path('attendance/report/', views_attendance.attendance_report, name='attendance-report'),
     path('attendance/check-in/', views_attendance.check_in, name='attendance-check-in'),
     path('attendance/check-out/', views_attendance.check_out, name='attendance-check-out'),
     path('attendance/correct/', views_attendance.correct_day, name='attendance-correct'),

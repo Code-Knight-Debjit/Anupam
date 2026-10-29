@@ -469,23 +469,23 @@ def serialize_call_assignment(assignment, include_attempts=True):
     return data
 
 
-def serialize_attendance_record(record):
-    return {
+def serialize_attendance_record(record, viewer=None):
+    """Locations are shown to Admin and to the person themselves, nobody else (REQ-ATT-04)."""
+    data = {
         'id': record.id,
         'user': serialize_user_ref(record.user),
         'date': record.date.isoformat(),
         'check_in': record.check_in.isoformat() if record.check_in else None,
         'check_out': record.check_out.isoformat() if record.check_out else None,
-        'in_loc_lat': record.in_loc_lat,
-        'in_loc_lng': record.in_loc_lng,
-        'in_loc_accuracy_m': record.in_loc_accuracy_m,
-        'out_loc_lat': record.out_loc_lat,
-        'out_loc_lng': record.out_loc_lng,
-        'out_loc_accuracy_m': record.out_loc_accuracy_m,
         'status': record.status,
         'note': record.note,
         'marked_by': serialize_user_ref(record.marked_by),
     }
+    if viewer is not None and (RoleRules.is_admin(viewer) or record.user_id == viewer.pk):
+        data.update(
+            in_loc_lat=record.in_loc_lat, in_loc_lng=record.in_loc_lng, in_loc_accuracy_m=record.in_loc_accuracy_m,
+            out_loc_lat=record.out_loc_lat, out_loc_lng=record.out_loc_lng, out_loc_accuracy_m=record.out_loc_accuracy_m)
+    return data
 
 
 def serialize_leave_request(leave):

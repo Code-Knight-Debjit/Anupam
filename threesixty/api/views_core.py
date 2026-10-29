@@ -13,6 +13,7 @@ from ..models import (
     Branch, BranchNumbering, EmployeeProfile, Holiday, LookupItem, SalesPerson, SiteSetting,
 )
 from ..permissions import RoleRules, role_360_required, staff_360_required
+from ..services import attendance as attendance_service
 from ..services import lists as list_service
 from ..services import users as user_service
 from ..services.accounts import limit_stock_access, revoke_login
@@ -224,19 +225,14 @@ class HolidayResource(AdminWriteMixin, JsonResource):
         return serialize_holiday(instance)
 
     def apply_create(self, request, data):
+        """Adds the holiday and tells everyone (or the chosen branches') — REQ-AUT-09."""
         self._require_admin(request)
         if not data.get('date') or not data.get('name'):
             raise ApiError(400, 'date and name are required.')
         date = parse_date_input(data['date'], 'date')
         date_to = parse_date_input(data['date_to'], 'date_to') if data.get('date_to') else date
-        if date_to < date:
-            raise ApiError(400, 'date_to cannot be before date.')
-        holiday = Holiday.objects.create(
-            date=date, date_to=date_to, name=data['name'], is_all_branches=bool(data.get('is_all_branches')),
-        )
-        if 'branch_ids' in data:
-            holiday.branches.set(data['branch_ids'])
-        return holiday
+        return attendance_service.add_holiday(
+            data['name'], date, date_to, data.get('branch_ids'), bool(data.get('is_all_branches')))
 
     def apply_update(self, request, instance, data):
         self._require_admin(request)
