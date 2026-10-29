@@ -29,7 +29,7 @@ from ..models import (
     SupplyLogEntry,
 )
 from ..permissions import RoleRules
-from ..services.numbering import allocate_next_number, bump_counter_to
+from ..services.numbering import NOT_GENERATED, allocate_next_number, bump_counter_to
 from ..services.totals import TYPE_FLAGS, compute_document_totals, compute_item_fields
 from .concurrency import check_version
 from .fields import parse_date_input
@@ -162,7 +162,9 @@ class SalesDocumentResource(JsonResource):
         _validate_reference(doc_type, reference)
 
         doc_number = (data.get('doc_number') or '').strip()
-        if doc_number:
+        if doc_type in NOT_GENERATED:
+            pass  # Pending PO: the customer's own PO number, as typed (may be blank)
+        elif doc_number:
             bump_counter_to(branch, doc_type, doc_number)
         else:
             doc_number = allocate_next_number(branch, doc_type)

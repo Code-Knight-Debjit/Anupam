@@ -146,7 +146,7 @@ async function docForm(type, doc, customers) {
     <div class="field-row">
       <div class="field"><label>Date *</label><input type="date" id="df-date" value="${d.date || new Date().toISOString().slice(0, 10)}"></div>
       <div class="field"><label>Status</label><select id="df-status">${STATUS_OPTIONS.map((s) => `<option ${((d.order_status || 'Pending') === s) ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
-      <div class="field"><label>Sales person</label><select id="df-salesperson"><option value="">—</option>${state.salesPersons.map((p) => `<option value="${p.id}" ${String(d.sales_person_id) === String(p.id) ? 'selected' : ''}>${escapeHtml(p.full_name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Sales person</label><select id="df-salesperson"><option value="">—</option>${state.salesPersons.map((p) => `<option value="${p.id}" ${String(d.sales_person_id) === String(p.id) ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}</select></div>
     </div>
     ${type === 'enquiry' ? `<div class="field"><label>Source</label><input id="df-source" value="${escapeHtml(d.source || '')}"></div>` : ''}
     ${type === 'dc' ? `<div class="field-row">

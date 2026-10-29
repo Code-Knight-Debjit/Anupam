@@ -13,6 +13,7 @@ urlpatterns = [
 
     path('branches/', views_core.BranchResource.as_view(), name='branches'),
     path('branches/<int:pk>/', views_core.BranchResource.as_view(), name='branch-detail'),
+    path('branches/<int:branch_id>/images/<str:kind>/', views_core.branch_image, name='branch-image'),
     path('branches/<int:branch_id>/numbering/<str:doc_type>/', views_core.branch_numbering_detail,
          name='branch-numbering'),
 

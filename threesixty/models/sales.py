@@ -67,6 +67,9 @@ class SalesDocument(models.Model):
 
     # quotation/dc/proforma quote metadata
     sales_person = models.ForeignKey(SalesPerson, on_delete=models.SET_NULL, null=True, blank=True, related_name='sales_documents')
+    # Text copy of the sales person's name: removing a sales person from the list
+    # must not change documents that already used them (REQ-LST-01).
+    sales_person_name = models.CharField(max_length=150, blank=True)
     valid_till = models.DateField(null=True, blank=True)
     ref_no = models.CharField(max_length=120, blank=True)
     ref_date = models.DateField(null=True, blank=True)
@@ -89,6 +92,13 @@ class SalesDocument(models.Model):
 
     def __str__(self):
         return f'{self.get_type_display()} {self.doc_number}'
+
+    def save(self, *args, **kwargs):
+        if self.sales_person_id and self.sales_person:
+            self.sales_person_name = self.sales_person.name
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = {*kwargs['update_fields'], 'sales_person_name'}
+        super().save(*args, **kwargs)
 
 
 class SalesDocumentItem(models.Model):

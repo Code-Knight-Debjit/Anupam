@@ -103,14 +103,14 @@ class TestStaff360Decorator:
     def test_unauthenticated_redirects_to_login(self, client):
         resp = client.get(reverse('threesixty:index'))
         assert resp.status_code == 302
-        assert '/dashboard/login/' in resp.url
+        assert '/360/login/' in resp.url
 
     def test_non_staff_user_redirects_to_login(self, client):
         User.objects.create_user(username='nonstaff', password='x', is_staff=False)
         client.login(username='nonstaff', password='x')
         resp = client.get(reverse('threesixty:index'))
         assert resp.status_code == 302
-        assert '/dashboard/login/' in resp.url
+        assert '/360/login/' in resp.url
 
     def test_staff_without_employee_profile_gets_403(self, client):
         User.objects.create_user(username='staffnoprofile', password='x', is_staff=True)

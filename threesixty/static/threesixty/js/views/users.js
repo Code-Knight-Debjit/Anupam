@@ -41,7 +41,7 @@ function userForm(emp) {
       <div class="field"><label>PAN</label><input id="uf-pan" value="${escapeHtml(e.pan_number || '')}"></div>
     </div>
     <div class="field"><label>Branches</label>${branchCheckboxes(e.branch_ids)}</div>
-    ${emp ? `<div class="field"><label><input type="checkbox" id="uf-active-account" style="width:auto;display:inline;" ${e.is_active_account !== false ? 'checked' : ''}> Account active</label></div>` : ''}
+    ${emp ? `<div class="field"><label><input type="checkbox" id="uf-active-account" style="width:auto;display:inline;" ${e.is_active !== false ? 'checked' : ''}> Active (can sign in)</label></div>` : ''}
     <div class="modal-actions"><button class="btn" id="uf-cancel">Cancel</button><button class="btn primary" id="uf-save">${emp ? 'Save changes' : 'Create user'}</button></div>`;
 }
 
@@ -71,7 +71,7 @@ function openUserForm(emp, onSaved) {
           if (emp) {
             if (password) data.new_password = password;
             const activeBox = modal.querySelector('#uf-active-account');
-            if (activeBox) data.is_active_account = activeBox.checked;
+            if (activeBox) data.is_active = activeBox.checked;
             await api.patch(`employees/${emp.id}/`, data);
           } else {
             data.username = modal.querySelector('#uf-username').value.trim();
@@ -101,7 +101,7 @@ async function render(root) {
     ${renderTable(['Name', 'Username', 'Role', 'Branches', 'Status', ''], employees.map((e) => ({
       Name: escapeHtml(e.full_name), Username: escapeHtml(e.username), Role: badge((ROLES.find((r) => r[0] === e.role) || [])[1] || e.role),
       Branches: (e.branch_ids || []).map((id) => escapeHtml((state.branches.find((b) => b.id === id) || {}).name || '?')).join(', ') || '—',
-      Status: e.is_active_account && e.is_active_employee ? badge('Active') : badge('Inactive'),
+      Status: e.is_active ? badge('Active') : badge('Inactive'),
       '': `<button class="btn sm" data-edit="${e.id}">Edit</button> <button class="btn sm danger" data-del="${e.id}">Remove</button>`,
     })), { empty: 'No users yet.' })}`;
   root.querySelector('#newUserBtn').onclick = () => openUserForm(null, () => render(root));

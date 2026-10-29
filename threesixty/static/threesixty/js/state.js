@@ -8,6 +8,8 @@ import { api } from './api.js';
 export const state = {
   me: null,
   flags: {},
+  nav: [],
+  reportTabs: [],
   branches: [],
   lookups: {},
   salesPersons: [],
@@ -19,6 +21,8 @@ export async function loadBootstrap() {
   const [me, boot] = await Promise.all([api.get('me/'), api.get('bootstrap/')]);
   state.me = me.user;
   state.flags = me.flags;
+  state.nav = me.nav || [];
+  state.reportTabs = me.report_tabs || [];
   state.branches = boot.branches;
   state.lookups = boot.lookups;
   state.salesPersons = boot.sales_persons;

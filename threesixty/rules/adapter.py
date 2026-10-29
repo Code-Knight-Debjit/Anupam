@@ -1,0 +1,85 @@
+"""Lets the 90 spec tests (anupam360_spec/tests/test_requirements.py) run
+against the Django implementation.
+
+`from .anupam_rules import *` supplies every rule the spec defines. Functions
+for which the Django build has its own implementation are then *replaced* by a
+thin wrapper that turns the spec's plain dicts into ORM objects (unsaved where
+possible) and calls the real code, so a failing spec test points at a broken
+REQ-ID in the Django build, not only in the pure rules.
+
+Rules not overridden here are called directly by the services (see
+docs/anupam360.md, traceability table) and are guarded by
+tests/test_spec_sync.py, which fails if the copy under threesixty/rules ever
+drifts from the spec pack.
+
+Each phase adds its overrides to this file; `DJANGO_BACKED` lists them.
+"""
+from django.contrib.auth.models import User
+
+from ..models import BranchNumbering, EmployeeProfile
+from ..permissions import RoleRules
+from ..services import nav as nav_service
+from .anupam_rules import *  # noqa: F401,F403
+from .anupam_rules import ROLES as _SPEC_ROLES
+
+DJANGO_BACKED = set()
+
+
+def _backed(fn):
+    DJANGO_BACKED.add(fn.__name__)
+    return fn
+
+
+# --------------------------------------------------------------------------- roles & permissions
+ROLES = tuple(label for _code, label in EmployeeProfile.ROLE_CHOICES)
+DJANGO_BACKED.add('ROLES')
+_CODE_BY_LABEL = {label: code for code, label in EmployeeProfile.ROLE_CHOICES}
+
+
+def _user(u):
+    """Spec user dict -> unsaved Django user carrying an EmployeeProfile."""
+    user = User(username=str(u['id']), first_name=u.get('name', ''))
+    EmployeeProfile(user=user, role=_CODE_BY_LABEL[u['role']])
+    return user
+
+
+@_backed
+def is_admin(u): return RoleRules.is_admin(_user(u))
+@_backed
+def is_bm(u): return RoleRules.is_branch_manager(_user(u))
+@_backed
+def is_bs(u): return RoleRules.is_branch_staff(_user(u))
+@_backed
+def is_sm(u): return RoleRules.is_sales_manager(_user(u))
+@_backed
+def can_direct_edit_delete(u): return RoleRules.can_direct_edit_delete(_user(u))
+@_backed
+def can_edit_customer_direct(u): return RoleRules.can_edit_customer_direct(_user(u))
+@_backed
+def can_delete_customer_direct(u): return RoleRules.can_delete_customer_direct(_user(u))
+@_backed
+def can_direct_edit_delete_sales_doc(u): return RoleRules.can_direct_edit_delete_sales_doc(_user(u))
+@_backed
+def can_see_all_users_reports(u): return RoleRules.can_see_all_users_reports(_user(u))
+@_backed
+def uses_personal_dashboard(u): return RoleRules.uses_personal_dashboard(_user(u))
+@_backed
+def is_approver(u): return RoleRules.is_approver(_user(u))
+@_backed
+def needs_approval(u, action): return RoleRules.needs_approval(_user(u), action)
+@_backed
+def nav_visible(u): return nav_service.visible_nav(_user(u))
+@_backed
+def report_tabs_visible(u): return nav_service.visible_report_tabs(_user(u))
+
+
+# --------------------------------------------------------------------------- numbering
+@_backed
+def numbering_cfg(doc_type, branch_cfg=None):
+    c = (branch_cfg or {}).get(doc_type) or {}
+    start = c.get('start')
+    row = BranchNumbering(
+        doc_type=doc_type, prefix=c.get('prefix') or '', suffix=c.get('suffix') or '',
+        start_at=int(start) if start not in (None, '') else 1,
+    )
+    return row.effective_config()

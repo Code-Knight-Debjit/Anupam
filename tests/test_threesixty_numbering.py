@@ -41,12 +41,13 @@ class TestAllocateNextNumber:
         assert len(set(numbers)) == 5
 
     def test_branches_and_doc_types_have_independent_counters(self, chennai, bengaluru):
-        c1 = allocate_next_number(chennai, 'po')
-        b1 = allocate_next_number(bengaluru, 'po')
-        c2 = allocate_next_number(chennai, 'po')
-        assert c1 == 'PO-0001'
-        assert b1 == 'PO-0001'  # independent counter, not affected by Chennai's
-        assert c2 == 'PO-0002'
+        # (Pending PO is not used here: it has no generated number — REQ-DOC-02.)
+        c1 = allocate_next_number(chennai, 'proforma')
+        b1 = allocate_next_number(bengaluru, 'proforma')
+        c2 = allocate_next_number(chennai, 'proforma')
+        assert c1 == 'PI-0001'
+        assert b1 == 'PI-0001'  # independent counter, not affected by Chennai's
+        assert c2 == 'PI-0002'
 
     def test_custom_prefix_suffix_padding_format(self, chennai):
         config = BranchNumberingConfigHelper(chennai, 'dc', prefix='CHN-DC', suffix='26-27')

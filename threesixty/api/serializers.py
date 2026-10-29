@@ -5,6 +5,7 @@ site. Field lists are a deliberate API surface, not "whatever the model
 has" — new model fields do not silently leak until added here.
 """
 from ..permissions import RoleRules
+from ..services.users import is_account_active
 
 
 def mask_id_number(value):
@@ -24,18 +25,24 @@ def serialize_user_ref(user):
     return {'id': user.id, 'username': user.username, 'full_name': user.get_full_name() or user.username}
 
 
+BRANCH_IMAGE_FIELDS = ('logo', 'dealer_logo', 'footer_image', 'payment_qr')
+BRANCH_TEXT_FIELDS = (
+    'name', 'letterhead_name', 'letterhead_address', 'letterhead_gstin', 'letterhead_phone', 'letterhead_email',
+    'letterhead_mobile', 'letterhead_website', 'udyam_number',
+    'bank_name', 'bank_branch', 'bank_account_no', 'bank_ifsc',
+    'accent_color', 'doc_format', 'watermark_enabled', 'watermark_type', 'watermark_text', 'watermark_size',
+    'terms', 'is_active',
+)
+
+
 def serialize_branch(branch):
-    return {
-        'id': branch.id,
-        'name': branch.name,
-        'is_active': branch.is_active,
-        'letterhead_name': branch.letterhead_name,
-        'letterhead_address': branch.letterhead_address,
-        'letterhead_gstin': branch.letterhead_gstin,
-        'letterhead_phone': branch.letterhead_phone,
-        'letterhead_email': branch.letterhead_email,
-        'legacy_id': branch.legacy_id,
-    }
+    data = {'id': branch.id, 'legacy_id': branch.legacy_id}
+    for field in BRANCH_TEXT_FIELDS:
+        data[field] = getattr(branch, field)
+    for field in BRANCH_IMAGE_FIELDS:
+        image = getattr(branch, field)
+        data[field + '_url'] = image.url if image else ''
+    return data
 
 
 def serialize_branch_numbering(config):
@@ -92,6 +99,7 @@ def serialize_employee(profile, viewer):
         'username': profile.user.username,
         'full_name': profile.user.get_full_name() or profile.user.username,
         'is_active_account': profile.user.is_active,
+        'is_active': is_account_active(profile),
         'role': profile.role,
         'branch_ids': list(profile.branches.values_list('id', flat=True)),
         'job_title': profile.job_title,
@@ -251,6 +259,7 @@ def serialize_sales_document(document, include_items=True):
         'total_amount': str(document.total_amount),
         'quotation_value': str(document.quotation_value) if document.quotation_value is not None else None,
         'sales_person_id': document.sales_person_id,
+        'sales_person_name': document.sales_person_name,
         'valid_till': document.valid_till.isoformat() if document.valid_till else None,
         'ref_no': document.ref_no,
         'ref_date': document.ref_date.isoformat() if document.ref_date else None,

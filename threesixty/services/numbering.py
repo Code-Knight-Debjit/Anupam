@@ -13,44 +13,45 @@ push the counter forward, so `bump_counter_to()` ports that half verbatim.
 from django.db import transaction
 
 from ..models import Branch, BranchNumbering
+from ..rules import anupam_rules as rules
 
-DEFAULT_PREFIX = {
-    BranchNumbering.DOC_TYPES[0][0]: 'ENQ',   # enquiry
-    BranchNumbering.DOC_TYPES[1][0]: 'QUO',   # quotation
-    BranchNumbering.DOC_TYPES[2][0]: 'PO',    # po
-    BranchNumbering.DOC_TYPES[3][0]: 'DC',    # dc
-    BranchNumbering.DOC_TYPES[4][0]: 'PI',    # proforma
-}
+# Pending PO carries the customer's own PO number, typed by the user — the
+# system never generates one (REQ-DOC-02).
+NOT_GENERATED = frozenset({'po'})
+
+# Re-exported so callers (and the spec adapter) use the one implementation.
+doc_number_seq = rules.doc_number_seq
 
 
 def _get_or_create_config(branch: Branch, doc_type: str) -> BranchNumbering:
-    config, _ = BranchNumbering.objects.get_or_create(
-        branch=branch, doc_type=doc_type,
-        defaults={'prefix': DEFAULT_PREFIX.get(doc_type, '')},
-    )
+    # prefix/suffix stay blank until an Admin edits them; BranchNumbering
+    # applies the default prefix at format time (REQ-DOC-02: blank -> default).
+    config, _ = BranchNumbering.objects.get_or_create(branch=branch, doc_type=doc_type)
     return config
+
+
+def peek_next_number(branch: Branch, doc_type: str) -> str:
+    """What the next number *would* be — shown pre-filled on the entry form.
+    Not a reservation: the real number is taken by `allocate_next_number` at save."""
+    if doc_type in NOT_GENERATED:
+        return ''
+    config = _get_or_create_config(branch, doc_type)
+    seq = config.last_issued + 1 if config.last_issued else config.effective_config()['start']
+    return config.format_number(seq)
 
 
 @transaction.atomic
 def allocate_next_number(branch: Branch, doc_type: str) -> str:
     """Locks the (branch, doc_type) counter row, advances it by one, and
     returns the formatted doc number. Safe under concurrent requests."""
+    if doc_type in NOT_GENERATED:
+        raise ValueError('Pending PO numbers are typed by the user, not generated.')
     config = _get_or_create_config(branch, doc_type)
     config = BranchNumbering.objects.select_for_update().get(pk=config.pk)
-    next_seq = config.last_issued + 1 if config.last_issued else config.start_at
+    next_seq = config.last_issued + 1 if config.last_issued else config.effective_config()['start']
     config.last_issued = next_seq
     config.save(update_fields=['last_issued'])
     return config.format_number(next_seq)
-
-
-def doc_number_seq(doc_number: str) -> int:
-    """Extract the numeric sequence out of a formatted/hand-typed doc
-    number — mirrors the original `docNumberSeq()`."""
-    import re
-    if not doc_number:
-        return 0
-    match = re.search(r'(\d+)', str(doc_number))
-    return int(match.group(1)) if match else 0
 
 
 @transaction.atomic
@@ -58,6 +59,8 @@ def bump_counter_to(branch: Branch, doc_type: str, doc_number: str) -> None:
     """If a hand-typed/edited doc number's sequence is higher than what's on
     record, advance the counter to match — numbers only ever move forward,
     deleting a document never frees one up (original `bumpDocCounter`)."""
+    if doc_type in NOT_GENERATED:
+        return
     config = _get_or_create_config(branch, doc_type)
     config = BranchNumbering.objects.select_for_update().get(pk=config.pk)
     seq = doc_number_seq(doc_number)

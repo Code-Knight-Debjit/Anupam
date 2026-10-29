@@ -3,7 +3,7 @@
 // `afterLogin()`/`setNavBadge`/`renderNotifBadge`/`renderNotifList`
 // (contact_management.html ~L4560-4660, ~L13560-13630).
 import { api } from './api.js';
-import { loadBootstrap, state, isAdmin, isSalesManager } from './state.js';
+import { loadBootstrap, state } from './state.js';
 import { registerView, navigate, startRouter } from './router.js';
 import { el, escapeHtml, fmtDateTime, toast } from './ui.js';
 
@@ -38,10 +38,22 @@ function updateTitle() {
   el('pageTitle').textContent = PAGE_TITLES[view] || 'Anupam 360';
 }
 
+// Menu visibility comes from the server (`me.nav`, REQ-ROLE-03/04) — the
+// endpoints behind each menu enforce the same rules, this only tidies the UI.
 function applyRoleVisibility() {
-  const hide = (sel) => document.querySelectorAll(sel).forEach((n) => { n.style.display = 'none'; });
-  if (!isAdmin()) hide('#navImport, #navManage, #navUsers, #navBranches');
-  if (isSalesManager()) hide('#navProforma, #navDC, #navPO, #navPayments, #navLabels');
+  const items = Array.from(document.querySelectorAll('#app-sidebar .nav-item'));
+  items.forEach((btn) => {
+    const label = (btn.querySelector('span') || btn).textContent.trim();
+    btn.style.display = state.nav.includes(label) ? '' : 'none';
+  });
+  document.querySelectorAll('#app-sidebar .nav-label').forEach((heading) => {
+    let node = heading.nextElementSibling, anyVisible = false;
+    while (node && !node.classList.contains('nav-label') && !node.classList.contains('sidebar-footer')) {
+      if (node.classList.contains('nav-item') && node.style.display !== 'none') anyVisible = true;
+      node = node.nextElementSibling;
+    }
+    heading.style.display = anyVisible ? '' : 'none';
+  });
   const userChipName = el('curUserName'), userChipRole = el('curUserRole');
   if (userChipName) userChipName.textContent = state.me.full_name || state.me.username;
   if (userChipRole) userChipRole.textContent = (state.me.role || '').replace(/_/g, ' ');
@@ -171,7 +183,7 @@ async function boot() {
   setTitleOnNavigate();
   wireNotifBell();
   wireSidebarMobile();
-  el('logoutBtn').addEventListener('click', () => { window.location.href = '/dashboard/logout/'; });
+  el('logoutBtn').addEventListener('click', () => { window.location.href = '/360/logout/'; });
 
   registerView('dashboard', mountDashboard);
   registerView('tasks', mountTasks);
