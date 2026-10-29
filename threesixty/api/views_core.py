@@ -14,6 +14,7 @@ from ..models import (
 )
 from ..permissions import RoleRules, role_360_required, staff_360_required
 from ..services import attendance as attendance_service
+from ..services import audit as audit_service
 from ..services import lists as list_service
 from ..services import users as user_service
 from ..services.accounts import limit_stock_access, revoke_login
@@ -130,17 +131,22 @@ class BranchResource(AdminWriteMixin, JsonResource):
 
     def apply_create(self, request, data):
         self._require_admin(request)
-        return self._apply(Branch(), data)
+        branch = self._apply(Branch(), data)
+        audit_service.record(request.user, 'branch.create', branch, branch.name, request)
+        return branch
 
     def apply_update(self, request, instance, data):
         self._require_admin(request)
-        return self._apply(instance, data)
+        branch = self._apply(instance, data)
+        audit_service.record(request.user, 'branch.update', branch, ', '.join(sorted(k for k in data if k != 'version')), request)
+        return branch
 
     def apply_delete(self, request, instance):
         """Records that use the branch keep it (REQ-LST-01): a branch in use is
         deactivated instead of deleted."""
         self._require_admin(request)
         outcome = list_service.remove_branch(instance)
+        audit_service.record(request.user, f'branch.{outcome}', instance, instance.name, request)
         return JsonResponse({'deleted': outcome == 'deleted', 'deactivated': outcome == 'deactivated'})
 
 
@@ -362,7 +368,7 @@ class EmployeeResource(AdminWriteMixin, JsonResource):
     model = EmployeeProfile
 
     def list_queryset(self, request):
-        return EmployeeProfile.objects.select_related('user').order_by('user__first_name', 'user__username')
+        return EmployeeProfile.objects.select_related('user').prefetch_related('branches').order_by('user__first_name', 'user__username')
 
     @staticmethod
     def _check_password(password):
@@ -406,6 +412,7 @@ class EmployeeResource(AdminWriteMixin, JsonResource):
             )
             if 'branch_ids' in data:
                 profile.branches.set(data['branch_ids'])
+        audit_service.record(request.user, 'user.create', profile, f'{username} ({role})', request)
         return profile
 
     def apply_update(self, request, instance, data):
@@ -449,12 +456,23 @@ class EmployeeResource(AdminWriteMixin, JsonResource):
             self._check_password(data['new_password'])
             instance.user.set_password(data['new_password'])
             instance.user.save(update_fields=['password'])
+        changed = sorted(set(data) - {'version', 'new_password'})
+        audit_service.record(request.user, 'user.update', instance,
+                             ', '.join(changed + (['password'] if data.get('new_password') else [])), request)
         return instance
 
     def apply_delete(self, request, instance):
+        """Remove a person (REQ-USR-02). If they own records, `?transfer_to=<user id>` (or a JSON body
+        `{"transfer_to_id": ...}`) names who takes them over — otherwise it is refused."""
         self._require_admin(request)
-        if instance.user_id == request.user.id:
-            raise ApiError(400, "You cannot remove your own account.")
-        user = instance.user
-        instance.delete()
-        revoke_login(user)
+        try:
+            body = parse_body(request)
+        except ApiError:
+            body = {}
+        transfer_to = request.GET.get('transfer_to') or body.get('transfer_to_id')
+        try:
+            result = user_service.remove_user(request.user, instance, transfer_to)
+        except user_service.AccountError as exc:
+            raise ApiError(exc.status, exc.message, **({'needs_transfer': True} if 'owns records' in exc.message else {}))
+        audit_service.record(request.user, 'user.remove', summary=f'{result["removed"]} removed; records to {result["transferred_to"] or "nobody"}', request=request)
+        return JsonResponse({'deleted': True, **result})

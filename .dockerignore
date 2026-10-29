@@ -50,3 +50,4 @@ demo360.sqlite3
 tests/fixtures/
 docs/
 .serena/
+backups/

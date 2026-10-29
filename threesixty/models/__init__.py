@@ -6,6 +6,7 @@ from .sales import SalesDocument, SalesDocumentItem, SupplyLogEntry, InvoiceLogE
 from .payments import PaymentCollection, PaymentContactLog, PaymentReceipt
 from .tasks import Task, Notification, ApprovalRequest, CallAssignment, CallAttempt
 from .attendance import AttendanceRecord, LeaveRequest
+from .audit import AuditLog
 from .stock import StockProduct, Supplier, StockBill, StockTransaction
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     'PaymentCollection', 'PaymentContactLog', 'PaymentReceipt',
     'Task', 'Notification', 'ApprovalRequest', 'CallAssignment', 'CallAttempt',
     'AttendanceRecord', 'LeaveRequest',
+    'AuditLog',
     'StockProduct', 'Supplier', 'StockBill', 'StockTransaction',
 ]

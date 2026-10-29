@@ -24,7 +24,7 @@ class CallAssignmentResource(JsonResource):
     model = CallAssignment
 
     def list_queryset(self, request, **kwargs):
-        qs = CallAssignment.objects.all()
+        qs = CallAssignment.objects.select_related('assigned_to', 'assigned_by', 'called_by').prefetch_related('attempts__by')
         week_of = request.GET.get('week_of')
         if week_of:
             qs = qs.filter(week_of=week_of)

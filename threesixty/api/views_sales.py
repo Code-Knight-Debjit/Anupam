@@ -15,6 +15,7 @@ from ..models import (
 )
 from ..permissions import RoleRules, staff_360_required
 from ..services import approvals as approval_service
+from ..services import audit
 from ..services import documents as doc_service
 from ..services import exports, pdf_documents
 from ..services import tasks as task_service
@@ -82,6 +83,7 @@ class SalesDocumentResource(JsonResource):
     def apply_delete(self, request, instance, **kwargs):
         if RoleRules.needs_approval(request.user, 'salesdoc.delete'):
             return _approval(approval_service.request_change(request.user, ApprovalRequest.TYPE_DELETE, instance))
+        audit.record(request.user, 'document.delete', instance, f'{instance.get_type_display()} {instance.doc_number}')
         instance.delete()
 
 

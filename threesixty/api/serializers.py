@@ -91,9 +91,10 @@ def serialize_site_setting(setting):
 
 
 def serialize_employee(profile, viewer):
-    """`viewer` is the requesting user — Aadhaar/PAN are only unmasked for
-    Admin (AUDIT.md §5.5: "except to Admin", no self-view exception)."""
-    show_sensitive = viewer is not None and RoleRules.is_admin(viewer)
+    """Admin sees everything. A person sees their own record with Aadhaar / PAN masked. Everyone else
+    gets only what assignment pickers need — no Aadhaar, PAN, birth date, phone or work schedule."""
+    is_admin = viewer is not None and RoleRules.is_admin(viewer)
+    is_self = viewer is not None and viewer.pk == profile.user_id
     data = {
         'id': profile.id,
         'user_id': profile.user_id,
@@ -102,20 +103,23 @@ def serialize_employee(profile, viewer):
         'is_active_account': profile.user.is_active,
         'is_active': is_account_active(profile),
         'role': profile.role,
-        'branch_ids': list(profile.branches.values_list('id', flat=True)),
+        'branch_ids': [b.id for b in profile.branches.all()],
         'job_title': profile.job_title,
-        'phone': profile.phone,
-        'emp_code': profile.emp_code,
-        'is_active_employee': profile.is_active_employee,
         'legacy_id': profile.legacy_id,
-        'aadhaar_number': profile.aadhaar_number if show_sensitive else mask_id_number(profile.aadhaar_number),
-        'pan_number': profile.pan_number if show_sensitive else mask_id_number(profile.pan_number),
-        'date_of_birth': profile.date_of_birth.isoformat() if profile.date_of_birth else None,
-        'date_of_joining': profile.date_of_joining.isoformat() if profile.date_of_joining else None,
-        'work_start': profile.work_start,
-        'work_end': profile.work_end,
-        'weekly_off': profile.weekly_off,
     }
+    if is_admin or is_self:
+        data.update({
+            'phone': profile.phone,
+            'emp_code': profile.emp_code,
+            'is_active_employee': profile.is_active_employee,
+            'aadhaar_number': profile.aadhaar_number if is_admin else mask_id_number(profile.aadhaar_number),
+            'pan_number': profile.pan_number if is_admin else mask_id_number(profile.pan_number),
+            'date_of_birth': profile.date_of_birth.isoformat() if profile.date_of_birth else None,
+            'date_of_joining': profile.date_of_joining.isoformat() if profile.date_of_joining else None,
+            'work_start': profile.work_start,
+            'work_end': profile.work_end,
+            'weekly_off': profile.weekly_off,
+        })
     return data
 
 

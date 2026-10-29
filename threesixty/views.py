@@ -10,6 +10,7 @@ from dashboard.views import _login_client_ip_key, _login_throttled, _login_usern
 
 from .models import EmployeeProfile
 from .permissions import staff_360_required
+from .services import audit
 from .services import users as user_service
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,8 @@ def threesixty_login(request):
                           _login_context(request, error='Too many attempts. Please wait a few minutes.', panel='reset'),
                           status=429)
         try:
+            audit.record(None, 'password.reset_attempt', summary=f'for {request.POST.get("username", "")[:60]}', request=request,
+                         username=request.POST.get('username', '')[:150])
             user_service.reset_password(
                 request.POST.get('username', ''), request.POST.get('new_password', ''),
                 request.POST.get('confirm_password', ''),
@@ -92,6 +95,7 @@ def threesixty_login(request):
             return render(request, 'threesixty/login.html',
                           _login_context(request, error=exc.message, panel='first'), status=exc.status)
         login(request, profile.user)
+        audit.record(profile.user, 'user.first_admin', profile, 'First admin created', request)
         return redirect('/360/')
 
     if _login_throttled(request):
@@ -103,11 +107,15 @@ def threesixty_login(request):
     profile = getattr(user, 'threesixty_profile', None) if user else None
     if user and user.is_staff and profile and profile.is_active_employee:
         login(request, user)
+        audit.record(user, 'login', request=request)
         return redirect(_safe_next(request))
+    audit.record(None, 'login.failed', request=request, username=request.POST.get('username', '')[:150])
     return render(request, 'threesixty/login.html',
                   _login_context(request, error='Invalid user ID or password, or the account is inactive.'))
 
 
 def threesixty_logout(request):
+    if request.user.is_authenticated:
+        audit.record(request.user, 'logout', request=request)
     logout(request)
     return redirect('threesixty:login')

@@ -379,14 +379,32 @@ class TestUsers:
         victim = EmployeeProfile.objects.get(user__username='victim')
         assert send(bm, 'patch', f'/360/api/employees/{victim.id}/', {'is_active': False}).status_code == 403
 
-    def test_aadhaar_and_pan_are_masked_for_everyone_but_admin(self, admin, chennai):
+    def test_aadhaar_pan_and_birth_date_are_restricted(self, admin, chennai):
         make_employee('hr', EmployeeProfile.BRANCH_STAFF, [chennai], aadhaar_number='123456789012', pan_number='ABCDE1234F')
         listing = admin.get('/360/api/employees/').json()['results']
         hr = next(e for e in listing if e['username'] == 'hr')
-        assert hr['aadhaar_number'] == '123456789012'
-        staff_view = role_client(EmployeeProfile.BRANCH_MANAGER, chennai).get('/360/api/employees/').json()['results']
-        hr = next(e for e in staff_view if e['username'] == 'hr')
-        assert hr['aadhaar_number'] == 'XXXXXXXX9012' and hr['pan_number'] == 'XXXXXX234F'
+        assert hr['aadhaar_number'] == '123456789012' and hr['pan_number'] == 'ABCDE1234F'             # Admin sees everything
+        # another employee gets only what an assignment picker needs
+        other = role_client(EmployeeProfile.BRANCH_MANAGER, chennai).get('/360/api/employees/').json()['results']
+        hr = next(e for e in other if e['username'] == 'hr')
+        for secret in ('aadhaar_number', 'pan_number', 'date_of_birth', 'phone', 'work_start', 'emp_code'):
+            assert secret not in hr
+        assert hr['full_name'] and hr['role'] == EmployeeProfile.BRANCH_STAFF and hr['user_id']
+        # the person themself sees their own record, masked
+        mine = Client()
+        mine.login(username='hr', password='secret-pw-1')
+        me = next(e for e in mine.get('/360/api/employees/').json()['results'] if e['username'] == 'hr')
+        assert me['aadhaar_number'] == 'XXXXXXXX9012' and me['pan_number'] == 'XXXXXX234F'
+
+    def test_aadhaar_and_pan_are_encrypted_at_rest(self, chennai):
+        from django.db import connection
+        make_employee('hr', EmployeeProfile.BRANCH_STAFF, [chennai], aadhaar_number='123456789012', pan_number='ABCDE1234F')
+        with connection.cursor() as cursor:
+            cursor.execute('select aadhaar_number, pan_number from threesixty_employeeprofile')
+            raw = cursor.fetchone()
+        assert raw[0].startswith('enc1:') and '123456789012' not in raw[0] and raw[1].startswith('enc1:') and 'ABCDE1234F' not in raw[1]
+        profile = EmployeeProfile.objects.get(user__username='hr')
+        assert (profile.aadhaar_number, profile.pan_number) == ('123456789012', 'ABCDE1234F')
 
 
 # ----------------------------------------------------------------------------- login & reset

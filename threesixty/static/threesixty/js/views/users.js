@@ -88,9 +88,36 @@ function openUserForm(emp, onSaved) {
   });
 }
 
+// Removing someone who owns records needs a person to hand them to (customers, tasks, documents,
+// payments, outreach); the server refuses otherwise and counts the records for us.
 async function removeUser(emp, onDone) {
-  if (!await confirmDialog(`Remove user "${emp.full_name}"? This cannot be undone.`)) return;
-  try { await api.delete(`employees/${emp.id}/`); toast('Removed.', 'success'); onDone(); } catch (e) { toast(apiErrorMessage(e), 'error'); }
+  let counts;
+  try { counts = await api.get(`employees/${emp.id}/records/`); } catch (e) { toast(apiErrorMessage(e), 'error'); return; }
+  const finish = async (transferTo) => {
+    try {
+      await api.delete(`employees/${emp.id}/${transferTo ? `?transfer_to=${transferTo}` : ''}`);
+      toast('Removed.', 'success'); closeModal(); onDone();
+    } catch (e) { toast(apiErrorMessage(e), 'error'); }
+  };
+  if (!counts.total) {
+    if (await confirmDialog(`Remove user "${emp.full_name}"? They will no longer be able to sign in.`)) finish(null);
+    return;
+  }
+  const heirs = state.employees.filter((u) => u.user_id !== emp.user_id);
+  openModal(`<h2>Remove ${escapeHtml(emp.full_name)}</h2>
+    <p>This person owns <strong>${counts.total}</strong> records: ${counts.customers_created} customers created, ${counts.customers_assigned} assigned, ${counts.tasks_created + counts.tasks_assigned} tasks,
+    ${counts.documents} documents, ${counts.payments} payments, ${counts.outreach_assigned + counts.outreach_given} outreach calls.</p>
+    <div class="field"><label>Hand all of these to *</label><select id="rm-heir"><option value="">— choose —</option>${heirs.map((u) => `<option value="${u.user_id}">${escapeHtml(u.full_name)}</option>`).join('')}</select></div>
+    <div class="modal-actions"><button class="btn" id="rm-cancel">Cancel</button><button class="btn danger" id="rm-go">Transfer and remove</button></div>`, {
+    onMount: (modal) => {
+      modal.querySelector('#rm-cancel').onclick = closeModal;
+      modal.querySelector('#rm-go').onclick = () => {
+        const heir = modal.querySelector('#rm-heir').value;
+        if (!heir) { toast('Choose who takes over the records.', 'error'); return; }
+        finish(heir);
+      };
+    },
+  });
 }
 
 async function render(root) {

@@ -7,6 +7,7 @@ summary comes first; the detailed report is a separate call. Locations are
 returned only to Admin and to the person themselves.
 """
 from django.contrib.auth import get_user_model
+from django.views.decorators.http import require_GET
 from django.http import HttpResponse, JsonResponse
 
 from ..models import AttendanceRecord, LeaveRequest
@@ -81,6 +82,7 @@ def correct_day(request):
     return JsonResponse({'deleted': True} if record is None else serialize_attendance_record(record, request.user))
 
 
+@require_GET
 @staff_360_required
 @input_errors_as_400
 def my_attendance(request):
@@ -98,6 +100,7 @@ def my_attendance(request):
     })
 
 
+@require_GET
 @staff_360_required
 @input_errors_as_400
 def attendance_summary(request):
@@ -105,6 +108,7 @@ def attendance_summary(request):
     return JsonResponse({'from': start.isoformat(), 'to': end.isoformat(), 'results': att.summary(request.user, start, end)})
 
 
+@require_GET
 @staff_360_required
 @input_errors_as_400
 def attendance_report(request):

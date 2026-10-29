@@ -4,6 +4,8 @@ import re
 from django.conf import settings
 from django.db import models
 
+from ..fields import EncryptedCharField
+
 
 class Branch(models.Model):
     """Anupam 360 branch (Chennai / Bengaluru). Independent of stock_ledger.Branch."""
@@ -129,9 +131,9 @@ class EmployeeProfile(models.Model):
     job_title = models.CharField(max_length=120, blank=True)
     phone = models.CharField(max_length=40, blank=True)
     emp_code = models.CharField(max_length=40, blank=True, null=True)
-    # Sensitive — masked in every API response except to Admin (never exported/logged).
-    aadhaar_number = models.CharField(max_length=20, blank=True)
-    pan_number = models.CharField(max_length=20, blank=True)
+    # Sensitive — encrypted at rest; shown only to Admin (and masked to the person themselves); never exported/logged.
+    aadhaar_number = EncryptedCharField(blank=True)
+    pan_number = EncryptedCharField(blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
     # Attendance scheduling — mirrors the original's `emp.workStart`/`workEnd`/
     # `weeklyOff`/`doj` (contact_management.html attDayStatus, L12201-12220).

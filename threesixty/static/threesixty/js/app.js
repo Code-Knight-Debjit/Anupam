@@ -21,12 +21,14 @@ import { mountManageLists } from './views/managelists.js';
 import { mountImportExcel } from './views/importexcel.js';
 import { mountUsers } from './views/users.js';
 import { mountBranches } from './views/branches.js';
+import { mountBackup, mountAuditLog } from './views/backup.js';
+import { initA11y } from './a11y.js';
 
 const PAGE_TITLES = {
   dashboard: 'Dashboard', tasks: 'Tasks', callinglist: 'Outreach', attendance: 'Attendance',
   customers: 'Customers', map: 'Map & Nearby', sales: 'Sales', payments: 'Payment Collection',
   labels: 'Print Label', reports: 'Reports', managelists: 'Manage Lists', import: 'Import Excel',
-  users: 'Users', branches: 'Branches',
+  users: 'Users', branches: 'Branches', backup: 'Backup & restore', auditlog: 'Audit log',
 };
 
 function setTitleOnNavigate() {
@@ -44,7 +46,7 @@ function applyRoleVisibility() {
   const items = Array.from(document.querySelectorAll('#app-sidebar .nav-item'));
   items.forEach((btn) => {
     const label = (btn.querySelector('span') || btn).textContent.trim();
-    btn.style.display = state.nav.includes(label) ? '' : 'none';
+    btn.style.display = (state.nav.includes(label) || (label === 'Audit log' && state.nav.includes('Backup & restore'))) ? '' : 'none';
   });
   document.querySelectorAll('#app-sidebar .nav-label').forEach((heading) => {
     let node = heading.nextElementSibling, anyVisible = false;
@@ -177,8 +179,23 @@ function refreshBadges() {
   refreshNotifBadge();
 }
 
+// Admin-only screens that have no entry in the page template: add their menu buttons here.
+function addAdminMenu() {
+  if (!state.nav.includes('Backup & restore')) return;
+  const footer = document.querySelector('#app-sidebar .sidebar-footer');
+  [['backup', 'Backup & restore'], ['auditlog', 'Audit log']].forEach(([view, label]) => {
+    const btn = document.createElement('button');
+    btn.className = 'nav-item';
+    btn.dataset.view = view;
+    btn.innerHTML = `<span>${label}</span>`;
+    footer.parentNode.insertBefore(btn, footer);
+  });
+}
+
 async function boot() {
   await loadBootstrap();
+  addAdminMenu();
+  initA11y();
   applyRoleVisibility();
   setTitleOnNavigate();
   wireNotifBell();
@@ -199,6 +216,8 @@ async function boot() {
   registerView('import', mountImportExcel);
   registerView('users', mountUsers);
   registerView('branches', mountBranches);
+  registerView('backup', mountBackup);
+  registerView('auditlog', mountAuditLog);
 
   startRouter();
   refreshBadges();

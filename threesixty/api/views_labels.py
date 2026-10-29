@@ -1,5 +1,6 @@
 """Print Label: options, customer auto-fill and the label PDF. The PDF is the
 same bytes for Preview, Print (inline) and Download (`download=1`)."""
+from django.views.decorators.http import require_GET
 from django.http import HttpResponse, JsonResponse
 
 from ..permissions import staff_360_required
@@ -12,6 +13,7 @@ def _guard(request):
         raise ApiError(403, 'Your role cannot print labels.')
 
 
+@require_GET
 @staff_360_required
 @input_errors_as_400
 def label_options(request):
@@ -19,6 +21,7 @@ def label_options(request):
     return JsonResponse(labels.options())
 
 
+@require_GET
 @staff_360_required
 @input_errors_as_400
 def label_autofill(request):

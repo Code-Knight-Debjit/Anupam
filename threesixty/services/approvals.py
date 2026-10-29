@@ -12,6 +12,7 @@ from django.utils import timezone
 from ..models import ApprovalRequest, Contact, Customer, SalesDocument
 from ..permissions import RoleRules
 from . import customers as customer_service
+from . import audit
 from .errors import ServiceError
 from .notifications import notify, notify_approvers
 
@@ -156,6 +157,7 @@ def approve(user, pk):
     else:
         notify(approval.requested_by_id, 'approval',
                f'Your {TYPE_LABELS[approval.type]} request for {label} was approved.')
+    audit.record(user, f'approval.approve.{TYPE_LABELS[approval.type]}', approval, label)
     return approval
 
 
@@ -172,6 +174,7 @@ def reject(user, pk):
     else:
         notify(approval.requested_by_id, 'approval',
                f'Your {TYPE_LABELS[approval.type]} request for {approval.target_label} was rejected.')
+    audit.record(user, f'approval.reject.{TYPE_LABELS[approval.type]}', approval, approval.target_label)
     return approval
 
 

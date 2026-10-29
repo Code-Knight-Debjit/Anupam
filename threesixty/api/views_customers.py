@@ -11,6 +11,7 @@ import json
 
 from django.contrib.auth import get_user_model
 from django.db.models import Prefetch
+from django.views.decorators.http import require_GET
 from django.http import HttpResponse, JsonResponse
 
 from ..models import ApprovalRequest, Contact, Customer, Interaction
@@ -19,7 +20,7 @@ from ..rules import anupam_rules as rules
 from ..services import approvals as approval_service
 from ..services import contacts as contact_service
 from ..services import customers as customer_service
-from ..services import excel_import, interactions as interaction_service
+from ..services import audit, excel_import, interactions as interaction_service
 from ..services.errors import ServiceError
 from .concurrency import check_version
 from .fields import parse_date_input
@@ -84,6 +85,7 @@ class CustomerResource(JsonResource):
 
     def apply_delete(self, request, instance, **kwargs):
         if not RoleRules.needs_approval(request.user, 'customer.delete'):
+            audit.record(request.user, 'customer.delete', instance, instance.select_label, request)
             instance.delete()
             return None
         return _approval_response(approval_service.request_change(request.user, ApprovalRequest.TYPE_DELETE, instance))
@@ -262,6 +264,7 @@ def customers_bulk_assign(request):
     return JsonResponse({'assigned': len(customers) * len(users)})
 
 
+@require_GET
 @staff_360_required
 @input_errors_as_400
 def customer_contact_access(request, pk):
@@ -280,6 +283,7 @@ def customer_contact_access(request, pk):
 
 
 # --------------------------------------------------------------------------- helpers for the UI
+@require_GET
 @staff_360_required
 @input_errors_as_400
 def duplicate_check(request):
@@ -296,6 +300,7 @@ def duplicate_check(request):
         for c in matches]})
 
 
+@require_GET
 @staff_360_required
 @input_errors_as_400
 def geo_parse(request):
@@ -309,6 +314,7 @@ def geo_parse(request):
     return JsonResponse(pin)
 
 
+@require_GET
 @staff_360_required
 @input_errors_as_400
 def nearby(request):
@@ -329,6 +335,7 @@ def nearby(request):
     return JsonResponse({'results': found})
 
 
+@require_GET
 @role_360_required('ADMIN', 'BRANCH_MANAGER')
 @input_errors_as_400
 def contacts_export(request):
@@ -348,6 +355,7 @@ def contacts_export(request):
     return JsonResponse({'emails': customer_service.selected_emails(contacts), 'count': len(contacts)})
 
 
+@require_GET
 @role_360_required('ADMIN')
 @input_errors_as_400
 def import_template(request):
@@ -371,9 +379,12 @@ def import_customers(request):
         if not isinstance(rows, list):
             return error_response(ApiError(400, 'Upload an .xlsx file or send {"rows": [...]}.'))
         rows = [{k: ('' if v is None else str(v)) for k, v in r.items()} for r in rows if isinstance(r, dict)]
-    return JsonResponse(excel_import.import_rows(rows, request.user))
+    summary = excel_import.import_rows(rows, request.user)
+    audit.record(request.user, 'customers.import', summary=f'{summary["new"]} new, {summary["updated"]} updated, {summary["contacts"]} contacts', request=request)
+    return JsonResponse(summary)
 
 
+@require_GET
 @role_360_required('ADMIN', 'BRANCH_MANAGER')
 @input_errors_as_400
 def customers_export(request):

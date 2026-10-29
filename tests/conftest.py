@@ -29,6 +29,9 @@ def pytest_configure(config):
     connections._connections = Local(connections.thread_critical)
     # Fast password hashing for the test users (one test checks the real hasher).
     settings.PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
+    # Uploads made by tests go to a throw-away folder, never into the real media/ directory.
+    import tempfile
+    settings.MEDIA_ROOT = tempfile.mkdtemp(prefix='anupam-test-media-')
     # Disable Celery for tests
     settings.CELERY_TASK_ALWAYS_EAGER = True
     settings.CELERY_TASK_EAGER_PROPAGATES = True

@@ -4,6 +4,7 @@
 `format=xlsx|pdf` exports the report's main table. Admin and Branch Manager see
 everything and may pick a user; everyone else gets their own data, and a Sales
 Manager has no Sales Performance or Customer Activity report (403)."""
+from django.views.decorators.http import require_GET
 from django.http import HttpResponse, JsonResponse
 
 from ..permissions import staff_360_required
@@ -13,6 +14,7 @@ from ..services.nav import visible_report_tabs
 from .http import ApiError, error_response, input_errors_as_400
 
 
+@require_GET
 @staff_360_required
 @input_errors_as_400
 def report_index(request):
@@ -21,6 +23,7 @@ def report_index(request):
                          'can_pick_user': report_service.sees_everyone(request.user)})
 
 
+@require_GET
 @staff_360_required
 @input_errors_as_400
 def report_view(request, name):
@@ -38,6 +41,7 @@ def report_view(request, name):
     return JsonResponse(result)
 
 
+@require_GET
 @staff_360_required
 @input_errors_as_400
 def dashboard_admin(request):
@@ -49,6 +53,7 @@ def dashboard_admin(request):
     return JsonResponse(report_service.admin_dashboard(request.user, f, limit))
 
 
+@require_GET
 @staff_360_required
 @input_errors_as_400
 def dashboard_admin_drill(request):
@@ -57,6 +62,7 @@ def dashboard_admin_drill(request):
     return JsonResponse({'count': len(items), 'items': items[:report_service.ITEM_CAP]})
 
 
+@require_GET
 @staff_360_required
 @input_errors_as_400
 def dashboard_personal(request):

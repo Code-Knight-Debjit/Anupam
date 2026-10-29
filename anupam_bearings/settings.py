@@ -223,3 +223,15 @@ SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=not DEBUG, cast=bool
 SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=not DEBUG, cast=bool)
 CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=not DEBUG, cast=bool)
 SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+
+# ─────────────────────────────────────────────
+# ANUPAM 360
+# ─────────────────────────────────────────────
+# Key for the encrypted Aadhaar / PAN fields (a Fernet key: 32 url-safe base64 bytes). Generate with
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# If left empty a key is derived from SECRET_KEY — fine for development, but set a dedicated key in
+# production: changing SECRET_KEY would otherwise make the stored values unreadable.
+FIELD_ENCRYPTION_KEY = config('FIELD_ENCRYPTION_KEY', default='')
+# Where backups and the pre-restore safety copies are written. Deliberately NOT under MEDIA_ROOT:
+# a backup contains password hashes and must never be web-served.
+BACKUP_DIR = config('BACKUP_DIR', default=str(BASE_DIR / 'backups'))

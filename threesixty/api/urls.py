@@ -3,7 +3,7 @@
 view) — there is no endpoint here that bypasses session auth or CSRF."""
 from django.urls import path
 
-from . import views_reports, views_labels, views_attendance, views_core, views_customers, views_outreach, views_payments, views_sales, views_tasks
+from . import views_admin, views_reports, views_labels, views_attendance, views_core, views_customers, views_outreach, views_payments, views_sales, views_tasks
 
 app_name = 'threesixty_api'
 
@@ -78,6 +78,14 @@ urlpatterns = [
     path('payment-collections/<int:payment_id>/receipts/', views_payments.PaymentReceiptResource.as_view(),
          name='payment-collection-receipts'),
 
+    path('backup/export/', views_admin.backup_export, name='backup-export'),
+    path('backup/describe/', views_admin.backup_describe, name='backup-describe'),
+    path('backup/restore/', views_admin.backup_restore, name='backup-restore'),
+    path('backup/safety-copies/', views_admin.safety_copies, name='backup-safety-copies'),
+    path('backup/safety-copies/<str:name>', views_admin.safety_copies, name='backup-safety-copy'),
+    path('audit-log/', views_admin.audit_log, name='audit-log'),
+    path('employees/<int:pk>/records/', views_admin.employee_records, name='employee-records'),
+    path('customers/<int:pk>/logo/', views_admin.customer_logo, name='customer-logo'),
     path('reports/', views_reports.report_index, name='reports'),
     path('reports/<str:name>/', views_reports.report_view, name='report'),
     path('dashboard/admin/', views_reports.dashboard_admin, name='dashboard-admin'),
