@@ -159,3 +159,21 @@ def can_manage_task(u, t): return _task_service.can_manage(_acting(u), _task(t))
 def can_edit_task(u, t): return _task_service.can_edit(_acting(u), _task(t))
 @_backed
 def can_remove_task(u, t): return _task_service.can_remove(_acting(u), _task(t))
+
+
+# --------------------------------------------------------------------------- sales documents (phase 4)
+from decimal import Decimal as _Decimal
+
+from ..services import totals as _totals
+
+
+@_backed
+def doc_total(items, packing=0, packing_tax=0, freight=0, freight_tax=0, other=0, other_tax=0, round_off=0,
+              has_discount=True, has_tax=True):
+    """Entry-form totals through the Decimal implementation the app saves with."""
+    if not (has_discount and has_tax):
+        from . import anupam_rules as _rules
+        return _rules.doc_total(items, packing, packing_tax, freight, freight_tax, other, other_tax, round_off, has_discount, has_tax)
+    rows = [{'qty': i.get('qty'), 'rate': i.get('rate'), 'discount': i.get('discount'), 'tax': i.get('tax')} for i in items]
+    sub, total = _totals.compute_document_totals('quotation', rows, packing, packing_tax, freight, freight_tax, other, other_tax, round_off)
+    return {'subTotal': float(sub), 'totalAmount': float(total)}

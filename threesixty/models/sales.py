@@ -64,6 +64,9 @@ class SalesDocument(models.Model):
     sub_total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     quotation_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    # Quotation / Proforma outcome (REQ-AUT-12): Win needs an order value, Lose stores a reason.
+    order_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    lost_reason = models.CharField(max_length=500, blank=True)
 
     # quotation/dc/proforma quote metadata
     sales_person = models.ForeignKey(SalesPerson, on_delete=models.SET_NULL, null=True, blank=True, related_name='sales_documents')
@@ -140,6 +143,22 @@ class SupplyLogEntry(models.Model):
         ordering = ['date']
 
 
+class InvoiceLogEntry(models.Model):
+    """'Invoice Done' on a delivery-challan item (REQ-DC-01)."""
+    item = models.ForeignKey(SalesDocumentItem, on_delete=models.CASCADE, related_name='invoice_log')
+    bill_number = models.CharField(max_length=120)
+    bill_date = models.DateField(null=True, blank=True)
+    qty_invoiced = models.DecimalField(max_digits=12, decimal_places=2)
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    legacy_id = models.CharField(max_length=64, blank=True, null=True, unique=True, db_index=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+
 class DocumentCallLog(models.Model):
     """Call log entries on quotation/dc/proforma docs (`cfg.hasCallLog`)."""
     document = models.ForeignKey(SalesDocument, on_delete=models.CASCADE, related_name='call_log')
@@ -149,6 +168,10 @@ class DocumentCallLog(models.Model):
         related_name='threesixty_call_log_entries',
     )
     timestamp = models.DateTimeField(auto_now_add=True)
+    # "Call me later" (REQ-LOG-01) — also creates a Call task for the person logging it.
+    call_later_date = models.DateField(null=True, blank=True)
+    OUTCOMES = ['Answered', 'Busy', 'Not reachable', 'Not Answering']
+    outcome = models.CharField(max_length=20, blank=True)
 
     legacy_id = models.CharField(max_length=64, blank=True, null=True, unique=True, db_index=True)
 

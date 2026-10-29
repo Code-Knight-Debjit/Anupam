@@ -313,7 +313,8 @@ class TestUsers:
         data.update(extra)
         return send(admin, 'post', '/360/api/employees/', data)
 
-    def test_created_user_password_is_hashed(self, admin):
+    def test_created_user_password_is_hashed(self, admin, settings):
+        settings.PASSWORD_HASHERS = ['django.contrib.auth.hashers.PBKDF2PasswordHasher']   # the production default
         assert self.new_user(admin).status_code == 201
         stored = User.objects.get(username='newbie').password
         assert stored != 'abcdef' and stored.startswith(('pbkdf2_', 'argon2', 'bcrypt', 'scrypt'))

@@ -11,7 +11,7 @@ Per-type flags below are copied verbatim from `SALES_DOC_CONFIG`
   - po has `hasDiscount` but neither `hasTax` nor `hasCharges`.
   - quotation/dc/proforma all have `hasDiscount` + `hasTax` + `hasCharges`.
 """
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 TWO_PLACES = Decimal('0.01')
 
@@ -57,7 +57,7 @@ def compute_item_fields(doc_type, item_data):
     else:
         amount = Decimal('0')
         value = Decimal('0')
-    return amount.quantize(TWO_PLACES), value.quantize(TWO_PLACES)
+    return amount.quantize(TWO_PLACES, rounding=ROUND_HALF_UP), value.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
 
 
 def compute_document_totals(doc_type, items_data, packing, packing_tax, freight, freight_tax,
@@ -78,4 +78,4 @@ def compute_document_totals(doc_type, items_data, packing, packing_tax, freight,
     freight_final = _num(freight) * (Decimal('1') + _num(freight_tax) / Decimal('100'))
     other_final = _num(other) * (Decimal('1') + _num(other_tax) / Decimal('100'))
     total_amount = sub_total + packing_final + freight_final + other_final + _num(round_off)
-    return sub_total.quantize(TWO_PLACES), total_amount.quantize(TWO_PLACES)
+    return sub_total.quantize(TWO_PLACES, rounding=ROUND_HALF_UP), total_amount.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)

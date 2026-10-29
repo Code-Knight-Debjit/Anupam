@@ -205,6 +205,9 @@ def serialize_interaction(interaction):
 
 
 def serialize_sales_document_item(item):
+    from ..services import documents as doc_service
+    supply = list(item.supply_log.all())
+    invoices = list(item.invoice_log.all())
     return {
         'id': item.id,
         'document_id': item.document_id,
@@ -218,7 +221,25 @@ def serialize_sales_document_item(item):
         'tax': str(item.tax),
         'amount': str(item.amount),
         'value': str(item.value),
+        'supplied': str(doc_service.item_supplied(item)),
+        'pending': str(doc_service.item_pending(item)),
+        'invoiced': str(doc_service.item_invoiced(item)),
+        'balance': str(doc_service.item_balance(item)),
+        'supply_log': [serialize_supply_log_entry(e) for e in supply],
+        'invoice_log': [serialize_invoice_log_entry(e) for e in invoices],
         'legacy_id': item.legacy_id,
+    }
+
+
+def serialize_invoice_log_entry(entry):
+    return {
+        'id': entry.id,
+        'item_id': entry.item_id,
+        'bill_number': entry.bill_number,
+        'bill_date': entry.bill_date.isoformat() if entry.bill_date else None,
+        'qty_invoiced': str(entry.qty_invoiced),
+        'recorded_by': serialize_user_ref(entry.recorded_by),
+        'created_at': entry.created_at.isoformat(),
     }
 
 
@@ -241,6 +262,8 @@ def serialize_document_call_log_entry(entry):
         'message': entry.message,
         'user': serialize_user_ref(entry.user),
         'timestamp': entry.timestamp.isoformat(),
+        'call_later_date': entry.call_later_date.isoformat() if entry.call_later_date else None,
+        'outcome': entry.outcome,
     }
 
 
@@ -284,7 +307,22 @@ def serialize_sales_document(document, include_items=True):
         'legacy_id': document.legacy_id,
     }
     if include_items:
+        from ..services import documents as doc_service
         data['items'] = [serialize_sales_document_item(i) for i in document.items.all()]
+        data['order_value'] = str(document.order_value) if document.order_value is not None else None
+        data['lost_reason'] = document.lost_reason
+        data['customer_label'] = document.customer.select_label
+        data['contact_name'] = document.contact.name if document.contact_id else ''
+        data['branch_name'] = document.branch.name
+        data['reference_number'] = document.reference.doc_number if document.reference_id else ''
+        last = doc_service.last_contact_on(document)
+        data['last_contact_on'] = last.isoformat() if last else None
+        later = doc_service.next_call_later_date(document)
+        data['call_later_date'] = later.isoformat() if later else None
+        data['call_later_bucket'] = doc_service.call_later_bucket(document)
+        if document.type == 'dc':
+            data['invoice_pending'] = doc_service.dc_is_pending(document)
+        data['call_log'] = [serialize_document_call_log_entry(e) for e in document.call_log.all()]
     return data
 
 

@@ -27,6 +27,8 @@ def pytest_configure(config):
     connections._settings = None
     connections.__dict__.pop('settings', None)
     connections._connections = Local(connections.thread_critical)
+    # Fast password hashing for the test users (one test checks the real hasher).
+    settings.PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
     # Disable Celery for tests
     settings.CELERY_TASK_ALWAYS_EAGER = True
     settings.CELERY_TASK_EAGER_PROPAGATES = True

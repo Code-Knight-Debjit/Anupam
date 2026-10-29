@@ -225,29 +225,30 @@ class TestCustomerPermissionRouting:
         assert Customer.objects.filter(pk=created['id']).exists()
 
 
-class TestSalesDocumentQuotationHardBlock:
+class TestSalesDocumentEditRouting:
     def _make_customer_and_doc(self, client, doc_type):
         chennai = Branch.objects.first()
         customer = Customer.objects.create(name='Acme')
-        resp = post_json(client, reverse('threesixty:threesixty_api:sales-documents'), {
-            'type': doc_type, 'branch_id': chennai.id, 'customer_id': customer.id, 'date': '2026-01-01',
-        })
+        customer.assigned_to.add(int(client.session['_auth_user_id']))   # visible to a Sales Manager
+        payload = {'type': doc_type, 'branch_id': chennai.id, 'customer_id': customer.id, 'date': '2026-01-01'}
+        if doc_type != SalesDocument.TYPE_ENQUIRY:
+            payload['items'] = [{'item_name': 'Bearing 6205', 'qty': 2, 'rate': '100'}]
+        resp = post_json(client, reverse('threesixty:threesixty_api:sales-documents'), payload)
+        assert resp.status_code == 201, resp.content
         return resp.json()
 
-    def test_sales_manager_cannot_edit_or_delete_quotation_even_via_approval(
+    def test_REQ_ROLE_02_sales_manager_quotation_edit_and_delete_go_to_approval(
         self, sales_manager_client, chennai
     ):
-        # Created by the Sales Manager themselves so it's visible to them
-        # (`visible_sales_documents`) — the hard block is type-based and
-        # applies regardless of who created the document.
         doc = self._make_customer_and_doc(sales_manager_client, SalesDocument.TYPE_QUOTATION)
         url = reverse('threesixty:threesixty_api:sales-document-detail', args=[doc['id']])
 
         edit_resp = patch_json(sales_manager_client, url, {'version': 1, 'remarks': 'x'})
-        assert edit_resp.status_code == 403
+        assert edit_resp.status_code == 202
         delete_resp = sales_manager_client.delete(url)
-        assert delete_resp.status_code == 403
-        assert not ApprovalRequest.objects.filter(document_id=doc['id']).exists()
+        assert delete_resp.status_code == 202
+        assert SalesDocument.objects.get(pk=doc['id']).remarks == ''          # nothing applied yet
+        assert ApprovalRequest.objects.filter(document_id=doc['id']).count() == 2
 
     def test_sales_manager_enquiry_edit_goes_to_approval_not_direct(
         self, sales_manager_client, chennai

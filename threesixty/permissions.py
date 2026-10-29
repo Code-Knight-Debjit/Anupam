@@ -83,14 +83,6 @@ class RoleRules:
         return RoleRules.is_admin(user) or RoleRules.is_branch_manager(user) or RoleRules.is_branch_staff(user)
 
     @staticmethod
-    def can_edit_delete_sales_document(user, document):
-        """Per-document override: a Sales Manager can never edit or delete a
-        Quotation — not even via the approval queue (original ~L10176)."""
-        if RoleRules.is_sales_manager(user) and document.type == document.TYPE_QUOTATION:
-            return False
-        return True
-
-    @staticmethod
     def can_see_all_users_reports(user):
         return RoleRules.is_admin(user) or RoleRules.is_branch_manager(user)
 

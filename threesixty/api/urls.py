@@ -54,8 +54,14 @@ urlpatterns = [
 
     path('sales-documents/', views_sales.SalesDocumentResource.as_view(), name='sales-documents'),
     path('sales-documents/<int:pk>/', views_sales.SalesDocumentResource.as_view(), name='sales-document-detail'),
+    path('sales-documents/<int:pk>/outcome/', views_sales.document_outcome, name='sales-document-outcome'),
+    path('sales-documents/<int:pk>/clone/', views_sales.document_clone, name='sales-document-clone'),
+    path('sales-documents/<int:pk>/schedule/', views_sales.document_schedule, name='sales-document-schedule'),
     path('sales-documents/<int:document_id>/calls/', views_sales.DocumentCallLogResource.as_view(),
          name='sales-document-calls'),
+    path('supply-log/<int:pk>/', views_sales.SupplyLogEntryResource.as_view(), name='supply-log-detail'),
+    path('sales-document-items/<int:item_id>/invoice-log/', views_sales.InvoiceLogEntryResource.as_view(),
+         name='sales-document-item-invoice-log'),
     path('sales-document-items/<int:item_id>/supply-log/', views_sales.SupplyLogEntryResource.as_view(),
          name='sales-document-item-supply-log'),
 
