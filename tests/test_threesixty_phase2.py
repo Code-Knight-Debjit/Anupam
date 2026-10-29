@@ -163,11 +163,30 @@ class TestContactAccess:
         assert res.status_code == 200 and res.json()['assigned'] == 4
         assert call(client_for(team['bs']), 'post', '/360/api/customers/bulk-assign/', {'customer_ids': [a.id], 'user_ids': [team['sm'].id]}).status_code == 403
 
-    def test_generic_update_cannot_change_assignment(self, team):
-        customer, _ = make_customer('Sun Steels', team['admin'])
-        res = call(client_for(team['bs']), 'patch', f'/360/api/customers/{customer.id}/',
-                   {'version': 1, 'assigned_to_ids': [team['sm'].id]})
-        assert res.status_code == 200 and not customer.assigned_to.exists()
+    def test_the_customer_form_can_assign_but_only_for_admin_and_manager(self, team):
+        customer, contacts = make_customer('Sun Steels', team['admin'])
+        contact_service.assign_customer(customer, team['sm2'], [contacts[0].id])
+        url = f'/360/api/customers/{customer.id}/'
+        # Branch Staff sending a different list is refused and nothing changes
+        res = call(client_for(team['bs']), 'patch', url, {'version': 1, 'assigned_to_ids': [team['sm'].id]})
+        assert res.status_code == 403 and set(customer.assigned_to.all()) == {team['sm2']}
+        # ...but sending the unchanged list (as the form does on every save) is fine
+        assert call(client_for(team['bs']), 'patch', url, {'version': 1, 'city': 'X', 'assigned_to_ids': [team['sm2'].id]}).status_code == 200
+        # a Sales Manager cannot smuggle an assignment into an approval request either
+        sm = make_customer('Mine', team['sm'])[0]
+        res = call(client_for(team['sm']), 'patch', f'/360/api/customers/{sm.id}/', {'version': 1, 'assigned_to_ids': [team['sm2'].id]})
+        assert res.status_code == 403 and not ApprovalRequest.objects.exists()
+        # Admin / Branch Manager: adds and removes, and removing also drops the contact restriction
+        res = call(client_for(team['bm']), 'patch', url, {'version': 2, 'assigned_to_ids': [team['sm'].id]})
+        assert res.status_code == 200 and set(customer.assigned_to.all()) == {team['sm']}
+        assert not ContactAccess.objects.exists()
+
+    def test_creating_a_customer_with_an_assignment_is_admin_or_manager_only(self, team):
+        body = {'name': 'New Co', 'assigned_to_ids': [team['sm'].id]}
+        assert call(client_for(team['bs']), 'post', '/360/api/customers/', body).status_code == 403
+        assert not Customer.objects.exists()
+        res = call(client_for(team['admin']), 'post', '/360/api/customers/', body)
+        assert res.status_code == 201 and res.json()['assigned_to_ids'] == [team['sm'].id]
 
 
 # ----------------------------------------------------------------------------- labels, search, duplicates

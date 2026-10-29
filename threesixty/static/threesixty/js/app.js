@@ -22,13 +22,14 @@ import { mountImportExcel } from './views/importexcel.js';
 import { mountUsers } from './views/users.js';
 import { mountBranches } from './views/branches.js';
 import { mountBackup, mountAuditLog } from './views/backup.js';
+import { mountApprovals } from './views/approvals.js';
 import { initA11y } from './a11y.js';
 
 const PAGE_TITLES = {
   dashboard: 'Dashboard', tasks: 'Tasks', callinglist: 'Outreach', attendance: 'Attendance',
   customers: 'Customers', map: 'Map & Nearby', sales: 'Sales', payments: 'Payment Collection',
   labels: 'Print Label', reports: 'Reports', managelists: 'Manage Lists', import: 'Import Excel',
-  users: 'Users', branches: 'Branches', backup: 'Backup & restore', auditlog: 'Audit log',
+  users: 'Users', branches: 'Branches', backup: 'Backup & restore', auditlog: 'Audit log', approvals: 'Approvals',
 };
 
 function setTitleOnNavigate() {
@@ -46,7 +47,7 @@ function applyRoleVisibility() {
   const items = Array.from(document.querySelectorAll('#app-sidebar .nav-item'));
   items.forEach((btn) => {
     const label = (btn.querySelector('span') || btn).textContent.trim();
-    btn.style.display = (state.nav.includes(label) || (label === 'Audit log' && state.nav.includes('Backup & restore'))) ? '' : 'none';
+    btn.style.display = (btn.dataset.always || state.nav.includes(label) || (label === 'Audit log' && state.nav.includes('Backup & restore'))) ? '' : 'none';
   });
   document.querySelectorAll('#app-sidebar .nav-label').forEach((heading) => {
     let node = heading.nextElementSibling, anyVisible = false;
@@ -177,24 +178,35 @@ function refreshBadges() {
   updateAttBadge();
   updateSalesNavBadges();
   refreshNotifBadge();
+  updateApprovalsBadge();
 }
 
-// Admin-only screens that have no entry in the page template: add their menu buttons here.
-function addAdminMenu() {
-  if (!state.nav.includes('Backup & restore')) return;
+// Screens that have no entry in the page template get their menu button here.
+// Approvals is for everyone (approvers decide, others follow their own requests); Backup and Audit log are Admin-only.
+function addExtraMenu() {
   const footer = document.querySelector('#app-sidebar .sidebar-footer');
-  [['backup', 'Backup & restore'], ['auditlog', 'Audit log']].forEach(([view, label]) => {
+  const add = (view, label, always) => {
     const btn = document.createElement('button');
     btn.className = 'nav-item';
     btn.dataset.view = view;
-    btn.innerHTML = `<span>${label}</span>`;
+    if (always) btn.dataset.always = '1';
+    btn.innerHTML = `<span>${label}</span><span class="nav-badge" id="${view}Badge" style="display:none;"></span>`;
     footer.parentNode.insertBefore(btn, footer);
-  });
+  };
+  add('approvals', state.flags.is_approver ? 'Approvals' : 'My requests', true);
+  if (state.nav.includes('Backup & restore')) { add('backup', 'Backup & restore'); add('auditlog', 'Audit log'); }
+}
+
+async function updateApprovalsBadge() {
+  try {
+    const pending = await api.all('approvals/', { status: 'pending' });
+    setNavBadge('#approvalsBadge', pending.length);
+  } catch (e) { /* best-effort */ }
 }
 
 async function boot() {
   await loadBootstrap();
-  addAdminMenu();
+  addExtraMenu();
   initA11y();
   applyRoleVisibility();
   setTitleOnNavigate();
@@ -218,6 +230,7 @@ async function boot() {
   registerView('branches', mountBranches);
   registerView('backup', mountBackup);
   registerView('auditlog', mountAuditLog);
+  registerView('approvals', mountApprovals);
 
   startRouter();
   refreshBadges();

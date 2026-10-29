@@ -21,6 +21,7 @@ from ..services import approvals as approval_service
 from ..services import contacts as contact_service
 from ..services import customers as customer_service
 from ..services import audit, excel_import, interactions as interaction_service
+from ..services import outreach as outreach_service
 from ..services.errors import ServiceError
 from .concurrency import check_version
 from .fields import parse_date_input
@@ -37,6 +38,30 @@ def visible_customers(request):
 
 def _approval_response(approval):
     return JsonResponse({'approval_requested': True, 'approval': serialize_approval_request(approval)}, status=202)
+
+
+def _assignment_change(request, customer, data):
+    """Who is assigned may only be changed by Admin / Branch Manager (the customer form sends the whole
+    list). Returns (to_add, to_remove) user-id sets, or raises 403 if someone else tries to change it."""
+    if 'assigned_to_ids' not in data:
+        return set(), set()
+    try:
+        wanted = {int(x) for x in data['assigned_to_ids'] or []}
+    except (TypeError, ValueError):
+        raise ApiError(400, 'assigned_to_ids must be a list of user ids.')
+    current = set(customer.assigned_to.values_list('id', flat=True)) if customer is not None and customer.pk else set()
+    if wanted == current:
+        return set(), set()
+    if not outreach_service.can_assign(request.user):
+        raise ApiError(403, 'Only Admin or Branch Manager can assign customers.')
+    return wanted - current, current - wanted
+
+
+def _apply_assignment(request, customer, to_add, to_remove):
+    for uid in to_add:
+        contact_service.assign_customer(customer, _assignable_user(request, uid), None)
+    for uid in to_remove:
+        contact_service.deassign_customer(customer, _assignable_user(request, uid))
 
 
 class CustomerResource(JsonResource):
@@ -65,12 +90,15 @@ class CustomerResource(JsonResource):
     def apply_create(self, request, data, **kwargs):
         profile = request.user.threesixty_profile
         customer = Customer(created_by=request.user, created_by_role=profile.role)
+        to_add, to_remove = _assignment_change(request, None, data)
         customer_service.apply_customer_data(customer, data, request.user)
         customer.save()
         customer_service.apply_customer_m2m(customer, data)
-        return customer
+        _apply_assignment(request, customer, to_add, to_remove)
+        return Customer.objects.prefetch_related('assigned_to').get(pk=customer.pk)
 
     def apply_update(self, request, instance, data, **kwargs):
+        to_add, to_remove = _assignment_change(request, instance, data)
         if RoleRules.needs_approval(request.user, 'customer.edit'):
             if not RoleRules.is_sales_manager(request.user):
                 raise ApiError(403, 'You cannot edit this customer.')
@@ -81,7 +109,8 @@ class CustomerResource(JsonResource):
         instance.version += 1
         instance.save()
         customer_service.apply_customer_m2m(instance, data)
-        return instance
+        _apply_assignment(request, instance, to_add, to_remove)
+        return self.get_object(request, instance.pk)
 
     def apply_delete(self, request, instance, **kwargs):
         if not RoleRules.needs_approval(request.user, 'customer.delete'):
