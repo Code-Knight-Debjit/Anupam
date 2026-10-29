@@ -372,3 +372,28 @@ def import_customers(request):
             return error_response(ApiError(400, 'Upload an .xlsx file or send {"rows": [...]}.'))
         rows = [{k: ('' if v is None else str(v)) for k, v in r.items()} for r in rows if isinstance(r, dict)]
     return JsonResponse(excel_import.import_rows(rows, request.user))
+
+
+@role_360_required('ADMIN', 'BRANCH_MANAGER')
+@input_errors_as_400
+def customers_export(request):
+    """The filtered customer list as Excel or PDF (`?format=xlsx|pdf`) — Admin / Branch Manager."""
+    from ..services import exports
+    from django.db.models import Count
+    qs = customer_service.apply_filters(visible_customers(request), request.GET)
+    if request.GET.get('search'):
+        customers = customer_service.search(qs, request.GET['search'])
+    else:
+        customers = list(qs.order_by('name', 'plant'))
+    counts = dict(Contact.objects.filter(customer__in=[c.pk for c in customers]).values_list('customer_id').annotate(n=Count('id')))
+    headers = ['Customer', 'Plant', 'Area', 'City', 'State', 'Pincode', 'GST Number', 'Industry', 'Source', 'Potential', 'Contacts']
+    rows = [[c.name, c.plant, c.area, c.city, c.state, c.pincode, c.gst_number, c.industry, c.source, c.potential,
+             counts.get(c.pk, 0)] for c in customers]
+    if request.GET.get('format') == 'pdf':
+        body, ctype, ext = exports.table_pdf('Customers', headers, rows), 'application/pdf', 'pdf'
+    else:
+        body, ctype, ext = exports.table_xlsx('Customers', headers, rows), \
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'
+    response = HttpResponse(body, content_type=ctype)
+    response['Content-Disposition'] = f'attachment; filename="customers.{ext}"'
+    return response

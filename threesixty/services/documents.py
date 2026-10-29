@@ -235,6 +235,7 @@ def create_document(user, data):
         stock_out_for_new_challan(document, user)
     if doc_type == 'po':
         recompute_po_status(document)
+    save_terms_as_default(user, document, data)
     return document, info
 
 
@@ -290,7 +291,16 @@ def apply_edit(document, data, user):
         recompute_po_status(document)
     if document.type == 'quotation':
         complete_enquiry_for(document, user)
+    save_terms_as_default(user, document, data)
     return document
+
+
+def save_terms_as_default(user, document, data):
+    """"Save as default": the document's terms become the branch's default terms.
+    Branch settings are Admin-only, so for anyone else the flag is ignored."""
+    if data.get('save_terms_as_default') and RoleRules.is_admin(user) and document.terms:
+        document.branch.terms = '\n'.join(str(t) for t in document.terms if str(t).strip())
+        document.branch.save(update_fields=['terms', 'updated_at'])
 
 
 def _set_manual_status(document, status):

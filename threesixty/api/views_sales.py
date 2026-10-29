@@ -6,7 +6,9 @@ act directly; a Sales Manager's edit or delete of ANY sales document (including
 a Quotation) queues an approval request holding before/after data.
 """
 from django.db.models import Prefetch
-from django.http import JsonResponse
+import re
+
+from django.http import HttpResponse, JsonResponse
 
 from ..models import (
     ApprovalRequest, DocumentCallLog, InvoiceLogEntry, SalesDocument, SalesDocumentItem, SupplyLogEntry,
@@ -14,6 +16,7 @@ from ..models import (
 from ..permissions import RoleRules, staff_360_required
 from ..services import approvals as approval_service
 from ..services import documents as doc_service
+from ..services import exports, pdf_documents
 from ..services import tasks as task_service
 from .concurrency import check_version
 from .http import ApiError, error_response, input_errors_as_400, parse_body
@@ -219,3 +222,48 @@ class InvoiceLogEntryResource(JsonResource):
 
     def apply_delete(self, request, instance, **kwargs):
         raise ApiError(405, 'Invoice entries cannot be deleted.')
+
+
+def _filename(document, ext):
+    return re.sub(r'[^A-Za-z0-9._-]+', '_', f'{document.doc_number or document.get_type_display()}') + '.' + ext
+
+
+@staff_360_required
+@input_errors_as_400
+def document_pdf(request, pk):
+    """Preview / Print (inline) or Download (`?download=1`) — the same PDF either way."""
+    document = _document_or_404(request, pk)
+    response = HttpResponse(pdf_documents.build_pdf(document), content_type='application/pdf')
+    kind = 'attachment' if request.GET.get('download') else 'inline'
+    response['Content-Disposition'] = f'{kind}; filename="{_filename(document, "pdf")}"'
+    return response
+
+
+@staff_360_required
+@input_errors_as_400
+def document_xlsx(request, pk):
+    document = _document_or_404(request, pk)
+    response = HttpResponse(exports.document_xlsx(document),
+                            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="{_filename(document, "xlsx")}"'
+    return response
+
+
+@staff_360_required
+@input_errors_as_400
+def documents_export(request):
+    """The filtered list (what the user can see) as Excel or PDF: `?format=xlsx|pdf`."""
+    from ..services.printing import quotation_value_of
+    docs = doc_service.post_filter(
+        list(doc_service.filter_documents(document_queryset(request.user), request.GET).order_by('-date', '-id')), request.GET)
+    headers = ['Number', 'Date', 'Type', 'Branch', 'Customer', 'Status', 'Value']
+    rows = [[d.doc_number, d.date.isoformat(), d.get_type_display(), d.branch.name, d.customer.select_label,
+             d.order_status, float(quotation_value_of(d))] for d in docs]
+    if request.GET.get('format') == 'pdf':
+        body, ctype, ext = exports.table_pdf('Sales documents', headers, rows), 'application/pdf', 'pdf'
+    else:
+        body, ctype, ext = exports.table_xlsx('Sales documents', headers, rows), \
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'
+    response = HttpResponse(body, content_type=ctype)
+    response['Content-Disposition'] = f'attachment; filename="sales-documents.{ext}"'
+    return response

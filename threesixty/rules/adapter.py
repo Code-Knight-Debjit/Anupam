@@ -177,3 +177,50 @@ def doc_total(items, packing=0, packing_tax=0, freight=0, freight_tax=0, other=0
     rows = [{'qty': i.get('qty'), 'rate': i.get('rate'), 'discount': i.get('discount'), 'tax': i.get('tax')} for i in items]
     sub, total = _totals.compute_document_totals('quotation', rows, packing, packing_tax, freight, freight_tax, other, other_tax, round_off)
     return {'subTotal': float(sub), 'totalAmount': float(total)}
+
+
+# --------------------------------------------------------------------------- printing (phase 5)
+from ..models import SalesDocument as _SalesDocument
+from ..models import SalesDocumentItem as _SalesDocumentItem
+from ..services import printing as _printing
+
+
+def _unsaved_document(doc):
+    document = _SalesDocument(
+        show_discount_in_pdf=bool(doc.get('showDiscountInPdf')), packing_charges=_Decimal(str(doc.get('packingCharges') or 0)),
+        packing_tax=_Decimal(str(doc.get('packingTax') or 0)), freight_charges=_Decimal(str(doc.get('freightCharges') or 0)),
+        freight_tax=_Decimal(str(doc.get('freightTax') or 0)), other_charges=_Decimal(str(doc.get('otherCharges') or 0)),
+        other_charges_tax=_Decimal(str(doc.get('otherChargesTax') or 0)), round_off=_Decimal(str(doc.get('roundOff') or 0)),
+        total_amount=None if doc.get('totalAmount') is None else _Decimal(str(doc['totalAmount'])),
+        quotation_value=_Decimal(str(doc.get('quotationValue') or 0)))
+    items = [_SalesDocumentItem(
+        item_name=i.get('itemName') or '', make=i.get('make') or '', qty=_Decimal(str(i.get('qty') or 0)),
+        rate=_Decimal(str(i.get('rate') or 0)), discount=_Decimal(str(i.get('discount') or 0)),
+        tax=_Decimal(str(i.get('tax') or 0)), value=None if i.get('value') is None else _Decimal(str(i['value'])))
+        for i in doc.get('items') or []]
+    return document, items
+
+
+@_backed
+def quotation_print_totals(doc):
+    document, items = _unsaved_document(doc)
+    t = _printing.print_totals(document, items)
+    return {'lines': [{'sr': l['sr'], 'name': l['name'], 'qty': float(l['qty']), 'rate': float(l['rate']),
+                       'amount': float(l['amount']), 'tax': float(l['tax'])} for l in t['lines']],
+            'subTotal': float(t['sub_total']), 'taxTotal': float(t['tax_total']), 'total': float(t['total'])}
+
+
+@_backed
+def amount_in_words(amount):
+    return _printing.amount_in_words(_Decimal(str(amount or 0)))
+
+
+@_backed
+def quotation_value_of(doc):
+    document, items = _unsaved_document(doc)
+    if doc.get('totalAmount') is None:
+        document.total_amount = _Decimal('0')
+    for item in items:
+        if item.value is None:
+            item.value = item.qty * item.rate * (1 - item.discount / 100) * (1 + item.tax / 100)
+    return float(_printing.quotation_value_of(document, items))
