@@ -31,6 +31,8 @@ class PaymentCollection(models.Model):
 
     class Meta:
         ordering = ['-date']
+        indexes = [models.Index(fields=['date']), models.Index(fields=['created_by', 'date'])]
+
 
     def received(self):
         return sum((r.amount for r in self.receipts.all()), Decimal('0.00'))

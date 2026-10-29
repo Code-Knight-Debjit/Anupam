@@ -5,6 +5,8 @@ module only maps ORM rows onto the dict shapes it expects.
 from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Q
 
@@ -12,7 +14,6 @@ from ..models import EmployeeProfile
 from ..rules import anupam_rules as rules
 from .nav import ROLE_NAMES
 
-MIN_PASSWORD = rules.MIN_PASSWORD
 
 
 class AccountError(Exception):
@@ -68,11 +69,18 @@ def set_active(profile: EmployeeProfile, active: bool):
         profile.user.save(update_fields=['is_active'])
 
 
-def check_new_password(new_pw: str, confirm_pw: str | None = None):
-    if not new_pw or len(new_pw) < MIN_PASSWORD:
-        raise AccountError(f'New password must be at least {MIN_PASSWORD} characters.')
+def check_new_password(new_pw: str, confirm_pw: str | None = None, user=None):
+    """Django's own validators (settings.AUTH_PASSWORD_VALIDATORS): minimum length, not too common,
+    not all digits, not similar to the user's name / user ID. This is stricter than the spec's 6-character
+    minimum (REQ-USR-03) by the owner's decision; the spec rule itself is unchanged in rules/."""
+    if not new_pw:
+        raise AccountError('A password is required.')
     if confirm_pw is not None and new_pw != confirm_pw:
         raise AccountError("Passwords don't match.")
+    try:
+        validate_password(new_pw, user=user)
+    except DjangoValidationError as exc:
+        raise AccountError(' '.join(exc.messages))
 
 
 @transaction.atomic
@@ -96,7 +104,7 @@ def reset_password(username: str, new_pw: str, confirm_pw: str, verifier_usernam
         active_others = others.filter(user__is_active=True, is_active_employee=True)
         if verifier is None or verifier.pk == target.user_id or not active_others.filter(user=verifier).exists():
             raise AccountError("That admin's password is incorrect.", 403)
-    check_new_password(new_pw, confirm_pw)
+    check_new_password(new_pw, confirm_pw, user=target.user)
     target.user.set_password(new_pw)
     target.user.save(update_fields=['password'])
     return target
@@ -108,7 +116,7 @@ def create_first_admin(username: str, password: str, full_name: str = '') -> Emp
     username = (username or '').strip()
     if not username:
         raise AccountError('User ID is required.')
-    check_new_password(password)
+    check_new_password(password, user=User(username=username, first_name=full_name))
     if EmployeeProfile.objects.filter(role=EmployeeProfile.ADMIN).exists():
         raise AccountError('An admin already exists.', 403)
     if User.objects.filter(username=username).exists():

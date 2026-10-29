@@ -233,12 +233,26 @@ class TestUserPerformance:
         r = self.row(team['admin'], team['sm'])
         assert (r['appointments_visited'], r['appointments_not_visited'], r['visit_pct']) == (1, 1, 50)
 
-    def test_every_number_drills_down(self, team, data):
+    def test_every_number_drills_down_on_demand(self, team, data):
         r = self.row(team['admin'], team['sm'])
-        n = r['numbers']
-        assert n['calls']['count'] == 3 and n['visits']['count'] == 2 and n['appointments_not_visited']['count'] == 1
-        assert n['customers_called']['count'] == 2 and n['follow_up_calls']['count'] == 2
-        assert n['calls']['items'][0]['kind'] == 'interaction' and 'customer' in n['calls']['items'][0]
+        assert 'numbers' not in r                                   # lists are not shipped with every row
+        assert r['counts'] == {'calls': 3, 'visits': 2, 'appointments': 2, 'appointments_not_visited': 1, 'follow_up_calls': 2,
+                               'customers_called': 2, 'customers_visited': 2}
+        for key, expected in r['counts'].items():
+            res = get(team['admin'], 'reports/user-performance/', **{'from': D(30), 'user_id': team['sm'].pk, 'key': key}).json()
+            assert res['count'] == expected, key
+        calls = get(team['admin'], 'reports/user-performance/', **{'from': D(30), 'user_id': team['sm'].pk, 'key': 'calls'}).json()
+        assert calls['items'][0]['kind'] == 'interaction' and 'customer' in calls['items'][0]
+        assert get(team['admin'], 'reports/user-performance/', user_id=team['sm'].pk, key='nonsense').status_code == 400
+        assert get(team['admin'], 'reports/user-performance/', key='calls').status_code == 400
+
+    def test_drill_down_follows_the_same_scope(self, team, data):
+        # a Sales Manager can open their own numbers, not a colleague's; Branch Staff likewise
+        own = get(team['sm'], 'reports/user-performance/', **{'from': D(30), 'key': 'calls'}).json()
+        assert own['count'] == 3
+        assert get(team['sm'], 'reports/user-performance/', user_id=team['bs'].pk, key='calls').status_code == 403
+        assert get(team['sm2'], 'reports/user-performance/', **{'from': D(30), 'key': 'calls'}).json()['count'] == 0
+        assert get(team['bs'], 'reports/user-performance/', user_id=team['sm'].pk, key='calls').status_code == 403
 
     def test_includes_a_short_attendance_summary(self, team, data):
         assert set(self.row(team['admin'], team['sm'])['attendance']) >= {'present', 'late', 'absent', 'leave', 'half', 'off', 'worked'}

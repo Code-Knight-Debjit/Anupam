@@ -287,14 +287,14 @@ class TestAuditLog:
     def test_admin_actions_are_recorded(self, team, chennai):
         admin = client_for(team['admin'])
         branch = call(admin, 'post', '/360/api/branches/', {'name': 'Mysuru'}).json()
-        call(admin, 'patch', f'/360/api/employees/{team["bs"].threesixty_profile.id}/', {'role': 'BRANCH_MANAGER', 'new_password': 'brandnew1'})
-        call(admin, 'post', '/360/api/employees/', {'username': 'newbie', 'password': 'abcdef', 'role': 'BRANCH_STAFF'})
+        call(admin, 'patch', f'/360/api/employees/{team["bs"].threesixty_profile.id}/', {'role': 'BRANCH_MANAGER', 'new_password': 'Fresh-start-77'})
+        call(admin, 'post', '/360/api/employees/', {'username': 'newbie', 'password': 'Tr0ub4dor-horse', 'role': 'BRANCH_STAFF'})
         call(admin, 'delete', f'/360/api/branches/{branch["id"]}/')
         got = self.actions()
         for expected in ('branch.create', 'user.update', 'user.create', 'branch.deleted'):
             assert expected in got, expected
         update = AuditLog.objects.get(action='user.update')
-        assert 'role' in update.summary and 'password' in update.summary and 'brandnew1' not in update.summary
+        assert 'role' in update.summary and 'password' in update.summary and 'Fresh-start-77' not in update.summary
 
     def test_approvals_and_deletes_are_recorded(self, team):
         customer, _ = make_customer('Sun Steels', team['sm'])
@@ -381,7 +381,8 @@ LIST_URLS = [
     '/360/api/employees/', '/360/api/approvals/', '/360/api/leave-requests/', '/360/api/attendance/', '/360/api/audit-log/',
     '/360/api/reports/sales-performance/?from=2020-01-01', '/360/api/reports/interaction-log/?from=2020-01-01',
     '/360/api/reports/sales-reports/?from=2020-01-01', '/360/api/reports/customer-reports/', '/360/api/reports/not-contacted/',
-    '/360/api/reports/payment-collection/?from=2020-01-01', '/360/api/dashboard/admin/', '/360/api/attendance/summary/',
+    '/360/api/reports/payment-collection/?from=2020-01-01', '/360/api/reports/user-performance/?from=2020-01-01', '/360/api/dashboard/admin/',
+    '/360/api/attendance/summary/',
 ]
 
 
@@ -431,6 +432,28 @@ class TestQueryCounts:
             assert res.status_code == 200, (url, res.content[:200])
             counts.append(len(ctx))
         assert counts[1] <= counts[0] + 2, f'{url}: queries grew with the number of rows: {counts}'
+
+
+class TestQueryCountsGrowWithPeople:
+    """Per-person reports must use grouped queries: more employees must not mean more queries."""
+
+    @pytest.mark.parametrize('url', ['/360/api/reports/user-performance/?from=2020-01-01', '/360/api/dashboard/admin/', '/360/api/attendance/summary/',
+                                     '/360/api/employees/'])
+    def test_queries_do_not_grow_with_employees(self, url, team, chennai):
+        from django.db.models import Q
+        from django.test.utils import CaptureQueriesContext
+        customer, contacts = make_customer('Sun Steels', team['admin'])
+        client = client_for(team['admin'])
+        counts = []
+        for batch in (2, 12):
+            for n in range(batch):
+                person = make_employee(f'person{len(counts)}_{n}', BS, [chennai])
+                Interaction.objects.create(contact=contacts[0], type='Call', date='2026-10-01', created_by=person)
+                Interaction.objects.create(contact=contacts[0], type='Appointment', date='2026-10-01', created_by=person)
+            with CaptureQueriesContext(connection) as ctx:
+                assert client.get(url + ('&' if '?' in url else '?') + 'page_size=200').status_code == 200
+            counts.append(len(ctx))
+        assert counts[1] <= counts[0] + 2, f'{url}: queries grew with the number of employees: {counts}'
 
 
 # ----------------------------------------------------------------------------- security

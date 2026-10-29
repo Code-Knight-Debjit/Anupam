@@ -254,52 +254,103 @@ def not_contacted(user, f: Filters, days=30, mode='both', state='', area=''):
 
 
 # --------------------------------------------------------------------------- 4. User Performance
-def user_performance(user, f: Filters):
-    profiles = att.team_profiles(user) if sees_everyone(user) else att.team_profiles(user).filter(user=user)
+def _performance_profiles(user, f: Filters):
     if sees_everyone(user):
         profiles = EmployeeProfile.objects.filter(user__is_active=True, is_active_employee=True).select_related('user')
         if f.branch_id:
             profiles = profiles.filter(branches__id=f.branch_id)
+    else:
+        profiles = att.team_profiles(user).filter(user=user)
     if f.user_id:
         profiles = profiles.filter(user_id=f.user_id)
-    profiles = list(profiles.distinct().order_by('user__first_name', 'user__username'))
-    interactions = list(Interaction.objects.filter(is_copy=False, date__range=(f.start, f.end)).select_related('contact__customer', 'created_by')
-                        .prefetch_related('joint_with'))
-    sales_logs = list(DocumentCallLog.objects.filter(timestamp__date__range=(f.start, f.end)).select_related('document__customer'))
-    pay_logs = list(PaymentContactLog.objects.filter(timestamp__date__range=(f.start, f.end)).select_related('payment__customer'))
-    attendance = att.compute_range(profiles, f.start, min(f.end, timezone.localdate()), timezone.localdate()) if f.start <= timezone.localdate() else {}
+    return list(profiles.distinct().order_by('user__first_name', 'user__username'))
+
+
+def _credit_pairs(f: Filters, **filters):
+    """(user_id, interaction_id) pairs for interactions in range: the person who logged it, and joint members.
+    A set of ints per person -- the counting is done in one pass over light rows, never one query per person."""
+    base = Interaction.objects.filter(is_copy=False, date__range=(f.start, f.end), **filters)
+    pairs = set(base.exclude(created_by__isnull=True).values_list('created_by_id', 'id'))
+    through = Interaction.joint_with.through
+    pairs |= set(through.objects.filter(interaction__in=base).values_list('user_id', 'interaction_id'))
+    return pairs
+
+
+def user_performance(user, f: Filters):
+    """One row per person. Everything is computed with a fixed number of grouped queries, whatever the
+    number of people or interactions; the lists behind each number load on demand (`user_performance_items`)."""
+    profiles = _performance_profiles(user, f)
+    wanted = {p.user_id for p in profiles}
+    meta = {i: (t, c) for i, t, c in Interaction.objects.filter(is_copy=False, date__range=(f.start, f.end))
+            .values_list('id', 'type', 'contact__customer_id')}
+    credit = defaultdict(set)
+    for uid, iid in _credit_pairs(f):
+        if uid in wanted and iid in meta:
+            credit[uid].add(iid)
+    visited = {r for r in interaction_not_visited_ids(f)}
+    follow = defaultdict(int)
+    for model in (DocumentCallLog, PaymentContactLog):
+        for uid, n in model.objects.filter(timestamp__date__range=(f.start, f.end), user_id__in=wanted).values_list('user_id').annotate(n=Count('id')):
+            follow[uid] += n
+    today = timezone.localdate()
+    attendance = att.compute_range(profiles, f.start, min(f.end, today), today) if f.start <= today else {}
     rows = []
     for p in profiles:
-        uid = p.user_id
-        mine = [i for i in interactions if i.created_by_id == uid or any(j.pk == uid for j in i.joint_with.all())]
-        calls = [i for i in mine if i.type in CALL_TYPES]
-        visits = [i for i in mine if i.type == Interaction.TYPE_VISIT]
-        appts = [i for i in mine if i.type == Interaction.TYPE_APPOINTMENT]
-        not_visited = list(interaction_not_visited(uid, f))
-        follow_ups = [l for l in sales_logs if l.user_id == uid] + [l for l in pay_logs if l.user_id == uid]
+        mine = credit[p.user_id]
+        of = lambda types: [i for i in mine if meta[i][0] in types]
+        calls, visits, appts = of(CALL_TYPES), of((Interaction.TYPE_VISIT,)), of((Interaction.TYPE_APPOINTMENT,))
+        not_visited = [i for i in appts if i in visited]
         rows.append({
-            'user_id': uid, 'name': _name(p.user), 'role': p.role,
+            'user_id': p.user_id, 'name': _name(p.user), 'role': p.role,
             'calls': len(calls), 'visits': len(visits), 'appointments': len(appts),
             'appointments_visited': len(appts) - len(not_visited), 'appointments_not_visited': len(not_visited),
             'visit_pct': rules.visit_percent_of_appointments(len(appts), len(appts) - len(not_visited)),
-            'follow_up_calls': len(follow_ups),
-            'customers_called': len({i.contact.customer_id for i in calls}), 'customers_visited': len({i.contact.customer_id for i in visits}),
-            'attendance': att.tally(attendance.get(uid, [])),
-            'numbers': _numbers({
-                'calls': [_interaction_item(i) for i in calls], 'visits': [_interaction_item(i) for i in visits],
-                'appointments': [_interaction_item(i) for i in appts], 'appointments_not_visited': [_interaction_item(i) for i in not_visited],
-                'follow_up_calls': [{'kind': 'log', 'label': l.message[:80], 'date': l.timestamp.date().isoformat()} for l in follow_ups],
-                'customers_called': [{'kind': 'customer', 'id': c.pk, 'label': c.select_label} for c in {i.contact.customer for i in calls}],
-                'customers_visited': [{'kind': 'customer', 'id': c.pk, 'label': c.select_label} for c in {i.contact.customer for i in visits}],
-            }),
+            'follow_up_calls': follow[p.user_id],
+            'customers_called': len({meta[i][1] for i in calls}), 'customers_visited': len({meta[i][1] for i in visits}),
+            'attendance': att.tally(attendance.get(p.user_id, [])),
+            'counts': {'calls': len(calls), 'visits': len(visits), 'appointments': len(appts), 'appointments_not_visited': len(not_visited),
+                       'follow_up_calls': follow[p.user_id], 'customers_called': len({meta[i][1] for i in calls}),
+                       'customers_visited': len({meta[i][1] for i in visits})},
         })
     return {'results': rows}
 
 
-def interaction_not_visited(uid, f: Filters):
-    from . import interactions
-    from django.contrib.auth import get_user_model
-    return interactions.appointments_not_visited(get_user_model().objects.get(pk=uid), f.start, f.end).select_related('contact__customer', 'created_by')
+def interaction_not_visited_ids(f: Filters):
+    """Ids of appointments in range with no later visit to the same contact (REQ-INT-06), in one query."""
+    from django.db.models import Exists, OuterRef
+    later = Interaction.objects.filter(contact=OuterRef('contact'), type=Interaction.TYPE_VISIT, date__gte=OuterRef('date'))
+    return Interaction.objects.filter(is_copy=False, type=Interaction.TYPE_APPOINTMENT, date__range=(f.start, f.end)) \
+        .annotate(_v=Exists(later)).filter(_v=False).values_list('id', flat=True)
+
+
+USER_PERFORMANCE_KEYS = ('calls', 'visits', 'appointments', 'appointments_not_visited', 'follow_up_calls', 'customers_called', 'customers_visited')
+
+
+def user_performance_items(user, f: Filters, key):
+    """The records behind one number of one person (drill-down). `f.user_id` is the person; for viewers who
+    only see themselves `parse_filters` has already forced it to their own id."""
+    if key not in USER_PERFORMANCE_KEYS:
+        raise ServiceError(400, 'key must be one of: ' + ', '.join(USER_PERFORMANCE_KEYS))
+    if f.user_id is None:
+        raise ServiceError(400, 'user_id is required.')
+    if not any(p.user_id == f.user_id for p in _performance_profiles(user, f)):
+        raise ServiceError(403, 'You cannot see that person.')
+    if key == 'follow_up_calls':
+        logs = [{'kind': 'log', 'label': l.message[:80], 'customer': l.document.customer.select_label, 'date': l.timestamp.date().isoformat()}
+                for l in DocumentCallLog.objects.filter(user_id=f.user_id, timestamp__date__range=(f.start, f.end)).select_related('document__customer')]
+        logs += [{'kind': 'log', 'label': l.message[:80], 'customer': l.payment.customer.select_label, 'date': l.timestamp.date().isoformat()}
+                 for l in PaymentContactLog.objects.filter(user_id=f.user_id, timestamp__date__range=(f.start, f.end)).select_related('payment__customer')]
+        return _numbers({key: logs})[key]
+    own = scoped_interactions(f).select_related('contact__customer', 'created_by')
+    types = {'calls': CALL_TYPES, 'customers_called': CALL_TYPES, 'visits': (Interaction.TYPE_VISIT,), 'customers_visited': (Interaction.TYPE_VISIT,),
+             'appointments': (Interaction.TYPE_APPOINTMENT,), 'appointments_not_visited': (Interaction.TYPE_APPOINTMENT,)}[key]
+    rows = own.filter(type__in=types).order_by('-date', '-id')
+    if key == 'appointments_not_visited':
+        rows = rows.filter(id__in=list(interaction_not_visited_ids(f)))
+    if key.startswith('customers_'):
+        customers = {i.contact.customer_id: i.contact.customer for i in rows}
+        return _numbers({key: [_customer_item(c) for c in customers.values()]})[key]
+    return _numbers({key: [_interaction_item(i) for i in rows[:ITEM_CAP + 1]]})[key]
 
 
 # --------------------------------------------------------------------------- 5. Sales Reports / Customer Reports
@@ -413,6 +464,8 @@ def run(name, user, params):
     if name == 'not-contacted':
         return not_contacted(user, f, get('days', 30), get('mode', 'both'), get('state', ''), get('area', ''))
     if name == 'user-performance':
+        if get('key'):
+            return user_performance_items(user, f, get('key'))
         return user_performance(user, f)
     if name == 'sales-reports':
         return sales_reports(user, f, get('type', ''), get('status', ''))
@@ -510,19 +563,20 @@ def admin_dashboard(user, f: Filters, activity_limit=10):
     payments.sort(key=lambda p: -p.balance())
     pending = ApprovalRequest.objects.filter(status='pending').filter(Q(customer__isnull=False) | Q(contact__isnull=False) | Q(document__isnull=False))
     profiles = list(EmployeeProfile.objects.filter(user__is_active=True, is_active_employee=True).select_related('user'))
-    employees = []
-    for p in profiles:
-        uid = p.user_id
-        last = [d for d in (
-            Interaction.objects.filter(created_by_id=uid).aggregate(m=Max('created_at'))['m'],
-            SalesDocument.objects.filter(created_by_id=uid).aggregate(m=Max('created_at'))['m'],
-            Customer.objects.filter(created_by_id=uid).aggregate(m=Max('created_at'))['m']) if d]
-        employees.append({
-            'user_id': uid, 'name': _name(p.user), 'role': p.role,
-            'customers_added': Customer.objects.filter(created_by_id=uid, created_at__date__range=(f.start, f.end)).count(),
-            'contacts_added': Contact.objects.filter(customer__created_by_id=uid, customer__created_at__date__range=(f.start, f.end)).count(),
-            'documents_raised': SalesDocument.objects.filter(created_by_id=uid, date__range=(f.start, f.end)).count(),
-            'last_activity': max(last).isoformat() if last else None})
+    in_range = Q(created_at__date__range=(f.start, f.end))
+    customers_added = dict(Customer.objects.filter(in_range).values_list('created_by_id').annotate(n=Count('id')))
+    contacts_added = dict(Contact.objects.filter(customer__created_at__date__range=(f.start, f.end))
+                          .values_list('customer__created_by_id').annotate(n=Count('id')))
+    documents_raised = dict(SalesDocument.objects.filter(date__range=(f.start, f.end)).values_list('created_by_id').annotate(n=Count('id')))
+    last_seen = defaultdict(list)
+    for qs, field in ((Interaction.objects, 'created_by_id'), (SalesDocument.objects, 'created_by_id'), (Customer.objects, 'created_by_id')):
+        for uid, latest in qs.values_list(field).annotate(m=Max('created_at')):
+            last_seen[uid].append(latest)
+    employees = [{
+        'user_id': p.user_id, 'name': _name(p.user), 'role': p.role,
+        'customers_added': customers_added.get(p.user_id, 0), 'contacts_added': contacts_added.get(p.user_id, 0),
+        'documents_raised': documents_raised.get(p.user_id, 0),
+        'last_activity': max(last_seen[p.user_id]).isoformat() if last_seen.get(p.user_id) else None} for p in profiles]
     att_today = att.compute_range(profiles, today, today)
     strip = defaultdict(int)
     for p in profiles:

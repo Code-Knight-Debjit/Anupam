@@ -371,9 +371,9 @@ class EmployeeResource(AdminWriteMixin, JsonResource):
         return EmployeeProfile.objects.select_related('user').prefetch_related('branches').order_by('user__first_name', 'user__username')
 
     @staticmethod
-    def _check_password(password):
+    def _check_password(password, user=None):
         try:
-            user_service.check_new_password(password)
+            user_service.check_new_password(password, user=user)
         except user_service.AccountError as exc:
             raise ApiError(exc.status, exc.message)
 
@@ -387,7 +387,7 @@ class EmployeeResource(AdminWriteMixin, JsonResource):
         role = data.get('role')
         if not username or not password or role not in dict(EmployeeProfile.ROLE_CHOICES):
             raise ApiError(400, 'username, password and a valid role are required.')
-        self._check_password(password)
+        self._check_password(password, User(username=username, first_name=data.get('full_name', '')))
         if User.objects.filter(username=username).exists():
             raise ApiError(400, 'That username is already taken.')
         emp_code = (data.get('emp_code') or '').strip() or None
@@ -453,7 +453,7 @@ class EmployeeResource(AdminWriteMixin, JsonResource):
         if wants_active is not None:
             user_service.set_active(instance, bool(wants_active))
         if data.get('new_password'):
-            self._check_password(data['new_password'])
+            self._check_password(data['new_password'], instance.user)
             instance.user.set_password(data['new_password'])
             instance.user.save(update_fields=['password'])
         changed = sorted(set(data) - {'version', 'new_password'})

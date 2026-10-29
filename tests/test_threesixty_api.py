@@ -292,19 +292,19 @@ class TestAdminOnlyResources:
 
     def test_non_admin_cannot_create_employee(self, staff_client):
         resp = post_json(staff_client, reverse('threesixty:threesixty_api:employees'), {
-            'username': 'newstaff', 'password': 'pw12345', 'role': EmployeeProfile.BRANCH_STAFF,
+            'username': 'newstaff', 'password': 'Pw-12345-secure', 'role': EmployeeProfile.BRANCH_STAFF,
         })
         assert resp.status_code == 403
         assert not User.objects.filter(username='newstaff').exists()
 
     def test_admin_creates_employee_with_hashed_password(self, admin_client):
         resp = post_json(admin_client, reverse('threesixty:threesixty_api:employees'), {
-            'username': 'newstaff', 'password': 'pw12345', 'role': EmployeeProfile.BRANCH_STAFF,
+            'username': 'newstaff', 'password': 'Pw-12345-secure', 'role': EmployeeProfile.BRANCH_STAFF,
         })
         assert resp.status_code == 201
         user = User.objects.get(username='newstaff')
-        assert user.password != 'pw12345'
-        assert user.check_password('pw12345')
+        assert user.password != 'Pw-12345-secure'
+        assert user.check_password('Pw-12345-secure')
 
 
 class TestApprovalApproveReject:

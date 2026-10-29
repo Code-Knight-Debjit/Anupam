@@ -120,15 +120,22 @@ so a failure points at a requirement; `tests/test_traceability.py` fails if a re
 ## 8. Decisions taken from the spec (please confirm)
 
 * Sales Manager quotation edits go through approval (spec §1, REQ-ROLE-02) — the older audit note that blocked them is superseded.
-* A sole Admin can reset their own password on the sign-in page without a verifier (REQ-USR-03, as specified). The
-  reset form is rate limited, but this is weaker than requiring a second person: consider disabling it in production.
-* Password minimum is 6 characters (REQ-USR-03); Django's stricter validators are not applied.
-* "Own data" in Reports applies to Branch Staff as well as Sales Managers (the §1 table); Not Contacted shows
-  only customers they created or are assigned.
+* A sole Admin can reset their own password on the sign-in page without a verifier (REQ-USR-03, confirmed by the owner). The
+  reset form is rate limited, but this is weaker than requiring a second person.
+* Passwords: Django's strict validators apply everywhere a password is set (create, change, reset, first admin): at least 8 characters, not common, not all digits, not similar to the user ID/name. This is stricter than the spec's 6 characters (REQ-USR-03) by the owner's decision; the pure spec rule in `rules/` is unchanged and its test still passes.
+* "Own data" in Reports applies to Branch Staff as well as Sales Managers (REQ-RPT-01), filtered in SQL on indexed
+  `created_by` / date columns so it stays cheap as data grows. The Payments *list* stays visible to Branch Staff (REQ-PAY-02).
+  Not Contacted shows only customers they created or are assigned.
 * Contact-log "call me later" and outreach "call again" tasks are created as Call tasks (REQ-LOG-01, REQ-OUT-02).
 * Tasks keep the model status `Completed`; the spec's "Done" is accepted on input.
 * Employee list: only Admin (and the person themself) sees phone, birth date, work schedule, Aadhaar, PAN.
 * [Reconstructed/Assumed in the spec] Stock screens are not built (§26); only the stock-OUT record exists.
+
+## 8b. Scaling notes
+
+* Indexes (migration `0011`) cover the filters lists and reports use: dates, `(created_by, date)`, `(type, date)`, status, `(user, read)`, etc.
+* Per-person reports (User Performance, Admin dashboard, Attendance summary) use grouped queries: query count does not grow with the number of rows **or** employees (`tests/test_threesixty_phase9.py`, `TestQueryCounts*`).
+* User Performance returns counts only; the list behind a number loads on demand (`?user_id=&key=`).
 
 ## 9. Traceability: requirement → code → tests
 

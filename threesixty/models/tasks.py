@@ -60,6 +60,8 @@ class Task(models.Model):
 
     class Meta:
         ordering = ['due_date', '-created_at']
+        indexes = [models.Index(fields=['due_date']), models.Index(fields=['assigned_to', 'status'])]
+
 
     def __str__(self):
         return self.title
@@ -84,6 +86,8 @@ class Notification(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [models.Index(fields=['user', 'read'])]
+
 
     def __str__(self):
         return self.text[:60]
@@ -144,6 +148,8 @@ class ApprovalRequest(models.Model):
 
     class Meta:
         ordering = ['-requested_at']
+        indexes = [models.Index(fields=['status', 'requested_at'])]
+
 
     def __str__(self):
         return f'{self.get_type_display()} request by {self.requested_by}'
@@ -179,6 +185,7 @@ class CallAssignment(models.Model):
     class Meta:
         ordering = ['-week_of']
         unique_together = [('customer', 'contact', 'assigned_to', 'week_of')]
+        indexes = [models.Index(fields=['assigned_to', 'week_of']), models.Index(fields=['status', 'called_at'])]
 
 
 class CallAttempt(models.Model):

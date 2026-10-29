@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, prefetch_related_objects
 from django.utils import timezone
 
 from ..models import AttendanceRecord, EmployeeProfile, Holiday, LeaveRequest, SiteSetting
@@ -124,6 +124,7 @@ def compute_range(profiles, start: date, end: date, today=None):
     """{user_id: [ {date, code, late, worked, record} ... ]} for every day start..end."""
     today = (today or timezone.localdate()).isoformat()
     profiles = list(profiles)
+    prefetch_related_objects(profiles, 'branches')        # no-op when already prefetched; never one query per person
     user_ids = [p.user_id for p in profiles]
     records = defaultdict(dict)
     for r in AttendanceRecord.objects.filter(user_id__in=user_ids, date__range=(start, end)):

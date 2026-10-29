@@ -48,8 +48,8 @@ button:hover{filter:brightness(1.1)}
           <input id="fa-name" name="full_name" type="text">
           <label for="fa-user">User ID</label>
           <input id="fa-user" name="username" type="text" required autocapitalize="off">
-          <label for="fa-pass">Password (min 6 characters)</label>
-          <input id="fa-pass" name="password" type="password" required minlength="6" autocomplete="new-password">
+          <label for="fa-pass">Password (at least 8 characters, not common or all numbers)</label>
+          <input id="fa-pass" name="password" type="password" required minlength="8" autocomplete="new-password">
           <button type="submit">Create admin</button>
         </form>
       {% else %}
@@ -73,10 +73,10 @@ button:hover{filter:brightness(1.1)}
             <input type="hidden" name="action" value="reset">
             <label for="rp-user">Your user ID</label>
             <input id="rp-user" name="username" type="text" required autocapitalize="off">
-            <label for="rp-new">New password (min 6 characters)</label>
-            <input id="rp-new" name="new_password" type="password" required minlength="6" autocomplete="new-password">
+            <label for="rp-new">New password (at least 8 characters, not common or all numbers)</label>
+            <input id="rp-new" name="new_password" type="password" required minlength="8" autocomplete="new-password">
             <label for="rp-confirm">Confirm new password</label>
-            <input id="rp-confirm" name="confirm_password" type="password" required minlength="6" autocomplete="new-password">
+            <input id="rp-confirm" name="confirm_password" type="password" required minlength="8" autocomplete="new-password">
             <label for="rp-vuser">Confirming admin's user ID</label>
             <input id="rp-vuser" name="verifier_username" type="text" required autocapitalize="off">
             <label for="rp-vpass">Confirming admin's password</label>

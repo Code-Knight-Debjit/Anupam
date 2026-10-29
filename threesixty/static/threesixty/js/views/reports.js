@@ -81,7 +81,12 @@ async function renderReport(root, body) {
     const result = await api.get(`reports/${current}/?${params()}`);
     body.innerHTML = RENDER[current](result);
     if (DRILL_MAP[current]) bindDrill(body, result, DRILL_MAP[current]);
-    body.querySelectorAll('[data-user]').forEach((a) => a.onclick = () => showItems(a.dataset.key.replace(/_/g, ' '), result.results[Number(a.dataset.user)].numbers[a.dataset.key]));
+    // User Performance numbers load their list on demand (one person, one number) instead of shipping every list up front.
+    body.querySelectorAll('[data-user]').forEach((a) => a.onclick = async () => {
+      const person = result.results[Number(a.dataset.user)];
+      try { showItems(`${person.name} — ${a.dataset.key.replace(/_/g, ' ')}`, await api.get(`reports/user-performance/?${params({ user_id: person.user_id, key: a.dataset.key })}`)); }
+      catch (e) { toast(apiErrorMessage(e), 'error'); }
+    });
     body.querySelectorAll('[data-type]').forEach((b) => b.onclick = () => { filters.interaction_type = filters.interaction_type === b.dataset.type ? '' : b.dataset.type; renderReport(root, body); });
     const rerun = () => renderReport(root, body);
     [['rf-days', 'days'], ['rf-mode', 'mode'], ['rf-type', 'type'], ['rf-status', 'status']].forEach(([id, key]) => { const n = body.querySelector('#' + id); if (n) n.onchange = () => { filters[key] = n.value; rerun(); }; });

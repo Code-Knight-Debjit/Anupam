@@ -103,7 +103,7 @@ class TestMenusByRole:
             assert send(c, 'post', '/360/api/branches/', {'name': 'X'}).status_code == 403
             assert send(c, 'post', '/360/api/lookups/', {'kind': 'source', 'name': 'X'}).status_code == 403
             assert send(c, 'post', '/360/api/sales-persons/', {'name': 'X'}).status_code == 403
-            assert send(c, 'post', '/360/api/employees/', {'username': 'n', 'password': 'abcdef', 'role': 'BRANCH_STAFF'}).status_code == 403
+            assert send(c, 'post', '/360/api/employees/', {'username': 'n', 'password': 'Tr0ub4dor-horse', 'role': 'BRANCH_STAFF'}).status_code == 403
             assert send(c, 'patch', f'/360/api/branches/{chennai.id}/numbering/quotation/', {'prefix': 'Z'}).status_code == 403
             upload = SimpleUploadedFile('a.png', png_bytes(), content_type='image/png')
             assert c.post(f'/360/api/branches/{chennai.id}/images/logo/', {'file': upload}).status_code == 403
@@ -309,7 +309,7 @@ class TestPickLists:
 # ----------------------------------------------------------------------------- users
 class TestUsers:
     def new_user(self, admin, **extra):
-        data = {'username': 'newbie', 'password': 'abcdef', 'role': 'BRANCH_STAFF', 'full_name': 'New Bie'}
+        data = {'username': 'newbie', 'password': 'Tr0ub4dor-horse', 'role': 'BRANCH_STAFF', 'full_name': 'New Bie'}
         data.update(extra)
         return send(admin, 'post', '/360/api/employees/', data)
 
@@ -317,12 +317,21 @@ class TestUsers:
         settings.PASSWORD_HASHERS = ['django.contrib.auth.hashers.PBKDF2PasswordHasher']   # the production default
         assert self.new_user(admin).status_code == 201
         stored = User.objects.get(username='newbie').password
-        assert stored != 'abcdef' and stored.startswith(('pbkdf2_', 'argon2', 'bcrypt', 'scrypt'))
+        assert stored != 'Tr0ub4dor-horse' and stored.startswith(('pbkdf2_', 'argon2', 'bcrypt', 'scrypt'))
 
-    def test_REQ_USR_03_minimum_password_length_on_create_and_change(self, admin):
-        assert self.new_user(admin, password='abc').status_code == 400
+    def test_REQ_USR_03_django_password_validators_on_create_and_change(self, admin):
+        """Stricter than the spec's 6 characters, by the owner's decision: Django's validators apply."""
+        for weak, why in [('abc', 'too short'), ('abcdefg', 'too short'), ('password', 'common'), ('12345678', 'numeric'),
+                          ('newbie12', 'similar to the user ID')]:
+            res = self.new_user(admin, password=weak)
+            assert res.status_code == 400, why
+        assert not User.objects.filter(username='newbie').exists()
         emp = self.new_user(admin).json()
-        assert send(admin, 'patch', f'/360/api/employees/{emp["id"]}/', {'new_password': 'abc'}).status_code == 400
+        url = f'/360/api/employees/{emp["id"]}/'
+        for weak in ('abc', 'password1', '1234567890'):
+            assert send(admin, 'patch', url, {'new_password': weak}).status_code == 400
+        assert User.objects.get(username='newbie').check_password('Tr0ub4dor-horse')            # unchanged by the refused attempts
+        assert send(admin, 'patch', url, {'new_password': 'Another-long-one-9'}).status_code == 200
 
     def test_work_hours_and_weekly_off_are_validated(self, admin):
         assert self.new_user(admin, work_start='9am').status_code == 400
@@ -336,15 +345,15 @@ class TestUsers:
         assert send(admin, 'patch', f'/360/api/employees/{emp["id"]}/', {'is_active': False}).status_code == 200
         user = User.objects.get(username='newbie')
         assert user.is_active is False and user.threesixty_profile.is_active_employee is False
-        res = Client().post('/360/login/', {'action': 'login', 'username': 'newbie', 'password': 'abcdef'})
+        res = Client().post('/360/login/', {'action': 'login', 'username': 'newbie', 'password': 'Tr0ub4dor-horse'})
         assert res.status_code == 200 and b'inactive' in res.content
-        assert not Client().login(username='newbie', password='abcdef')
+        assert not Client().login(username='newbie', password='Tr0ub4dor-horse')
 
     def test_REQ_USR_01_reactivating_restores_sign_in(self, admin):
         emp = self.new_user(admin).json()
         send(admin, 'patch', f'/360/api/employees/{emp["id"]}/', {'is_active': False})
         send(admin, 'patch', f'/360/api/employees/{emp["id"]}/', {'is_active': True})
-        res = Client().post('/360/login/', {'action': 'login', 'username': 'newbie', 'password': 'abcdef'})
+        res = Client().post('/360/login/', {'action': 'login', 'username': 'newbie', 'password': 'Tr0ub4dor-horse'})
         assert res.status_code == 302
 
     def test_REQ_USR_01_profile_marked_inactive_is_locked_out_of_an_open_session(self, chennai):
@@ -410,7 +419,7 @@ class TestUsers:
 # ----------------------------------------------------------------------------- login & reset
 class TestLoginAndReset:
     def reset(self, **fields):
-        data = {'action': 'reset', 'username': 'staff1', 'new_password': 'brandnew1', 'confirm_password': 'brandnew1',
+        data = {'action': 'reset', 'username': 'staff1', 'new_password': 'Fresh-start-77', 'confirm_password': 'Fresh-start-77',
                 'verifier_username': 'admin1', 'verifier_password': 'secret-pw-1'}
         data.update(fields)
         return Client().post('/360/login/', data)
@@ -451,13 +460,13 @@ class TestLoginAndReset:
         res = self.reset()
         assert res.status_code == 200 and b'Password changed' in res.content
         user = User.objects.get(username='staff1')
-        assert user.check_password('brandnew1') and user.password != 'brandnew1'
-        assert Client().login(username='staff1', password='brandnew1')
+        assert user.check_password('Fresh-start-77') and user.password != 'Fresh-start-77'
+        assert Client().login(username='staff1', password='Fresh-start-77')
 
     def test_REQ_USR_03_wrong_verifier_password_is_refused(self, setup):
         res = self.reset(verifier_password='wrong')
         assert res.status_code == 403 and b"admin&#x27;s password is incorrect" in res.content
-        assert not User.objects.get(username='staff1').check_password('brandnew1')
+        assert not User.objects.get(username='staff1').check_password('Fresh-start-77')
 
     def test_REQ_USR_03_verifier_must_be_an_admin_other_than_the_target(self, setup, chennai):
         make_employee('staff2', EmployeeProfile.BRANCH_STAFF, [chennai])
@@ -470,7 +479,10 @@ class TestLoginAndReset:
         assert self.reset().status_code == 403
 
     def test_REQ_USR_03_password_rules(self, setup):
-        assert self.reset(new_password='abc', confirm_password='abc').status_code == 400
+        for weak in ('abc', 'password', '123456789', 'staff123'):
+            res = self.reset(new_password=weak, confirm_password=weak)
+            assert res.status_code == 400, weak
+        assert not User.objects.get(username='staff1').check_password('password')
         res = self.reset(confirm_password='different')
         assert res.status_code == 400 and b"match" in res.content
 
@@ -478,7 +490,7 @@ class TestLoginAndReset:
         make_employee('admin1', EmployeeProfile.ADMIN, [chennai])
         res = self.reset(username='admin1', verifier_username='', verifier_password='')
         assert res.status_code == 200 and b'Password changed' in res.content
-        assert User.objects.get(username='admin1').check_password('brandnew1')
+        assert User.objects.get(username='admin1').check_password('Fresh-start-77')
 
     def test_REQ_USR_03_unknown_user_gets_the_generic_refusal(self, setup):
         assert self.reset(username='ghost').status_code == 403
@@ -490,15 +502,15 @@ class TestLoginAndReset:
     def test_first_admin_form_only_while_no_admin_exists(self, chennai):
         c = Client()
         assert b'Create the first admin' in c.get('/360/login/').content
-        res = c.post('/360/login/', {'action': 'first_admin', 'username': 'boss', 'password': 'bosspw1', 'full_name': 'The Boss'})
+        res = c.post('/360/login/', {'action': 'first_admin', 'username': 'boss', 'password': 'Boss-secret-2026', 'full_name': 'The Boss'})
         assert res.status_code == 302 and res.url == '/360/'
         assert EmployeeProfile.objects.get(user__username='boss').role == EmployeeProfile.ADMIN
-        res = Client().post('/360/login/', {'action': 'first_admin', 'username': 'intruder', 'password': 'intrude1'})
+        res = Client().post('/360/login/', {'action': 'first_admin', 'username': 'intruder', 'password': 'Intruder-pass-1'})
         assert res.status_code == 403 and not User.objects.filter(username='intruder').exists()
         assert b'Create the first admin' not in Client().get('/360/login/').content
 
     def test_first_admin_password_minimum(self):
-        res = Client().post('/360/login/', {'action': 'first_admin', 'username': 'boss', 'password': 'abc'})
+        res = Client().post('/360/login/', {'action': 'first_admin', 'username': 'boss', 'password': 'password123'})
         assert res.status_code == 400 and not User.objects.filter(username='boss').exists()
 
     def test_dashboard_login_still_works_for_360_staff(self, setup):

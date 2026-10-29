@@ -91,7 +91,8 @@ class SalesDocument(models.Model):
 
     class Meta:
         ordering = ['-date', '-created_at']
-        indexes = [models.Index(fields=['type', 'branch', 'doc_number'])]
+        indexes = [models.Index(fields=['type', 'branch', 'doc_number']), models.Index(fields=['date']), models.Index(fields=['type', 'date']),
+                   models.Index(fields=['created_by', 'date']), models.Index(fields=['customer', 'date'])]
 
     def __str__(self):
         return f'{self.get_type_display()} {self.doc_number}'

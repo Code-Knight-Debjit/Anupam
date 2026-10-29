@@ -86,7 +86,7 @@ class Customer(models.Model):
 
     class Meta:
         ordering = ['name']
-        indexes = [models.Index(fields=['name', 'plant']), models.Index(fields=['area']), models.Index(fields=['state'])]
+        indexes = [models.Index(fields=['name', 'plant']), models.Index(fields=['area']), models.Index(fields=['state']), models.Index(fields=['created_at'])]
 
     def __str__(self):
         return f'{self.name} ({self.plant})' if self.plant else self.name
@@ -192,6 +192,8 @@ class Interaction(models.Model):
 
     class Meta:
         ordering = ['-date', '-created_at']
+        indexes = [models.Index(fields=['date']), models.Index(fields=['type', 'date']), models.Index(fields=['created_by', 'date'])]
+
 
     def __str__(self):
         return f'{self.get_type_display()} with {self.contact.name} on {self.date}'
