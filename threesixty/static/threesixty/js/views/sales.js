@@ -11,8 +11,7 @@ import { api } from '../api.js';
 import { state, isAdmin, isBranchManager, isSalesManager, isBranchStaff } from '../state.js';
 import {
   el, escapeHtml, fmtDate, fmtDateTime, fmtMoney, toast, apiErrorMessage, openModal, closeModal,
-  confirmDialog, renderTable, badge,
-} from '../ui.js';
+  confirmDialog, renderTable, badge, enhanceCustomerSelect, customerLabel } from '../ui.js';
 
 const TYPES = {
   enquiry: { label: 'Enquiry', hasItems: false, hasDiscount: false, hasTax: false, hasCharges: false, refType: null },
@@ -43,7 +42,7 @@ async function getContacts(customerId) {
 }
 function customerName(id, customers) {
   const c = customers.find((x) => x.id === id);
-  return c ? c.name : `#${id}`;
+  return c ? customerLabel(c) : `#${id}`;
 }
 
 function computeItemPreview(type, item) {
@@ -145,7 +144,7 @@ async function docForm(type, doc, customers) {
   return `
     <div class="field-row">
       <div class="field"><label>Branch</label><select id="df-branch">${state.branches.map((b) => `<option value="${b.id}" ${(d.branch_id || myBranchId) === b.id ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('')}</select></div>
-      <div class="field"><label>Customer *</label><select id="df-customer"><option value="">— select —</option>${customers.map((c) => `<option value="${c.id}" ${d.customer_id === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Customer *</label><select id="df-customer"><option value="">— select —</option>${customers.map((c) => `<option value="${c.id}" ${d.customer_id === c.id ? 'selected' : ''}>${escapeHtml(customerLabel(c))}</option>`).join('')}</select></div>
       <div class="field"><label>Contact</label><select id="df-contact"><option value="">—</option>${contacts.map((c) => `<option value="${c.id}" ${d.contact_id === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
     </div>
     ${cfg.refType ? `<div class="field"><label>Reference ${TYPES[cfg.refType].label}</label><select id="df-reference"><option value="">— none —</option>${refOptions.map((r) => `<option value="${r.id}" ${d.reference_id === r.id ? 'selected' : ''}>${escapeHtml(r.doc_number)}</option>`).join('')}</select></div>` : ''}
@@ -197,6 +196,7 @@ async function openForm(type, doc, onSaved) {
       if (cfg.hasItems) wireItemsEditor(modal, type);
       modal.querySelector('#df-cancel').onclick = closeModal;
       const customerSel = modal.querySelector('#df-customer');
+      enhanceCustomerSelect(customerSel, customers);
       customerSel.addEventListener('change', async () => {
         const contacts = await getContacts(customerSel.value);
         modal.querySelector('#df-contact').innerHTML = `<option value="">—</option>${contacts.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}`;

@@ -21,7 +21,7 @@ async function renderSalesPerformance(root) {
   const docsByType = {};
   await Promise.all(types.map(async (t) => { docsByType[t] = await api.all('sales-documents/', { type: t }); }));
   const perPerson = {};
-  state.salesPersons.forEach((p) => { perPerson[p.id] = { name: p.full_name, enquiry: 0, quotation: 0, proforma: 0, po: 0, dc: 0, value: 0 }; });
+  state.salesPersons.forEach((p) => { perPerson[p.id] = { name: p.name, enquiry: 0, quotation: 0, proforma: 0, po: 0, dc: 0, value: 0 }; });
   types.forEach((t) => (docsByType[t] || []).forEach((d) => {
     const pid = d.sales_person_id;
     if (!pid || !perPerson[pid]) return;

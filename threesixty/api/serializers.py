@@ -340,14 +340,34 @@ def serialize_payment_receipt(receipt):
     }
 
 
+def serialize_payment_contact_log(entry):
+    return {
+        'id': entry.id,
+        'payment_id': entry.payment_id,
+        'message': entry.message,
+        'user': serialize_user_ref(entry.user),
+        'timestamp': entry.timestamp.isoformat(),
+        'call_later_date': entry.call_later_date.isoformat() if entry.call_later_date else None,
+    }
+
+
 def serialize_payment_collection(payment, include_receipts=True):
+    from ..services import payments as payment_service
+    received = payment.received()
     data = {
         'id': payment.id,
         'branch_id': payment.branch_id,
         'customer_id': payment.customer_id,
+        'customer_label': payment.customer.select_label,
         'contact_id': payment.contact_id,
+        'contact_name': payment.contact.name if payment.contact_id else '',
         'amount': str(payment.amount),
+        'received': str(received),
         'balance': str(payment.balance()),
+        'date': payment.date.isoformat(),
+        'remarks': payment.remarks,
+        'age_days': payment_service.age_days(payment),
+        'age_bucket': payment_service.age_bucket(payment),
         'created_by': serialize_user_ref(payment.created_by),
         'created_at': payment.created_at.isoformat(),
         'version': payment.version,
@@ -355,6 +375,12 @@ def serialize_payment_collection(payment, include_receipts=True):
     }
     if include_receipts:
         data['receipts'] = [serialize_payment_receipt(r) for r in payment.receipts.all()]
+        last = payment_service.last_contact_on(payment)
+        data['last_contact_on'] = last.isoformat() if last else None
+        later = payment_service.call_later_date(payment)
+        data['call_later_date'] = later.isoformat() if later else None
+        data['call_later_bucket'] = payment_service.call_later_bucket(payment)
+        data['contact_log'] = [serialize_payment_contact_log(l) for l in payment.contact_log.all()]
     return data
 
 

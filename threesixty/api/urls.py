@@ -3,7 +3,7 @@
 view) — there is no endpoint here that bypasses session auth or CSRF."""
 from django.urls import path
 
-from . import views_attendance, views_core, views_customers, views_outreach, views_payments, views_sales, views_tasks
+from . import views_labels, views_attendance, views_core, views_customers, views_outreach, views_payments, views_sales, views_tasks
 
 app_name = 'threesixty_api'
 
@@ -73,8 +73,14 @@ urlpatterns = [
     path('payment-collections/', views_payments.PaymentCollectionResource.as_view(), name='payment-collections'),
     path('payment-collections/<int:pk>/', views_payments.PaymentCollectionResource.as_view(),
          name='payment-collection-detail'),
+    path('payment-collections/<int:payment_id>/contact-log/', views_payments.PaymentContactLogResource.as_view(),
+         name='payment-collection-contact-log'),
     path('payment-collections/<int:payment_id>/receipts/', views_payments.PaymentReceiptResource.as_view(),
          name='payment-collection-receipts'),
+
+    path('labels/options/', views_labels.label_options, name='label-options'),
+    path('labels/autofill/', views_labels.label_autofill, name='label-autofill'),
+    path('labels/pdf/', views_labels.label_pdf, name='label-pdf'),
 
     path('tasks/', views_tasks.TaskResource.as_view(), name='tasks'),
     path('tasks/<int:pk>/', views_tasks.TaskResource.as_view(), name='task-detail'),

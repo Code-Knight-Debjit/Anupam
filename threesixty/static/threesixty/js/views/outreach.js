@@ -3,8 +3,8 @@
 // only (AUDIT.md §3); the assignee marks status / logs "not reached"
 // attempts on their own rows.
 import { api } from '../api.js';
-import { state, isAdmin, isBranchManager } from '../state.js';
-import { el, escapeHtml, fmtDate, fmtDateTime, toast, apiErrorMessage, openModal, closeModal, renderTable, badge } from '../ui.js';
+import { state, isAdmin, isBranchManager, userOptionsHtml } from '../state.js';
+import { el, escapeHtml, fmtDate, fmtDateTime, toast, apiErrorMessage, openModal, closeModal, renderTable, badge, enhanceCustomerSelect, customerLabel } from '../ui.js';
 
 let allCustomers = [];
 let assignments = [];
@@ -23,18 +23,16 @@ function customerName(id) {
   return c ? c.name : `#${id}`;
 }
 
-function userOptions(selected) {
-  return state.salesPersons.map((u) => `<option value="${u.id}" ${String(selected) === String(u.id) ? 'selected' : ''}>${escapeHtml(u.full_name)}</option>`).join('');
-}
+const userOptions = userOptionsHtml;
 
 function customerOptions() {
-  return allCustomers.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+  return allCustomers.map((c) => `<option value="${c.id}">${escapeHtml(customerLabel(c))}</option>`).join('');
 }
 
 function openAssignModal(onSaved) {
   openModal(`
     <h2>Assign outreach call</h2>
-    <div class="field"><label>Customer *</label><select id="af-customer">${customerOptions()}</select></div>
+    <div class="field"><label>Customer *</label><select id="af-customer"></select></div>
     <div class="field-row">
       <div class="field"><label>Assign to *</label><select id="af-assignee">${userOptions(state.me.user_id)}</select></div>
       <div class="field"><label>Week of</label><input type="date" id="af-week" value="${weekOf}"></div>
@@ -42,16 +40,17 @@ function openAssignModal(onSaved) {
     <div class="field"><label>Remarks</label><input id="af-remarks"></div>
     <div class="modal-actions"><button class="btn" id="af-cancel">Cancel</button><button class="btn primary" id="af-save">Assign</button></div>`, {
     onMount: (modal) => {
+      enhanceCustomerSelect(modal.querySelector('#af-customer'), allCustomers);
       modal.querySelector('#af-cancel').onclick = closeModal;
       modal.querySelector('#af-save').onclick = async () => {
         try {
-          await api.post('call-assignments/', {
-            customer_id: modal.querySelector('#af-customer').value,
+          // One entry per contact of that person's view of the customer; DND skipped; Monday of the week.
+          const res = await api.post('call-assignments/assign/', {
+            customer_ids: [modal.querySelector('#af-customer').value],
             assigned_to_id: modal.querySelector('#af-assignee').value,
             week_of: modal.querySelector('#af-week').value,
-            remarks: modal.querySelector('#af-remarks').value.trim(),
           });
-          toast('Assigned.', 'success');
+          toast(`Added ${res.added}, already there ${res.skipped}, Do-Not-Disturb skipped ${res.dnd_skipped}.`, 'success');
           closeModal();
           onSaved();
         } catch (e) { toast(apiErrorMessage(e), 'error'); }
