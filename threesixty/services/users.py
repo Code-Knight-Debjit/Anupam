@@ -78,25 +78,23 @@ def check_new_password(new_pw: str, confirm_pw: str | None = None):
 def reset_password(username: str, new_pw: str, confirm_pw: str, verifier_username: str = '', verifier_pw: str = ''):
     """'Forgot password' on the login screen (REQ-USR-03).
 
-    A *different*, active Admin must confirm with their own password. The
-    reference app also lets a sole Admin reset with no verifier; that is
-    unsafe on a public server (anyone who knows the username could take the
-    account over), so here a sole Admin has to use `manage.py changepassword`.
+    If another Admin exists, one of them must confirm with their own password
+    (REQ-USR-03). A sole Admin can reset without a verifier, as the spec says;
+    the sign-in page throttles attempts per account and per client.
     """
     generic = AccountError('Could not reset that password. Check the user ID and the admin details.', 403)
     try:
         target = EmployeeProfile.objects.select_related('user').get(user__username=(username or '').strip())
     except EmployeeProfile.DoesNotExist:
         raise generic
-    others = EmployeeProfile.objects.filter(
-        role=EmployeeProfile.ADMIN, user__is_active=True, is_active_employee=True,
-    ).exclude(pk=target.pk)
-    if not others.exists():
-        raise AccountError('No other admin is available to confirm this reset. '
-                           'Ask the system owner to run "manage.py changepassword".', 403)
-    verifier = authenticate(username=(verifier_username or '').strip(), password=verifier_pw or '')
-    if verifier is None or verifier.pk == target.user_id or not others.filter(user=verifier).exists():
-        raise AccountError("That admin's password is incorrect.", 403)
+    # "Another Admin exists" counts every other Admin record, but only an
+    # *active* one can confirm (an inactive Admin cannot sign in either).
+    others = EmployeeProfile.objects.filter(role=EmployeeProfile.ADMIN).exclude(pk=target.pk)
+    if others.exists():
+        verifier = authenticate(username=(verifier_username or '').strip(), password=verifier_pw or '')
+        active_others = others.filter(user__is_active=True, is_active_employee=True)
+        if verifier is None or verifier.pk == target.user_id or not active_others.filter(user=verifier).exists():
+            raise AccountError("That admin's password is incorrect.", 403)
     check_new_password(new_pw, confirm_pw)
     target.user.set_password(new_pw)
     target.user.save(update_fields=['password'])

@@ -83,3 +83,79 @@ def numbering_cfg(doc_type, branch_cfg=None):
         start_at=int(start) if start not in (None, '') else 1,
     )
     return row.effective_config()
+
+
+# --------------------------------------------------------------------------- customers (phase 2)
+import re as _re
+
+from ..models import Contact, Customer, Task
+from ..services import customers as _customer_service
+from ..services import outreach as _outreach_service
+from ..services import tasks as _task_service
+from ..services.errors import ServiceError as _ServiceError
+
+
+def _uid(value):
+    """Spec ids are strings like 'u3'; the Django build uses integer pks."""
+    return int(_re.sub(r'\D', '', str(value)) or 0)
+
+
+@_backed
+def search_customers(options, query):
+    return _customer_service.rank_by_query(options, query, label=str)
+
+
+@_backed
+def company_select_label(c):
+    return Customer(name=c.get('name') or '', plant=c.get('plant') or '', area=c.get('area') or '').select_label
+
+
+@_backed
+def geo_parse(text):
+    try:
+        return _customer_service.parse_pin(text)
+    except _ServiceError:
+        return None
+
+
+def _contact(c):
+    customer = Customer(name=c.get('companyName') or '')
+    return Contact(customer=customer, name=c.get('name') or '', email=c.get('email') or '',
+                   phone=c.get('phone') or '', job_title=c.get('jobTitle') or '')
+
+
+@_backed
+def selected_emails(contacts):
+    return _customer_service.selected_emails([_contact(c) for c in contacts])
+
+
+@_backed
+def vcard(contacts):
+    return _customer_service.vcard([_contact(c) for c in contacts])
+
+
+# --------------------------------------------------------------------------- activity (phase 3)
+@_backed
+def monday_of(d):
+    from datetime import date
+    return _outreach_service.monday_of(date.fromisoformat(d)).isoformat()
+
+
+def _task(t):
+    return Task(title=t.get('title') or '', task_type=t.get('taskType') or '', created_by_id=_uid(t['createdById']) if t.get('createdById') else None)
+
+
+def _acting(u):
+    user = _user(u)
+    user.pk = _uid(u['id'])
+    return user
+
+
+@_backed
+def task_kind(t): return _task_service.kind_of(_task(t))
+@_backed
+def can_manage_task(u, t): return _task_service.can_manage(_acting(u), _task(t))
+@_backed
+def can_edit_task(u, t): return _task_service.can_edit(_acting(u), _task(t))
+@_backed
+def can_remove_task(u, t): return _task_service.can_remove(_acting(u), _task(t))

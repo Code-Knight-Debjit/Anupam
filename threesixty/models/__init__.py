@@ -1,7 +1,7 @@
 from .core import (
     Branch, BranchNumbering, EmployeeProfile, Holiday, LookupItem, SalesPerson, SiteSetting,
 )
-from .customers import Customer, Contact, Interaction
+from .customers import Customer, Contact, ContactAccess, Interaction
 from .sales import SalesDocument, SalesDocumentItem, SupplyLogEntry, DocumentCallLog
 from .payments import PaymentCollection, PaymentReceipt
 from .tasks import Task, Notification, ApprovalRequest, CallAssignment, CallAttempt
@@ -10,7 +10,7 @@ from .stock import StockProduct, Supplier, StockBill, StockTransaction
 
 __all__ = [
     'Branch', 'BranchNumbering', 'EmployeeProfile', 'Holiday', 'LookupItem', 'SalesPerson', 'SiteSetting',
-    'Customer', 'Contact', 'Interaction',
+    'Customer', 'Contact', 'ContactAccess', 'Interaction',
     'SalesDocument', 'SalesDocumentItem', 'SupplyLogEntry', 'DocumentCallLog',
     'PaymentCollection', 'PaymentReceipt',
     'Task', 'Notification', 'ApprovalRequest', 'CallAssignment', 'CallAttempt',

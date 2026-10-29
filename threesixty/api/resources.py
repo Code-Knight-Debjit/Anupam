@@ -10,6 +10,7 @@ from django.utils.decorators import method_decorator
 from django.views import View
 
 from ..permissions import staff_360_required
+from ..services.errors import ServiceError
 from .http import INPUT_ERROR_MESSAGE, INPUT_ERRORS, ApiError, error_response, parse_body
 from .pagination import paginate
 
@@ -21,7 +22,7 @@ class JsonResource(View):
     def dispatch(self, request, *args, **kwargs):
         try:
             return super().dispatch(request, *args, **kwargs)
-        except ApiError as exc:
+        except ServiceError as exc:
             return error_response(exc)
         except INPUT_ERRORS:
             # Writes run inside transaction.atomic(), so nothing was persisted.

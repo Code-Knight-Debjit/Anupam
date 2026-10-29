@@ -32,6 +32,8 @@ class Task(models.Model):
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default=PRIORITY_MEDIUM)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
     task_type = models.CharField(max_length=40, blank=True)  # e.g. Call / Visit / Appointment
+    # Set when a logged Visit closed this open Appointment task (REQ-INT-03).
+    auto_closed_by_visit = models.BooleanField(default=False)
     due_date = models.DateField(null=True, blank=True)
     related_customer = models.ForeignKey(
         Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks',
@@ -49,6 +51,9 @@ class Task(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
     version = models.PositiveIntegerField(default=1)
 
     legacy_id = models.CharField(max_length=64, blank=True, null=True, unique=True, db_index=True)
@@ -102,12 +107,22 @@ class ApprovalRequest(models.Model):
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     note = models.CharField(max_length=255, blank=True)
 
+    # SET_NULL, not CASCADE: an approved delete keeps its history row. A
+    # *pending* request whose target is gone is dropped from the queue.
     customer = models.ForeignKey(
-        Customer, on_delete=models.CASCADE, null=True, blank=True, related_name='approval_requests',
+        Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name='approval_requests',
     )
     document = models.ForeignKey(
-        SalesDocument, on_delete=models.CASCADE, null=True, blank=True, related_name='approval_requests',
+        SalesDocument, on_delete=models.SET_NULL, null=True, blank=True, related_name='approval_requests',
     )
+    contact = models.ForeignKey(
+        Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='approval_requests',
+    )
+    # Human-readable name of the target, kept after the target is deleted.
+    target_label = models.CharField(max_length=300, blank=True)
+    # State of the target when the request was made, so approvers can see
+    # exactly what changes (before/after) even if the record is edited later.
+    before_data = models.JSONField(null=True, blank=True)
     # Snapshot of the proposed change (full target-object payload), applied
     # verbatim on approval; null for delete/access requests.
     proposed_data = models.JSONField(null=True, blank=True)

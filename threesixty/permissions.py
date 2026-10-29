@@ -138,7 +138,12 @@ class RoleRules:
         if RoleRules.is_admin(user):
             return queryset
         if RoleRules.is_branch_manager(user):
-            return queryset.filter(requested_by_id__in=RoleRules.user_ids_in_manager_scope(user))
+            # Requests from people in the manager's branches, plus people who
+            # belong to no branch at all (nobody else could see those).
+            return queryset.filter(
+                Q(requested_by_id__in=RoleRules.user_ids_in_manager_scope(user))
+                | Q(requested_by__threesixty_profile__branches__isnull=True)
+            ).distinct()
         return queryset.filter(requested_by=user)
 
     @staticmethod

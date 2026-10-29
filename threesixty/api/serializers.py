@@ -5,6 +5,7 @@ site. Field lists are a deliberate API surface, not "whatever the model
 has" — new model fields do not silently leak until added here.
 """
 from ..permissions import RoleRules
+from ..services.tasks import kind_of as task_kind
 from ..services.users import is_account_active
 
 
@@ -145,10 +146,17 @@ def serialize_customer(customer):
         'potential': customer.potential,
         'transport_preference': customer.transport_preference,
         'courier_preference': customer.courier_preference,
-        'preferred_language_ids': list(customer.preferred_languages.values_list('id', flat=True)),
-        'interested_brand_ids': list(customer.interested_brands.values_list('id', flat=True)),
-        'interested_product_ids': list(customer.interested_products.values_list('id', flat=True)),
-        'assigned_to_ids': list(customer.assigned_to.values_list('id', flat=True)),
+        # .all() (not values_list) so a prefetch on the list view is used.
+        'preferred_language_ids': [x.id for x in customer.preferred_languages.all()],
+        'interested_brand_ids': [x.id for x in customer.interested_brands.all()],
+        'interested_product_ids': [x.id for x in customer.interested_products.all()],
+        'assigned_to_ids': [x.id for x in customer.assigned_to.all()],
+        'label': customer.select_label,
+        'plant_geo_set_by': serialize_user_ref(customer.plant_geo_set_by),
+        'plant_geo_set_at': customer.plant_geo_set_at.isoformat() if customer.plant_geo_set_at else None,
+        'ho_geo_set_by': serialize_user_ref(customer.ho_geo_set_by),
+        'ho_geo_set_at': customer.ho_geo_set_at.isoformat() if customer.ho_geo_set_at else None,
+        'created_by_role': customer.created_by_role,
         'created_by': serialize_user_ref(customer.created_by),
         'created_at': customer.created_at.isoformat(),
         'updated_at': customer.updated_at.isoformat(),
@@ -172,6 +180,8 @@ def serialize_contact(contact):
 
 
 def serialize_interaction(interaction):
+    from ..services.customers import distance_label
+    customer = interaction.contact.customer
     return {
         'id': interaction.id,
         'contact_id': interaction.contact_id,
@@ -180,11 +190,13 @@ def serialize_interaction(interaction):
         'notes': interaction.notes,
         'location_lat': interaction.location_lat,
         'location_lng': interaction.location_lng,
+        'location_accuracy_m': interaction.location_accuracy_m,
+        'distance_from_plant': distance_label(customer, interaction.location_lat, interaction.location_lng),
         'created_by': serialize_user_ref(interaction.created_by),
         'created_at': interaction.created_at.isoformat(),
         'followup_date': interaction.followup_date.isoformat() if interaction.followup_date else None,
-        'also_met_contact_ids': list(interaction.also_met.values_list('id', flat=True)),
-        'joint_with_user_ids': list(interaction.joint_with.values_list('id', flat=True)),
+        'also_met_contact_ids': [c.id for c in interaction.also_met.all()],
+        'joint_with_user_ids': [u.id for u in interaction.joint_with.all()],
         'is_copy': interaction.is_copy,
         'met_with_name': interaction.met_with_name,
         'linked_doc_id': interaction.linked_doc_id,
@@ -314,7 +326,9 @@ def serialize_task(task):
         'title': task.title,
         'description': task.description,
         'assigned_to': serialize_user_ref(task.assigned_to),
-        'joint_with_user_ids': list(task.joint_with.values_list('id', flat=True)),
+        'joint_with_user_ids': [u.id for u in task.joint_with.all()],
+        'kind': task_kind(task),
+        'auto_closed_by_visit': task.auto_closed_by_visit,
         'priority': task.priority,
         'status': task.status,
         'task_type': task.task_type,
@@ -348,7 +362,9 @@ def serialize_approval_request(request_obj):
         'type': request_obj.type,
         'note': request_obj.note,
         'customer_id': request_obj.customer_id,
+        'contact_id': request_obj.contact_id,
         'document_id': request_obj.document_id,
+        'target_label': request_obj.target_label,
         'proposed_data': request_obj.proposed_data,
         'requested_by': serialize_user_ref(request_obj.requested_by),
         'requested_at': request_obj.requested_at.isoformat(),

@@ -443,6 +443,7 @@ class TestLoginAndReset:
     def test_REQ_USR_03_verifier_must_be_an_admin_other_than_the_target(self, setup, chennai):
         make_employee('staff2', EmployeeProfile.BRANCH_STAFF, [chennai])
         assert self.reset(verifier_username='staff2').status_code == 403            # not an admin
+        make_employee('admin2', EmployeeProfile.ADMIN, [chennai])
         assert self.reset(username='admin1', verifier_username='admin1').status_code == 403   # self-verification
 
     def test_REQ_USR_03_inactive_admin_cannot_verify(self, setup):
@@ -454,13 +455,11 @@ class TestLoginAndReset:
         res = self.reset(confirm_password='different')
         assert res.status_code == 400 and b"match" in res.content
 
-    def test_REQ_USR_03_sole_admin_cannot_reset_without_a_verifier(self, chennai):
-        """Deliberate deviation from the reference app: on a public server this
-        would let anyone who knows the Admin's user ID take the account over."""
+    def test_REQ_USR_03_sole_admin_resets_without_a_verifier(self, chennai):
         make_employee('admin1', EmployeeProfile.ADMIN, [chennai])
         res = self.reset(username='admin1', verifier_username='', verifier_password='')
-        assert res.status_code == 403 and b'changepassword' in res.content
-        assert User.objects.get(username='admin1').check_password('secret-pw-1')
+        assert res.status_code == 200 and b'Password changed' in res.content
+        assert User.objects.get(username='admin1').check_password('brandnew1')
 
     def test_REQ_USR_03_unknown_user_gets_the_generic_refusal(self, setup):
         assert self.reset(username='ghost').status_code == 403
