@@ -24,3 +24,6 @@ build/
 demo360.sqlite3
 .serena/
 contact_management.html
+
+# Anupam 360 backups contain password hashes
+backups/

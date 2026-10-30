@@ -22,7 +22,9 @@ async function request(method, path, data) {
     headers: { 'X-CSRFToken': getCookie('csrftoken') },
     credentials: 'same-origin',
   };
-  if (data !== undefined) {
+  if (data instanceof FormData) {
+    opts.body = data; // the browser sets the multipart boundary itself
+  } else if (data !== undefined) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(data);
   }
@@ -38,6 +40,7 @@ export const api = {
   post: (path, data) => request('POST', path, data),
   patch: (path, data) => request('PATCH', path, data),
   delete: (path) => request('DELETE', path),
+  upload: (path, file) => { const fd = new FormData(); fd.append('file', file); return request('POST', path, fd); },
 
   /** Pages through a paginated list endpoint and returns every result —
    * mirrors the original's whole-array-in-memory model for the handful of

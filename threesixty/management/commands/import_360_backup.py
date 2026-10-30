@@ -34,6 +34,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils.dateparse import parse_date, parse_datetime
 
+from threesixty.services import contacts as contact_service
 from threesixty.services.accounts import limit_stock_access
 from threesixty.models import (
     ApprovalRequest, AttendanceRecord, Branch, BranchNumbering, Contact, CallAssignment,
@@ -378,6 +379,12 @@ class Command(BaseCommand):
                 self.contact_by_legacy[ct['id']] = contact
                 for i in ct.get('interactions', []):
                     self._import_interaction(contact, i)
+            # Contact-level access ({person name: [contact ids]}, REQ-CUS-02): no entry = all contacts.
+            for name, legacy_contact_ids in (c.get('contactAccess') or {}).items():
+                user = self.user_by_name.get(name)
+                chosen = [self.contact_by_legacy[x].pk for x in legacy_contact_ids or [] if x in self.contact_by_legacy]
+                if user and chosen:
+                    contact_service.assign_customer(customer, user, chosen)
             self._bump('customers', True)
 
     def _import_interaction(self, contact, i):

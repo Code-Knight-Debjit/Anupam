@@ -37,3 +37,6 @@ django-ratelimit>=4.1.0
 pytest>=8.0.0
 pytest-django>=4.8.0
 sentence_transformers>=2.7.0
+
+# ── Anupam 360: encrypted Aadhaar / PAN fields
+cryptography>=42.0

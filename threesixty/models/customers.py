@@ -61,10 +61,22 @@ class Customer(models.Model):
         settings.AUTH_USER_MODEL, related_name='threesixty_assigned_customers', blank=True,
     )
 
+    # Who pinned the plant / head-office location, and when (REQ-GEO-01).
+    plant_geo_set_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    plant_geo_set_at = models.DateTimeField(null=True, blank=True)
+    ho_geo_set_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    ho_geo_set_at = models.DateTimeField(null=True, blank=True)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='threesixty_created_customers',
     )
+    # Role of the creator at the time (a snapshot: roles can change later).
+    created_by_role = models.CharField(max_length=20, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     # Optimistic concurrency token (incremented on every API write).
@@ -74,10 +86,25 @@ class Customer(models.Model):
 
     class Meta:
         ordering = ['name']
-        indexes = [models.Index(fields=['name', 'plant'])]
+        indexes = [models.Index(fields=['name', 'plant']), models.Index(fields=['area']), models.Index(fields=['state']), models.Index(fields=['created_at'])]
 
     def __str__(self):
         return f'{self.name} ({self.plant})' if self.plant else self.name
+
+    TITLE_CASED_FIELDS = ('name', 'plant', 'address', 'area', 'city', 'state', 'ho_name', 'ho_address', 'ho_city', 'ho_state')
+
+    def save(self, *args, **kwargs):
+        # Names and addresses are title-cased on save (REQUIREMENTS §16).
+        from ..rules.anupam_rules import title_case_words
+        for field in self.TITLE_CASED_FIELDS:
+            setattr(self, field, title_case_words((getattr(self, field) or '').strip()))
+        super().save(*args, **kwargs)
+
+    @property
+    def select_label(self):
+        """'Customer name, Plant, Area' — never the city (REQ-CUS-07)."""
+        from ..rules.anupam_rules import company_select_label
+        return company_select_label({'name': self.name, 'plant': self.plant, 'area': self.area})
 
 
 class Contact(models.Model):
@@ -98,6 +125,23 @@ class Contact(models.Model):
         return self.name
 
 
+class ContactAccess(models.Model):
+    """Contact-level assignment (REQ-CUS-02..06): a row says `user` may see
+    `contact` of `customer`. **No rows for a (customer, user) means the user
+    sees all of the customer's contacts.** Always read through
+    `services.contacts` — never filter contacts ad hoc."""
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='contact_access')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='threesixty_contact_access')
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='access_rows')
+
+    class Meta:
+        unique_together = [('customer', 'user', 'contact')]
+        indexes = [models.Index(fields=['customer', 'user'])]
+
+    def __str__(self):
+        return f'{self.user_id} -> {self.contact_id} ({self.customer_id})'
+
+
 class Interaction(models.Model):
     """Date-of-interaction entry logged against a Contact. `also_met` links
     sibling contacts met in the same visit; `joint_with` links colleague
@@ -106,12 +150,13 @@ class Interaction(models.Model):
     (`visitGroup` ties the copies back to the original)."""
 
     TYPE_CALL = 'Call'
+    TYPE_COLD_CALL = 'Cold Call'  # older data; counted as a call (REQ-INT-07)
     TYPE_VISIT = 'Visit'
     TYPE_EMAIL = 'Email'
     TYPE_APPOINTMENT = 'Appointment'
     TYPE_WHATSAPP = 'WhatsApp'
     TYPE_CHOICES = [
-        (TYPE_CALL, 'Call'), (TYPE_VISIT, 'Visit'), (TYPE_EMAIL, 'Email'),
+        (TYPE_CALL, 'Call'), (TYPE_COLD_CALL, 'Cold Call'), (TYPE_VISIT, 'Visit'), (TYPE_EMAIL, 'Email'),
         (TYPE_APPOINTMENT, 'Appointment'), (TYPE_WHATSAPP, 'WhatsApp'),
     ]
 
@@ -121,6 +166,7 @@ class Interaction(models.Model):
     notes = models.TextField(blank=True)
     location_lat = models.FloatField(null=True, blank=True)
     location_lng = models.FloatField(null=True, blank=True)
+    location_accuracy_m = models.PositiveIntegerField(null=True, blank=True)
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
@@ -146,6 +192,8 @@ class Interaction(models.Model):
 
     class Meta:
         ordering = ['-date', '-created_at']
+        indexes = [models.Index(fields=['date']), models.Index(fields=['type', 'date']), models.Index(fields=['created_by', 'date'])]
+
 
     def __str__(self):
         return f'{self.get_type_display()} with {self.contact.name} on {self.date}'

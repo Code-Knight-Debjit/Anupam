@@ -83,12 +83,25 @@ class RoleRules:
         return RoleRules.is_admin(user) or RoleRules.is_branch_manager(user) or RoleRules.is_branch_staff(user)
 
     @staticmethod
-    def can_edit_delete_sales_document(user, document):
-        """Per-document override: a Sales Manager can never edit or delete a
-        Quotation — not even via the approval queue (original ~L10176)."""
-        if RoleRules.is_sales_manager(user) and document.type == document.TYPE_QUOTATION:
-            return False
-        return True
+    def can_see_all_users_reports(user):
+        return RoleRules.is_admin(user) or RoleRules.is_branch_manager(user)
+
+    @staticmethod
+    def is_approver(user):
+        return RoleRules.is_admin(user) or RoleRules.is_branch_manager(user)
+
+    @staticmethod
+    def needs_approval(user, action):
+        """Whether `user`'s edit/delete goes to the approval queue instead of
+        applying directly (REQ-ROLE-02). Actions: customer.edit, contact.edit,
+        customer.delete, salesdoc.edit, salesdoc.delete."""
+        if action in ('customer.edit', 'contact.edit'):
+            return not RoleRules.can_edit_customer_direct(user)
+        if action == 'customer.delete':
+            return not RoleRules.can_delete_customer_direct(user)
+        if action in ('salesdoc.edit', 'salesdoc.delete'):
+            return not RoleRules.can_direct_edit_delete_sales_doc(user)
+        raise ValueError(action)
 
     @staticmethod
     def user_ids_in_manager_scope(user):
@@ -117,7 +130,12 @@ class RoleRules:
         if RoleRules.is_admin(user):
             return queryset
         if RoleRules.is_branch_manager(user):
-            return queryset.filter(requested_by_id__in=RoleRules.user_ids_in_manager_scope(user))
+            # Requests from people in the manager's branches, plus people who
+            # belong to no branch at all (nobody else could see those).
+            return queryset.filter(
+                Q(requested_by_id__in=RoleRules.user_ids_in_manager_scope(user))
+                | Q(requested_by__threesixty_profile__branches__isnull=True)
+            ).distinct()
         return queryset.filter(requested_by=user)
 
     @staticmethod
@@ -159,15 +177,22 @@ class RoleRules:
         return queryset
 
 
+LOGIN_URL = '/360/login/'
+
+
 def staff_360_required(view_func):
-    """Staff-only + must have a threesixty EmployeeProfile. Stacks on top of
-    the existing `/dashboard/login/` session auth (reused, not replaced)."""
+    """Signed in, staff, and an active Anupam 360 employee. Uses Django's
+    session auth; unauthenticated visitors are sent to the 360 login page
+    (`/dashboard/login/` still works and redirects 360 users back here)."""
     @wraps(view_func)
-    @login_required(login_url='/dashboard/login/')
-    @user_passes_test(lambda u: u.is_staff, login_url='/dashboard/login/')
+    @login_required(login_url=LOGIN_URL)
+    @user_passes_test(lambda u: u.is_staff, login_url=LOGIN_URL)
     def _wrapped(request, *args, **kwargs):
-        if _profile(request.user) is None:
+        profile = _profile(request.user)
+        if profile is None:
             raise PermissionDenied('No Anupam 360 employee profile for this account.')
+        if not profile.is_active_employee:
+            raise PermissionDenied('This account is inactive.')
         return view_func(request, *args, **kwargs)
     return _wrapped
 

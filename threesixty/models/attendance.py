@@ -41,6 +41,8 @@ class AttendanceRecord(models.Model):
     class Meta:
         ordering = ['-date']
         unique_together = [('user', 'date')]
+        indexes = [models.Index(fields=['date'])]
+
 
     def __str__(self):
         return f'{self.user} — {self.date}'
@@ -74,6 +76,8 @@ class LeaveRequest(models.Model):
 
     class Meta:
         ordering = ['-requested_at']
+        indexes = [models.Index(fields=['status']), models.Index(fields=['date_from', 'date_to'])]
+
 
     def days(self):
         return (self.date_to - self.date_from).days + 1

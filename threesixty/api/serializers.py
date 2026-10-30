@@ -5,6 +5,8 @@ site. Field lists are a deliberate API surface, not "whatever the model
 has" — new model fields do not silently leak until added here.
 """
 from ..permissions import RoleRules
+from ..services.tasks import kind_of as task_kind
+from ..services.users import is_account_active
 
 
 def mask_id_number(value):
@@ -24,18 +26,24 @@ def serialize_user_ref(user):
     return {'id': user.id, 'username': user.username, 'full_name': user.get_full_name() or user.username}
 
 
+BRANCH_IMAGE_FIELDS = ('logo', 'dealer_logo', 'footer_image', 'payment_qr')
+BRANCH_TEXT_FIELDS = (
+    'name', 'letterhead_name', 'letterhead_address', 'letterhead_gstin', 'letterhead_phone', 'letterhead_email',
+    'letterhead_mobile', 'letterhead_website', 'udyam_number',
+    'bank_name', 'bank_branch', 'bank_account_no', 'bank_ifsc',
+    'accent_color', 'doc_format', 'watermark_enabled', 'watermark_type', 'watermark_text', 'watermark_size',
+    'terms', 'is_active',
+)
+
+
 def serialize_branch(branch):
-    return {
-        'id': branch.id,
-        'name': branch.name,
-        'is_active': branch.is_active,
-        'letterhead_name': branch.letterhead_name,
-        'letterhead_address': branch.letterhead_address,
-        'letterhead_gstin': branch.letterhead_gstin,
-        'letterhead_phone': branch.letterhead_phone,
-        'letterhead_email': branch.letterhead_email,
-        'legacy_id': branch.legacy_id,
-    }
+    data = {'id': branch.id, 'legacy_id': branch.legacy_id}
+    for field in BRANCH_TEXT_FIELDS:
+        data[field] = getattr(branch, field)
+    for field in BRANCH_IMAGE_FIELDS:
+        image = getattr(branch, field)
+        data[field + '_url'] = image.url if image else ''
+    return data
 
 
 def serialize_branch_numbering(config):
@@ -83,30 +91,35 @@ def serialize_site_setting(setting):
 
 
 def serialize_employee(profile, viewer):
-    """`viewer` is the requesting user — Aadhaar/PAN are only unmasked for
-    Admin (AUDIT.md §5.5: "except to Admin", no self-view exception)."""
-    show_sensitive = viewer is not None and RoleRules.is_admin(viewer)
+    """Admin sees everything. A person sees their own record with Aadhaar / PAN masked. Everyone else
+    gets only what assignment pickers need — no Aadhaar, PAN, birth date, phone or work schedule."""
+    is_admin = viewer is not None and RoleRules.is_admin(viewer)
+    is_self = viewer is not None and viewer.pk == profile.user_id
     data = {
         'id': profile.id,
         'user_id': profile.user_id,
         'username': profile.user.username,
         'full_name': profile.user.get_full_name() or profile.user.username,
         'is_active_account': profile.user.is_active,
+        'is_active': is_account_active(profile),
         'role': profile.role,
-        'branch_ids': list(profile.branches.values_list('id', flat=True)),
+        'branch_ids': [b.id for b in profile.branches.all()],
         'job_title': profile.job_title,
-        'phone': profile.phone,
-        'emp_code': profile.emp_code,
-        'is_active_employee': profile.is_active_employee,
         'legacy_id': profile.legacy_id,
-        'aadhaar_number': profile.aadhaar_number if show_sensitive else mask_id_number(profile.aadhaar_number),
-        'pan_number': profile.pan_number if show_sensitive else mask_id_number(profile.pan_number),
-        'date_of_birth': profile.date_of_birth.isoformat() if profile.date_of_birth else None,
-        'date_of_joining': profile.date_of_joining.isoformat() if profile.date_of_joining else None,
-        'work_start': profile.work_start,
-        'work_end': profile.work_end,
-        'weekly_off': profile.weekly_off,
     }
+    if is_admin or is_self:
+        data.update({
+            'phone': profile.phone,
+            'emp_code': profile.emp_code,
+            'is_active_employee': profile.is_active_employee,
+            'aadhaar_number': profile.aadhaar_number if is_admin else mask_id_number(profile.aadhaar_number),
+            'pan_number': profile.pan_number if is_admin else mask_id_number(profile.pan_number),
+            'date_of_birth': profile.date_of_birth.isoformat() if profile.date_of_birth else None,
+            'date_of_joining': profile.date_of_joining.isoformat() if profile.date_of_joining else None,
+            'work_start': profile.work_start,
+            'work_end': profile.work_end,
+            'weekly_off': profile.weekly_off,
+        })
     return data
 
 
@@ -137,10 +150,17 @@ def serialize_customer(customer):
         'potential': customer.potential,
         'transport_preference': customer.transport_preference,
         'courier_preference': customer.courier_preference,
-        'preferred_language_ids': list(customer.preferred_languages.values_list('id', flat=True)),
-        'interested_brand_ids': list(customer.interested_brands.values_list('id', flat=True)),
-        'interested_product_ids': list(customer.interested_products.values_list('id', flat=True)),
-        'assigned_to_ids': list(customer.assigned_to.values_list('id', flat=True)),
+        # .all() (not values_list) so a prefetch on the list view is used.
+        'preferred_language_ids': [x.id for x in customer.preferred_languages.all()],
+        'interested_brand_ids': [x.id for x in customer.interested_brands.all()],
+        'interested_product_ids': [x.id for x in customer.interested_products.all()],
+        'assigned_to_ids': [x.id for x in customer.assigned_to.all()],
+        'label': customer.select_label,
+        'plant_geo_set_by': serialize_user_ref(customer.plant_geo_set_by),
+        'plant_geo_set_at': customer.plant_geo_set_at.isoformat() if customer.plant_geo_set_at else None,
+        'ho_geo_set_by': serialize_user_ref(customer.ho_geo_set_by),
+        'ho_geo_set_at': customer.ho_geo_set_at.isoformat() if customer.ho_geo_set_at else None,
+        'created_by_role': customer.created_by_role,
         'created_by': serialize_user_ref(customer.created_by),
         'created_at': customer.created_at.isoformat(),
         'updated_at': customer.updated_at.isoformat(),
@@ -164,6 +184,8 @@ def serialize_contact(contact):
 
 
 def serialize_interaction(interaction):
+    from ..services.customers import distance_label
+    customer = interaction.contact.customer
     return {
         'id': interaction.id,
         'contact_id': interaction.contact_id,
@@ -172,11 +194,13 @@ def serialize_interaction(interaction):
         'notes': interaction.notes,
         'location_lat': interaction.location_lat,
         'location_lng': interaction.location_lng,
+        'location_accuracy_m': interaction.location_accuracy_m,
+        'distance_from_plant': distance_label(customer, interaction.location_lat, interaction.location_lng),
         'created_by': serialize_user_ref(interaction.created_by),
         'created_at': interaction.created_at.isoformat(),
         'followup_date': interaction.followup_date.isoformat() if interaction.followup_date else None,
-        'also_met_contact_ids': list(interaction.also_met.values_list('id', flat=True)),
-        'joint_with_user_ids': list(interaction.joint_with.values_list('id', flat=True)),
+        'also_met_contact_ids': [c.id for c in interaction.also_met.all()],
+        'joint_with_user_ids': [u.id for u in interaction.joint_with.all()],
         'is_copy': interaction.is_copy,
         'met_with_name': interaction.met_with_name,
         'linked_doc_id': interaction.linked_doc_id,
@@ -185,6 +209,9 @@ def serialize_interaction(interaction):
 
 
 def serialize_sales_document_item(item):
+    from ..services import documents as doc_service
+    supply = list(item.supply_log.all())
+    invoices = list(item.invoice_log.all())
     return {
         'id': item.id,
         'document_id': item.document_id,
@@ -198,7 +225,25 @@ def serialize_sales_document_item(item):
         'tax': str(item.tax),
         'amount': str(item.amount),
         'value': str(item.value),
+        'supplied': str(doc_service.item_supplied(item)),
+        'pending': str(doc_service.item_pending(item)),
+        'invoiced': str(doc_service.item_invoiced(item)),
+        'balance': str(doc_service.item_balance(item)),
+        'supply_log': [serialize_supply_log_entry(e) for e in supply],
+        'invoice_log': [serialize_invoice_log_entry(e) for e in invoices],
         'legacy_id': item.legacy_id,
+    }
+
+
+def serialize_invoice_log_entry(entry):
+    return {
+        'id': entry.id,
+        'item_id': entry.item_id,
+        'bill_number': entry.bill_number,
+        'bill_date': entry.bill_date.isoformat() if entry.bill_date else None,
+        'qty_invoiced': str(entry.qty_invoiced),
+        'recorded_by': serialize_user_ref(entry.recorded_by),
+        'created_at': entry.created_at.isoformat(),
     }
 
 
@@ -221,6 +266,8 @@ def serialize_document_call_log_entry(entry):
         'message': entry.message,
         'user': serialize_user_ref(entry.user),
         'timestamp': entry.timestamp.isoformat(),
+        'call_later_date': entry.call_later_date.isoformat() if entry.call_later_date else None,
+        'outcome': entry.outcome,
     }
 
 
@@ -251,6 +298,7 @@ def serialize_sales_document(document, include_items=True):
         'total_amount': str(document.total_amount),
         'quotation_value': str(document.quotation_value) if document.quotation_value is not None else None,
         'sales_person_id': document.sales_person_id,
+        'sales_person_name': document.sales_person_name,
         'valid_till': document.valid_till.isoformat() if document.valid_till else None,
         'ref_no': document.ref_no,
         'ref_date': document.ref_date.isoformat() if document.ref_date else None,
@@ -263,7 +311,22 @@ def serialize_sales_document(document, include_items=True):
         'legacy_id': document.legacy_id,
     }
     if include_items:
+        from ..services import documents as doc_service
         data['items'] = [serialize_sales_document_item(i) for i in document.items.all()]
+        data['order_value'] = str(document.order_value) if document.order_value is not None else None
+        data['lost_reason'] = document.lost_reason
+        data['customer_label'] = document.customer.select_label
+        data['contact_name'] = document.contact.name if document.contact_id else ''
+        data['branch_name'] = document.branch.name
+        data['reference_number'] = document.reference.doc_number if document.reference_id else ''
+        last = doc_service.last_contact_on(document)
+        data['last_contact_on'] = last.isoformat() if last else None
+        later = doc_service.next_call_later_date(document)
+        data['call_later_date'] = later.isoformat() if later else None
+        data['call_later_bucket'] = doc_service.call_later_bucket(document)
+        if document.type == 'dc':
+            data['invoice_pending'] = doc_service.dc_is_pending(document)
+        data['call_log'] = [serialize_document_call_log_entry(e) for e in document.call_log.all()]
     return data
 
 
@@ -281,14 +344,34 @@ def serialize_payment_receipt(receipt):
     }
 
 
+def serialize_payment_contact_log(entry):
+    return {
+        'id': entry.id,
+        'payment_id': entry.payment_id,
+        'message': entry.message,
+        'user': serialize_user_ref(entry.user),
+        'timestamp': entry.timestamp.isoformat(),
+        'call_later_date': entry.call_later_date.isoformat() if entry.call_later_date else None,
+    }
+
+
 def serialize_payment_collection(payment, include_receipts=True):
+    from ..services import payments as payment_service
+    received = payment.received()
     data = {
         'id': payment.id,
         'branch_id': payment.branch_id,
         'customer_id': payment.customer_id,
+        'customer_label': payment.customer.select_label,
         'contact_id': payment.contact_id,
+        'contact_name': payment.contact.name if payment.contact_id else '',
         'amount': str(payment.amount),
+        'received': str(received),
         'balance': str(payment.balance()),
+        'date': payment.date.isoformat(),
+        'remarks': payment.remarks,
+        'age_days': payment_service.age_days(payment),
+        'age_bucket': payment_service.age_bucket(payment),
         'created_by': serialize_user_ref(payment.created_by),
         'created_at': payment.created_at.isoformat(),
         'version': payment.version,
@@ -296,6 +379,12 @@ def serialize_payment_collection(payment, include_receipts=True):
     }
     if include_receipts:
         data['receipts'] = [serialize_payment_receipt(r) for r in payment.receipts.all()]
+        last = payment_service.last_contact_on(payment)
+        data['last_contact_on'] = last.isoformat() if last else None
+        later = payment_service.call_later_date(payment)
+        data['call_later_date'] = later.isoformat() if later else None
+        data['call_later_bucket'] = payment_service.call_later_bucket(payment)
+        data['contact_log'] = [serialize_payment_contact_log(l) for l in payment.contact_log.all()]
     return data
 
 
@@ -305,7 +394,9 @@ def serialize_task(task):
         'title': task.title,
         'description': task.description,
         'assigned_to': serialize_user_ref(task.assigned_to),
-        'joint_with_user_ids': list(task.joint_with.values_list('id', flat=True)),
+        'joint_with_user_ids': [u.id for u in task.joint_with.all()],
+        'kind': task_kind(task),
+        'auto_closed_by_visit': task.auto_closed_by_visit,
         'priority': task.priority,
         'status': task.status,
         'task_type': task.task_type,
@@ -339,7 +430,9 @@ def serialize_approval_request(request_obj):
         'type': request_obj.type,
         'note': request_obj.note,
         'customer_id': request_obj.customer_id,
+        'contact_id': request_obj.contact_id,
         'document_id': request_obj.document_id,
+        'target_label': request_obj.target_label,
         'proposed_data': request_obj.proposed_data,
         'requested_by': serialize_user_ref(request_obj.requested_by),
         'requested_at': request_obj.requested_at.isoformat(),
@@ -380,23 +473,23 @@ def serialize_call_assignment(assignment, include_attempts=True):
     return data
 
 
-def serialize_attendance_record(record):
-    return {
+def serialize_attendance_record(record, viewer=None):
+    """Locations are shown to Admin and to the person themselves, nobody else (REQ-ATT-04)."""
+    data = {
         'id': record.id,
         'user': serialize_user_ref(record.user),
         'date': record.date.isoformat(),
         'check_in': record.check_in.isoformat() if record.check_in else None,
         'check_out': record.check_out.isoformat() if record.check_out else None,
-        'in_loc_lat': record.in_loc_lat,
-        'in_loc_lng': record.in_loc_lng,
-        'in_loc_accuracy_m': record.in_loc_accuracy_m,
-        'out_loc_lat': record.out_loc_lat,
-        'out_loc_lng': record.out_loc_lng,
-        'out_loc_accuracy_m': record.out_loc_accuracy_m,
         'status': record.status,
         'note': record.note,
         'marked_by': serialize_user_ref(record.marked_by),
     }
+    if viewer is not None and (RoleRules.is_admin(viewer) or record.user_id == viewer.pk):
+        data.update(
+            in_loc_lat=record.in_loc_lat, in_loc_lng=record.in_loc_lng, in_loc_accuracy_m=record.in_loc_accuracy_m,
+            out_loc_lat=record.out_loc_lat, out_loc_lng=record.out_loc_lng, out_loc_accuracy_m=record.out_loc_accuracy_m)
+    return data
 
 
 def serialize_leave_request(leave):

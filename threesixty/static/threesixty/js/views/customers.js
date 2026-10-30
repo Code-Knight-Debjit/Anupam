@@ -2,14 +2,15 @@
 // original's company list/detail screens; duplicate-name detection reuses
 // the verified `findDuplicateCustomers` (ui.js) ahead of create/rename.
 import { api } from '../api.js';
-import { state, lookup, isAdmin, isBranchManager, isSalesManager } from '../state.js';
+import { state, lookup, isAdmin, isBranchManager, isSalesManager, userOptionsHtml } from '../state.js';
 import {
   el, escapeHtml, fmtDate, fmtDateTime, toast, apiErrorMessage, openModal, closeModal,
-  confirmDialog, renderTable, findDuplicateCustomers,
+  confirmDialog, renderTable, findDuplicateCustomers, customerLabel,
 } from '../ui.js';
 
 let allCustomers = [];
 let search = '';
+const smart = { state: '', area: '', industry: '', source: '', potential: '', last_call: '', last_visit: '' };
 
 // `industry`/`source`/`potential`/`transport_preference`/`courier_preference` on
 // Customer are plain free-text CharFields (see models/customers.py) — the
@@ -148,6 +149,11 @@ async function openCustomerForm(customer, onSaved) {
         if (!data.name) { toast('Company name is required.', 'error'); return; }
         const { exact } = findDuplicateCustomers(data.name, allCustomers, customer && customer.id);
         if (exact) { toast(`A customer named "${exact.name}" already exists.`, 'error'); return; }
+        if (!customer) {
+          // Similar names among ALL customers, including ones you can't see: offer to request access instead.
+          const dup = await api.get(`customers/duplicate-check/?name=${encodeURIComponent(data.name)}`);
+          if (dup.matches.length && !await askAboutDuplicates(dup.matches)) return;
+        }
         try {
           if (customer) {
             const res = await api.patch(`customers/${customer.id}/`, { ...data, version: customer.version });
@@ -162,6 +168,26 @@ async function openCustomerForm(customer, onSaved) {
         } catch (e) { toast(apiErrorMessage(e), 'error'); }
       };
     },
+  });
+}
+
+// Returns true if the user still wants to create the new customer.
+function askAboutDuplicates(matches) {
+  return new Promise((resolve) => {
+    openModal(`<h2>Similar customers already exist</h2>
+      ${renderTable(['Customer', ''], matches.map((m) => ({ Customer: escapeHtml(m.label),
+        '': m.has_access ? '<span class="sub">You already have access</span>'
+          : (m.access_request_pending ? '<span class="sub">Access requested</span>' : `<button class="btn sm" data-req="${m.id}">Request access</button>`) })))}
+      <div class="modal-actions"><button class="btn" id="dup-cancel">Go back</button><button class="btn primary" id="dup-go">Create anyway</button></div>`, {
+      onMount: (modal) => {
+        modal.querySelector('#dup-cancel').onclick = () => { closeModal(); resolve(false); };
+        modal.querySelector('#dup-go').onclick = () => { closeModal(); resolve(true); };
+        modal.querySelectorAll('[data-req]').forEach((b) => b.onclick = async () => {
+          try { await api.post('approvals/', { type: 'customer-access', customer_id: b.dataset.req }); toast('Access requested — the Admin and Branch Managers were notified.', 'success'); b.replaceWith('Requested'); }
+          catch (e) { toast(apiErrorMessage(e), 'error'); }
+        });
+      },
+    });
   });
 }
 
@@ -217,12 +243,22 @@ async function openContactModal(customerId, contact, onSaved) {
 async function renderContactsTab(container, customer) {
   const contacts = await api.all(`customers/${customer.id}/contacts/`);
   container.innerHTML = `
-    <div class="flex-between"><h3>Contacts</h3><button class="btn sm primary" id="addContactBtn">+ Add contact</button></div>
+    <div class="flex-between"><h3>Contacts</h3><div>
+      ${state.flags.is_approver ? '<button class="btn sm" id="copyEmailsBtn">Copy e-mails</button> <a class="btn sm" id="vcfBtn">Export .vcf</a>' : ''}
+      <button class="btn sm primary" id="addContactBtn">+ Add contact</button></div></div>
     ${renderTable(['Name', 'Title', 'Phone', 'Email', 'DND', ''], contacts.map((c) => ({
       Name: escapeHtml(c.name), Title: escapeHtml(c.job_title), Phone: escapeHtml(c.phone),
       Email: escapeHtml(c.email), DND: c.dnd ? 'Yes' : '',
       '': `<button class="btn sm" data-edit="${c.id}">Edit</button> <button class="btn sm danger" data-del="${c.id}">Remove</button>`,
     })))}`;
+  const ids = contacts.map((c) => c.id).join(',');
+  const vcf = container.querySelector('#vcfBtn');
+  if (vcf) vcf.href = `/360/api/contacts/export/?contact_ids=${ids}&format=vcf`;
+  const copy = container.querySelector('#copyEmailsBtn');
+  if (copy) copy.onclick = async () => {
+    try { const r = await api.get(`contacts/export/?contact_ids=${ids}`); await navigator.clipboard.writeText(r.emails.join(', ')); toast(`${r.emails.length} e-mail address(es) copied.`, 'success'); }
+    catch (e) { toast(apiErrorMessage(e), 'error'); }
+  };
   container.querySelector('#addContactBtn').onclick = () => openContactModal(customer.id, null, () => renderContactsTab(container, customer));
   container.querySelectorAll('[data-edit]').forEach((btn) => btn.onclick = () => {
     const c = contacts.find((x) => String(x.id) === btn.dataset.edit);
@@ -281,10 +317,34 @@ async function renderInteractionsTab(container, customer) {
   };
 }
 
+// Assign a person to a customer, optionally sharing only some of its contacts (REQ-CUS-02).
+// Selecting every contact — or none — means "all contacts".
+async function openAssignDialog(customer, onChanged) {
+  const contacts = await api.all(`customers/${customer.id}/contacts/`);
+  openModal(`<h2>Assign — ${escapeHtml(customer.label || customer.name)}</h2>
+    <div class="field"><label>Person *</label><select id="as-user"><option value="">— choose —</option>${userOptionsHtml('')}</select></div>
+    <div class="field"><label>Contacts they can see</label>
+      ${contacts.length ? contacts.map((c) => `<label style="display:block;"><input type="checkbox" class="as-contact" value="${c.id}" checked> ${escapeHtml(c.name)}</label>`).join('') : '<span class="sub">This customer has no contacts yet.</span>'}
+      <p class="sub">Untick some to share only part of the customer. All ticked = everything.</p></div>
+    <div class="modal-actions"><button class="btn" id="as-cancel">Cancel</button><button class="btn primary" id="as-save">Assign</button></div>`, {
+    onMount: (modal) => {
+      modal.querySelector('#as-cancel').onclick = closeModal;
+      modal.querySelector('#as-save').onclick = async () => {
+        const user = modal.querySelector('#as-user').value;
+        if (!user) { toast('Choose a person.', 'error'); return; }
+        const ids = Array.from(modal.querySelectorAll('.as-contact')).filter((c) => c.checked).map((c) => Number(c.value));
+        try { await api.post(`customers/${customer.id}/assign/`, { user_id: user, contact_ids: ids }); toast('Assigned.', 'success'); closeModal(); onChanged(); }
+        catch (e) { toast(apiErrorMessage(e), 'error'); }
+      };
+    },
+  });
+}
+
 function openCustomerDetail(customer, onChanged) {
   openModal(`
     <div class="flex-between"><h2>${escapeHtml(customer.name)}</h2>
       <div>
+        ${state.flags.is_approver ? '<button class="btn sm" id="cd-assign">Assign…</button>' : ''}
         <button class="btn sm" id="cd-edit">Edit</button>
         <button class="btn sm danger" id="cd-delete">Remove</button>
       </div>
@@ -316,6 +376,8 @@ function openCustomerDetail(customer, onChanged) {
       }));
       renderProfile();
       modal.querySelector('#cd-edit').onclick = () => openCustomerForm(customer, onChanged);
+      const assignBtn = modal.querySelector('#cd-assign');
+      if (assignBtn) assignBtn.onclick = () => openAssignDialog(customer, onChanged);
       modal.querySelector('#cd-delete').onclick = () => deleteCustomer(customer, () => { closeModal(); onChanged(); });
     },
   });
@@ -323,19 +385,28 @@ function openCustomerDetail(customer, onChanged) {
 
 async function renderList(root) {
   const canEdit = state.flags.can_edit_customer_direct || isSalesManager();
-  allCustomers = await api.all('customers/', search ? { search } : {});
+  const query = { ...(search ? { search } : {}), ...Object.fromEntries(Object.entries(smart).filter(([, v]) => v)) };
+  allCustomers = await api.all('customers/', query);
   root.innerHTML = `
     <div class="flex-between">
       <input id="custSearch" placeholder="Search customers…" style="max-width:320px;" value="${escapeHtml(search)}">
-      <button class="btn primary" id="newCustBtn">+ New Customer</button>
+      <div>${state.flags.is_approver ? '<a class="btn" href="/360/api/customers/export/?format=xlsx">Excel</a> <a class="btn" href="/360/api/customers/export/?format=pdf">PDF</a>' : ''}
+      <button class="btn primary" id="newCustBtn">+ New Customer</button></div>
+    </div>
+    <div class="field-row" style="margin:8px 0;">
+      <input id="sf-state" placeholder="State" value="${escapeHtml(smart.state)}" style="max-width:120px;"><input id="sf-area" placeholder="Area" value="${escapeHtml(smart.area)}" style="max-width:120px;">
+      <select id="sf-potential" style="max-width:130px;"><option value="">Potential: any</option>${['High', 'Medium', 'Low'].map((p) => `<option ${smart.potential === p ? 'selected' : ''}>${p}</option>`).join('')}</select>
+      <select id="sf-last_call" style="max-width:190px;">${[['', 'Last call: any time'], ['7', 'Called in last 7 days'], ['30', 'Called in last 30 days'], ['90plus', 'Not called in 90+ days'], ['never', 'Never called']].map(([v, l]) => `<option value="${v}" ${smart.last_call === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <select id="sf-last_visit" style="max-width:190px;">${[['', 'Last visit: any time'], ['7', 'Visited in last 7 days'], ['30', 'Visited in last 30 days'], ['90plus', 'Not visited in 90+ days'], ['never', 'Never visited']].map(([v, l]) => `<option value="${v}" ${smart.last_visit === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
     </div>
     ${renderTable(['Name', 'City', 'Industry', 'Potential', 'Assigned'], allCustomers.map((c) => ({
-      Name: `<a data-open="${c.id}" style="cursor:pointer;color:var(--primary);font-weight:600;">${escapeHtml(c.name)}</a>`,
+      Name: `<a data-open="${c.id}" style="cursor:pointer;color:var(--primary);font-weight:600;">${escapeHtml(customerLabel(c))}</a>`,
       City: escapeHtml(c.city), Industry: escapeHtml(c.industry || ''), Potential: escapeHtml(c.potential || ''),
       Assigned: (c.assigned_to_ids || []).length,
     })), { empty: 'No customers found.' })}`;
 
   root.querySelector('#newCustBtn').onclick = () => openCustomerForm(null, () => renderList(root));
+  ['state', 'area', 'potential', 'last_call', 'last_visit'].forEach((k) => { const n = root.querySelector('#sf-' + k); n.onchange = () => { smart[k] = n.value.trim(); renderList(root); }; });
   const searchBox = root.querySelector('#custSearch');
   let t;
   searchBox.oninput = () => { clearTimeout(t); t = setTimeout(() => { search = searchBox.value; renderList(root); }, 300); };

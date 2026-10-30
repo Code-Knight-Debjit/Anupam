@@ -2,15 +2,13 @@
 // only filters by `status` server-side (`views_tasks.py::TaskResource`);
 // everything else (assignee/priority filters) is client-side.
 import { api } from '../api.js';
-import { state, isAdmin, isBranchManager } from '../state.js';
+import { state, isAdmin, isBranchManager, userOptionsHtml } from '../state.js';
 import { el, escapeHtml, fmtDate, toast, apiErrorMessage, openModal, closeModal, renderTable, badge } from '../ui.js';
 
 let tasks = [];
 let filterStatus = 'Open';
 
-function userOptions(selected) {
-  return state.salesPersons.map((u) => `<option value="${u.id}" ${String(selected) === String(u.id) ? 'selected' : ''}>${escapeHtml(u.full_name)}</option>`).join('');
-}
+const userOptions = userOptionsHtml;
 
 function taskForm(task) {
   const t = task || {};

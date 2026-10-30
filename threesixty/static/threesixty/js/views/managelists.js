@@ -8,6 +8,7 @@ const KINDS = [
   ['job_title', 'Job Title'], ['source', 'Source'], ['industry', 'Industry'], ['language', 'Language'],
   ['brand', 'Brand'], ['product', 'Product'], ['category', 'Category'], ['unit', 'Unit'],
   ['tax_rate', 'Tax Rate'], ['payment_term', 'Payment Term'], ['transport', 'Transport'], ['courier', 'Courier'],
+  ['sales_person', 'Sales Person'],
 ];
 
 function openItemModal(kind, item, onSaved) {
@@ -36,7 +37,42 @@ function openItemModal(kind, item, onSaved) {
   });
 }
 
+// Sales persons are their own table (name + phone), not a LookupItem kind.
+async function renderSalesPersons(root) {
+  const items = await api.all('sales-persons/');
+  root.innerHTML = `
+    <div class="flex-between"><h3 style="margin:0;">Sales Person</h3><button class="btn primary sm" id="newItemBtn">+ Add</button></div>
+    ${renderTable(['Name', 'Phone', ''], items.map((it) => ({
+      Name: escapeHtml(it.name), Phone: escapeHtml(it.phone),
+      '': `<button class="btn sm" data-edit="${it.id}">Edit</button> <button class="btn sm danger" data-del="${it.id}">Remove</button>`,
+    })), { empty: 'Nothing here yet.' })}`;
+  const edit = (item) => openModal(`
+    <h2>${item ? 'Edit' : 'New'} sales person</h2>
+    <div class="field"><label>Name *</label><input id="sp-name" value="${escapeHtml((item || {}).name || '')}"></div>
+    <div class="field"><label>Phone</label><input id="sp-phone" value="${escapeHtml((item || {}).phone || '')}"></div>
+    <div class="modal-actions"><button class="btn" id="sp-cancel">Cancel</button><button class="btn primary" id="sp-save">Save</button></div>`, {
+    onMount: (modal) => {
+      modal.querySelector('#sp-cancel').onclick = closeModal;
+      modal.querySelector('#sp-save').onclick = async () => {
+        const data = { name: modal.querySelector('#sp-name').value.trim(), phone: modal.querySelector('#sp-phone').value.trim() };
+        if (!data.name) { toast('Name is required.', 'error'); return; }
+        try {
+          if (item) await api.patch(`sales-persons/${item.id}/`, data); else await api.post('sales-persons/', data);
+          closeModal(); renderSalesPersons(root);
+        } catch (e) { toast(apiErrorMessage(e), 'error'); }
+      };
+    },
+  });
+  root.querySelector('#newItemBtn').onclick = () => edit(null);
+  root.querySelectorAll('[data-edit]').forEach((btn) => btn.onclick = () => edit(items.find((it) => String(it.id) === btn.dataset.edit)));
+  root.querySelectorAll('[data-del]').forEach((btn) => btn.onclick = async () => {
+    if (!await confirmDialog('Remove this sales person? Existing documents keep their name.')) return;
+    try { await api.delete(`sales-persons/${btn.dataset.del}/`); renderSalesPersons(root); } catch (e) { toast(apiErrorMessage(e), 'error'); }
+  });
+}
+
 async function renderKind(root, kind) {
+  if (kind === 'sales_person') return renderSalesPersons(root);
   const items = await api.all('lookups/', { kind });
   items.sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
   root.innerHTML = `
@@ -49,7 +85,10 @@ async function renderKind(root, kind) {
   root.querySelectorAll('[data-edit]').forEach((btn) => btn.onclick = () => openItemModal(kind, items.find((it) => String(it.id) === btn.dataset.edit), () => renderKind(root, kind)));
   root.querySelectorAll('[data-del]').forEach((btn) => btn.onclick = async () => {
     if (!await confirmDialog('Remove this entry?')) return;
-    await api.delete(`lookups/${btn.dataset.del}/`);
+    try {
+      const res = await api.delete(`lookups/${btn.dataset.del}/`);
+      if (res && res.deactivated) toast('Still used by customers, so it was hidden from the lists instead of deleted.', 'info');
+    } catch (e) { toast(apiErrorMessage(e), 'error'); }
     renderKind(root, kind);
   });
 }

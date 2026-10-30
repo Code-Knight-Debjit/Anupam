@@ -3,7 +3,7 @@
 // `afterLogin()`/`setNavBadge`/`renderNotifBadge`/`renderNotifList`
 // (contact_management.html ~L4560-4660, ~L13560-13630).
 import { api } from './api.js';
-import { loadBootstrap, state, isAdmin, isSalesManager } from './state.js';
+import { loadBootstrap, state } from './state.js';
 import { registerView, navigate, startRouter } from './router.js';
 import { el, escapeHtml, fmtDateTime, toast } from './ui.js';
 
@@ -21,12 +21,15 @@ import { mountManageLists } from './views/managelists.js';
 import { mountImportExcel } from './views/importexcel.js';
 import { mountUsers } from './views/users.js';
 import { mountBranches } from './views/branches.js';
+import { mountBackup, mountAuditLog } from './views/backup.js';
+import { mountApprovals } from './views/approvals.js';
+import { initA11y } from './a11y.js';
 
 const PAGE_TITLES = {
   dashboard: 'Dashboard', tasks: 'Tasks', callinglist: 'Outreach', attendance: 'Attendance',
   customers: 'Customers', map: 'Map & Nearby', sales: 'Sales', payments: 'Payment Collection',
   labels: 'Print Label', reports: 'Reports', managelists: 'Manage Lists', import: 'Import Excel',
-  users: 'Users', branches: 'Branches',
+  users: 'Users', branches: 'Branches', backup: 'Backup & restore', auditlog: 'Audit log', approvals: 'Approvals',
 };
 
 function setTitleOnNavigate() {
@@ -38,10 +41,22 @@ function updateTitle() {
   el('pageTitle').textContent = PAGE_TITLES[view] || 'Anupam 360';
 }
 
+// Menu visibility comes from the server (`me.nav`, REQ-ROLE-03/04) — the
+// endpoints behind each menu enforce the same rules, this only tidies the UI.
 function applyRoleVisibility() {
-  const hide = (sel) => document.querySelectorAll(sel).forEach((n) => { n.style.display = 'none'; });
-  if (!isAdmin()) hide('#navImport, #navManage, #navUsers, #navBranches');
-  if (isSalesManager()) hide('#navProforma, #navDC, #navPO, #navPayments, #navLabels');
+  const items = Array.from(document.querySelectorAll('#app-sidebar .nav-item'));
+  items.forEach((btn) => {
+    const label = (btn.querySelector('span') || btn).textContent.trim();
+    btn.style.display = (btn.dataset.always || state.nav.includes(label) || (label === 'Audit log' && state.nav.includes('Backup & restore'))) ? '' : 'none';
+  });
+  document.querySelectorAll('#app-sidebar .nav-label').forEach((heading) => {
+    let node = heading.nextElementSibling, anyVisible = false;
+    while (node && !node.classList.contains('nav-label') && !node.classList.contains('sidebar-footer')) {
+      if (node.classList.contains('nav-item') && node.style.display !== 'none') anyVisible = true;
+      node = node.nextElementSibling;
+    }
+    heading.style.display = anyVisible ? '' : 'none';
+  });
   const userChipName = el('curUserName'), userChipRole = el('curUserRole');
   if (userChipName) userChipName.textContent = state.me.full_name || state.me.username;
   if (userChipRole) userChipRole.textContent = (state.me.role || '').replace(/_/g, ' ');
@@ -163,15 +178,41 @@ function refreshBadges() {
   updateAttBadge();
   updateSalesNavBadges();
   refreshNotifBadge();
+  updateApprovalsBadge();
+}
+
+// Screens that have no entry in the page template get their menu button here.
+// Approvals is for everyone (approvers decide, others follow their own requests); Backup and Audit log are Admin-only.
+function addExtraMenu() {
+  const footer = document.querySelector('#app-sidebar .sidebar-footer');
+  const add = (view, label, always) => {
+    const btn = document.createElement('button');
+    btn.className = 'nav-item';
+    btn.dataset.view = view;
+    if (always) btn.dataset.always = '1';
+    btn.innerHTML = `<span>${label}</span><span class="nav-badge" id="${view}Badge" style="display:none;"></span>`;
+    footer.parentNode.insertBefore(btn, footer);
+  };
+  add('approvals', state.flags.is_approver ? 'Approvals' : 'My requests', true);
+  if (state.nav.includes('Backup & restore')) { add('backup', 'Backup & restore'); add('auditlog', 'Audit log'); }
+}
+
+async function updateApprovalsBadge() {
+  try {
+    const pending = await api.all('approvals/', { status: 'pending' });
+    setNavBadge('#approvalsBadge', pending.length);
+  } catch (e) { /* best-effort */ }
 }
 
 async function boot() {
   await loadBootstrap();
+  addExtraMenu();
+  initA11y();
   applyRoleVisibility();
   setTitleOnNavigate();
   wireNotifBell();
   wireSidebarMobile();
-  el('logoutBtn').addEventListener('click', () => { window.location.href = '/dashboard/logout/'; });
+  el('logoutBtn').addEventListener('click', () => { window.location.href = '/360/logout/'; });
 
   registerView('dashboard', mountDashboard);
   registerView('tasks', mountTasks);
@@ -187,6 +228,9 @@ async function boot() {
   registerView('import', mountImportExcel);
   registerView('users', mountUsers);
   registerView('branches', mountBranches);
+  registerView('backup', mountBackup);
+  registerView('auditlog', mountAuditLog);
+  registerView('approvals', mountApprovals);
 
   startRouter();
   refreshBadges();

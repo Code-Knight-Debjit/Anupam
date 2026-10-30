@@ -2,6 +2,8 @@
 it) — original `payments` array (KEY_PAYMENTS='paymentCollections') with
 nested `receivedLog`. Field names from the add/edit handlers (~L13859-13868,
 ~L13935-13938) — see docs/360/AUDIT.md."""
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 
@@ -29,10 +31,15 @@ class PaymentCollection(models.Model):
 
     class Meta:
         ordering = ['-date']
+        indexes = [models.Index(fields=['date']), models.Index(fields=['created_by', 'date'])]
+
+
+    def received(self):
+        return sum((r.amount for r in self.receipts.all()), Decimal('0.00'))
 
     def balance(self):
-        received = self.receipts.aggregate(total=models.Sum('amount'))['total'] or 0
-        return self.amount - received
+        """Amount still to collect; never negative (REQ-PAY-01)."""
+        return max(Decimal('0.00'), self.amount - self.received())
 
     def __str__(self):
         return f'{self.customer.name} — {self.amount}'
@@ -63,3 +70,16 @@ class PaymentReceipt(models.Model):
 
     class Meta:
         ordering = ['-date']
+
+
+class PaymentContactLog(models.Model):
+    """Contact log on a payment collection (chat-style notes, optional "call me
+    later" date that also creates a Call task for the person logging it)."""
+    payment = models.ForeignKey(PaymentCollection, on_delete=models.CASCADE, related_name='contact_log')
+    message = models.TextField()
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    timestamp = models.DateTimeField(auto_now_add=True)
+    call_later_date = models.DateField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['timestamp']

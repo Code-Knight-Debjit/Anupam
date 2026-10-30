@@ -68,25 +68,12 @@ class TestRoleRules:
         assert not RoleRules.can_direct_edit_delete_sales_doc(user)
         assert RoleRules.uses_personal_dashboard(user)
 
-    def test_sales_manager_hard_blocked_on_quotation_even_though_role_check_passes_for_other_types(
-        self, chennai
-    ):
-        """Original ~L10176: `!(isSalesManager() && d.type === 'quotation')`
-        — a Sales Manager can never edit/delete a Quotation, not even via
-        the approval queue, while an Enquiry on the same account *can* go
-        through the approval queue."""
+    def test_REQ_ROLE_02_sales_manager_quotation_edits_go_through_approval_like_enquiries(self, chennai):
+        """REQUIREMENTS §1 / REQ-ROLE-02 (the spec pack wins over the older audit
+        note about ~L10176): a Sales Manager's edit or delete of ANY sales
+        document, quotations included, queues an approval request."""
         user = make_employee('sm2', EmployeeProfile.SALES_MANAGER, [chennai])
-        customer = Customer.objects.create(name='Acme Bearings')
-        quotation = SalesDocument.objects.create(
-            type=SalesDocument.TYPE_QUOTATION, doc_number='QUO-0001',
-            branch=chennai, customer=customer, date='2026-01-01',
-        )
-        enquiry = SalesDocument.objects.create(
-            type=SalesDocument.TYPE_ENQUIRY, doc_number='ENQ-0001',
-            branch=chennai, customer=customer, date='2026-01-01',
-        )
-        assert RoleRules.can_edit_delete_sales_document(user, enquiry)
-        assert not RoleRules.can_edit_delete_sales_document(user, quotation)
+        assert RoleRules.needs_approval(user, 'salesdoc.edit') and RoleRules.needs_approval(user, 'salesdoc.delete')
 
     def test_manager_scope_includes_only_overlapping_branch_staff(self, chennai, bengaluru):
         manager = make_employee('bm2', EmployeeProfile.BRANCH_MANAGER, [chennai])
@@ -103,14 +90,14 @@ class TestStaff360Decorator:
     def test_unauthenticated_redirects_to_login(self, client):
         resp = client.get(reverse('threesixty:index'))
         assert resp.status_code == 302
-        assert '/dashboard/login/' in resp.url
+        assert '/360/login/' in resp.url
 
     def test_non_staff_user_redirects_to_login(self, client):
         User.objects.create_user(username='nonstaff', password='x', is_staff=False)
         client.login(username='nonstaff', password='x')
         resp = client.get(reverse('threesixty:index'))
         assert resp.status_code == 302
-        assert '/dashboard/login/' in resp.url
+        assert '/360/login/' in resp.url
 
     def test_staff_without_employee_profile_gets_403(self, client):
         User.objects.create_user(username='staffnoprofile', password='x', is_staff=True)

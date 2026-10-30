@@ -64,9 +64,15 @@ class SalesDocument(models.Model):
     sub_total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     quotation_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    # Quotation / Proforma outcome (REQ-AUT-12): Win needs an order value, Lose stores a reason.
+    order_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    lost_reason = models.CharField(max_length=500, blank=True)
 
     # quotation/dc/proforma quote metadata
     sales_person = models.ForeignKey(SalesPerson, on_delete=models.SET_NULL, null=True, blank=True, related_name='sales_documents')
+    # Text copy of the sales person's name: removing a sales person from the list
+    # must not change documents that already used them (REQ-LST-01).
+    sales_person_name = models.CharField(max_length=150, blank=True)
     valid_till = models.DateField(null=True, blank=True)
     ref_no = models.CharField(max_length=120, blank=True)
     ref_date = models.DateField(null=True, blank=True)
@@ -85,10 +91,18 @@ class SalesDocument(models.Model):
 
     class Meta:
         ordering = ['-date', '-created_at']
-        indexes = [models.Index(fields=['type', 'branch', 'doc_number'])]
+        indexes = [models.Index(fields=['type', 'branch', 'doc_number']), models.Index(fields=['date']), models.Index(fields=['type', 'date']),
+                   models.Index(fields=['created_by', 'date']), models.Index(fields=['customer', 'date'])]
 
     def __str__(self):
         return f'{self.get_type_display()} {self.doc_number}'
+
+    def save(self, *args, **kwargs):
+        if self.sales_person_id and self.sales_person:
+            self.sales_person_name = self.sales_person.name
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = {*kwargs['update_fields'], 'sales_person_name'}
+        super().save(*args, **kwargs)
 
 
 class SalesDocumentItem(models.Model):
@@ -130,6 +144,22 @@ class SupplyLogEntry(models.Model):
         ordering = ['date']
 
 
+class InvoiceLogEntry(models.Model):
+    """'Invoice Done' on a delivery-challan item (REQ-DC-01)."""
+    item = models.ForeignKey(SalesDocumentItem, on_delete=models.CASCADE, related_name='invoice_log')
+    bill_number = models.CharField(max_length=120)
+    bill_date = models.DateField(null=True, blank=True)
+    qty_invoiced = models.DecimalField(max_digits=12, decimal_places=2)
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    legacy_id = models.CharField(max_length=64, blank=True, null=True, unique=True, db_index=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+
 class DocumentCallLog(models.Model):
     """Call log entries on quotation/dc/proforma docs (`cfg.hasCallLog`)."""
     document = models.ForeignKey(SalesDocument, on_delete=models.CASCADE, related_name='call_log')
@@ -139,6 +169,10 @@ class DocumentCallLog(models.Model):
         related_name='threesixty_call_log_entries',
     )
     timestamp = models.DateTimeField(auto_now_add=True)
+    # "Call me later" (REQ-LOG-01) — also creates a Call task for the person logging it.
+    call_later_date = models.DateField(null=True, blank=True)
+    OUTCOMES = ['Answered', 'Busy', 'Not reachable', 'Not Answering']
+    outcome = models.CharField(max_length=20, blank=True)
 
     legacy_id = models.CharField(max_length=64, blank=True, null=True, unique=True, db_index=True)
 

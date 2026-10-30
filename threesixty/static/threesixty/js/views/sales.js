@@ -11,8 +11,7 @@ import { api } from '../api.js';
 import { state, isAdmin, isBranchManager, isSalesManager, isBranchStaff } from '../state.js';
 import {
   el, escapeHtml, fmtDate, fmtDateTime, fmtMoney, toast, apiErrorMessage, openModal, closeModal,
-  confirmDialog, renderTable, badge,
-} from '../ui.js';
+  confirmDialog, renderTable, badge, enhanceCustomerSelect, customerLabel } from '../ui.js';
 
 const TYPES = {
   enquiry: { label: 'Enquiry', hasItems: false, hasDiscount: false, hasTax: false, hasCharges: false, refType: null },
@@ -21,7 +20,13 @@ const TYPES = {
   dc: { label: 'Delivery Challan', hasItems: true, hasDiscount: true, hasTax: true, hasCharges: true, refType: 'po' },
   po: { label: 'Pending PO', hasItems: true, hasDiscount: true, hasTax: false, hasCharges: false, refType: null },
 };
-const STATUS_OPTIONS = ['Pending', 'Win', 'Lose', 'Hold', 'Completed', 'Regretted'];
+// Statuses an edit may set. Win / Lose are not here: they have their own action
+// (a Win needs an order value, a Lose a reason). A challan has no status.
+const STATUS_BY_TYPE = {
+  enquiry: ['Pending', 'Completed', 'Regretted'], quotation: ['Pending'], proforma: ['Pending'],
+  po: ['Pending', 'Part Pending', 'Hold', 'Completed'], dc: [],
+};
+const PRINTABLE_TYPES = ['quotation', 'proforma', 'dc'];
 
 let customersCache = null;
 let contactsCache = {};
@@ -37,7 +42,7 @@ async function getContacts(customerId) {
 }
 function customerName(id, customers) {
   const c = customers.find((x) => x.id === id);
-  return c ? c.name : `#${id}`;
+  return c ? customerLabel(c) : `#${id}`;
 }
 
 function computeItemPreview(type, item) {
@@ -139,14 +144,14 @@ async function docForm(type, doc, customers) {
   return `
     <div class="field-row">
       <div class="field"><label>Branch</label><select id="df-branch">${state.branches.map((b) => `<option value="${b.id}" ${(d.branch_id || myBranchId) === b.id ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('')}</select></div>
-      <div class="field"><label>Customer *</label><select id="df-customer"><option value="">— select —</option>${customers.map((c) => `<option value="${c.id}" ${d.customer_id === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Customer *</label><select id="df-customer"><option value="">— select —</option>${customers.map((c) => `<option value="${c.id}" ${d.customer_id === c.id ? 'selected' : ''}>${escapeHtml(customerLabel(c))}</option>`).join('')}</select></div>
       <div class="field"><label>Contact</label><select id="df-contact"><option value="">—</option>${contacts.map((c) => `<option value="${c.id}" ${d.contact_id === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
     </div>
     ${cfg.refType ? `<div class="field"><label>Reference ${TYPES[cfg.refType].label}</label><select id="df-reference"><option value="">— none —</option>${refOptions.map((r) => `<option value="${r.id}" ${d.reference_id === r.id ? 'selected' : ''}>${escapeHtml(r.doc_number)}</option>`).join('')}</select></div>` : ''}
     <div class="field-row">
       <div class="field"><label>Date *</label><input type="date" id="df-date" value="${d.date || new Date().toISOString().slice(0, 10)}"></div>
-      <div class="field"><label>Status</label><select id="df-status">${STATUS_OPTIONS.map((s) => `<option ${((d.order_status || 'Pending') === s) ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
-      <div class="field"><label>Sales person</label><select id="df-salesperson"><option value="">—</option>${state.salesPersons.map((p) => `<option value="${p.id}" ${String(d.sales_person_id) === String(p.id) ? 'selected' : ''}>${escapeHtml(p.full_name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Status</label><select id="df-status" ${(STATUS_BY_TYPE[type] || []).length ? '' : 'disabled'}>${(STATUS_BY_TYPE[type] || []).map((s) => `<option ${((d.order_status || 'Pending') === s) ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+      <div class="field"><label>Sales person</label><select id="df-salesperson"><option value="">—</option>${state.salesPersons.map((p) => `<option value="${p.id}" ${String(d.sales_person_id) === String(p.id) ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}</select></div>
     </div>
     ${type === 'enquiry' ? `<div class="field"><label>Source</label><input id="df-source" value="${escapeHtml(d.source || '')}"></div>` : ''}
     ${type === 'dc' ? `<div class="field-row">
@@ -191,6 +196,7 @@ async function openForm(type, doc, onSaved) {
       if (cfg.hasItems) wireItemsEditor(modal, type);
       modal.querySelector('#df-cancel').onclick = closeModal;
       const customerSel = modal.querySelector('#df-customer');
+      enhanceCustomerSelect(customerSel, customers);
       customerSel.addEventListener('change', async () => {
         const contacts = await getContacts(customerSel.value);
         modal.querySelector('#df-contact').innerHTML = `<option value="">—</option>${contacts.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}`;
@@ -209,7 +215,7 @@ async function openForm(type, doc, onSaved) {
           customer_id: customerId,
           contact_id: modal.querySelector('#df-contact').value || null,
           date: modal.querySelector('#df-date').value,
-          order_status: modal.querySelector('#df-status').value,
+          ...(modal.querySelector('#df-status').disabled || ['Win', 'Lose'].includes(doc && doc.order_status) ? {} : { order_status: modal.querySelector('#df-status').value }),
           sales_person_id: modal.querySelector('#df-salesperson').value || null,
           remarks: modal.querySelector('#df-remarks').value.trim(),
         };
@@ -231,19 +237,119 @@ async function openForm(type, doc, onSaved) {
         }
         if (cfg.hasItems) data.items = readItemsEditor(modal.querySelector('#itemsTable tbody'), type);
 
+        let saved = null;
         try {
           if (doc) {
             const res = await api.patch(`sales-documents/${doc.id}/`, { ...data, version: doc.version });
             toast(res && res.approval_requested ? 'Edit sent for approval.' : 'Saved.', res && res.approval_requested ? 'info' : 'success');
+            if (res && !res.approval_requested) saved = res;
           } else {
             data.type = type;
-            await api.post('sales-documents/', data);
+            saved = await api.post('sales-documents/', data);
             toast(`${cfg.label} created.`, 'success');
+            if (saved.enquiry_completed) toast(`Enquiry ${saved.enquiry_completed} marked Completed.`, 'info');
           }
           closeModal();
           onSaved();
+          if (saved && PRINTABLE_TYPES.includes(type)) offerPrint(saved);
         } catch (e) { toast(apiErrorMessage(e), 'error'); }
       };
+    },
+  });
+}
+
+// After saving a quotation / proforma / challan: Skip, Preview, Print or PDF.
+// All three are the same server-made PDF, so what you preview is what prints.
+function pdfUrl(doc, download) { return `/360/api/sales-documents/${doc.id}/pdf/${download ? '?download=1' : ''}`; }
+function printPdf(doc) {
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'position:fixed;width:0;height:0;border:0;';
+  frame.src = pdfUrl(doc);
+  frame.onload = () => { try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { window.open(pdfUrl(doc), '_blank'); } };
+  document.body.appendChild(frame);
+  setTimeout(() => frame.remove(), 60000);
+}
+function offerPrint(doc) {
+  openModal(`
+    <h2>${escapeHtml(doc.doc_number)} saved</h2>
+    <p class="sub">What would you like to do with it?</p>
+    <div class="modal-actions">
+      <button class="btn" id="pp-skip">Skip</button>
+      <button class="btn" id="pp-preview">Preview</button>
+      <button class="btn" id="pp-print">Print</button>
+      <button class="btn primary" id="pp-pdf">PDF</button>
+    </div>`, {
+    onMount: (modal) => {
+      modal.querySelector('#pp-skip').onclick = closeModal;
+      modal.querySelector('#pp-preview').onclick = () => { window.open(pdfUrl(doc), '_blank'); closeModal(); };
+      modal.querySelector('#pp-print').onclick = () => { printPdf(doc); closeModal(); };
+      modal.querySelector('#pp-pdf').onclick = () => { window.location.href = pdfUrl(doc, true); closeModal(); };
+    },
+  });
+}
+
+function askOutcome(doc, onDone) {
+  openModal(`
+    <h2>Outcome — ${escapeHtml(doc.doc_number)}</h2>
+    <div class="field"><label>Result</label><select id="oc-status"><option>Win</option><option>Lose</option></select></div>
+    <div class="field" id="oc-value-wrap"><label>Order value *</label><input type="number" step="0.01" id="oc-value"></div>
+    <div class="field" id="oc-reason-wrap" style="display:none;"><label>Reason</label><input id="oc-reason" maxlength="500"></div>
+    <div class="modal-actions"><button class="btn" id="oc-cancel">Cancel</button><button class="btn primary" id="oc-save">Save</button></div>`, {
+    onMount: (modal) => {
+      const status = modal.querySelector('#oc-status');
+      status.onchange = () => {
+        modal.querySelector('#oc-value-wrap').style.display = status.value === 'Win' ? '' : 'none';
+        modal.querySelector('#oc-reason-wrap').style.display = status.value === 'Lose' ? '' : 'none';
+      };
+      modal.querySelector('#oc-cancel').onclick = closeModal;
+      modal.querySelector('#oc-save').onclick = async () => {
+        try {
+          await api.post(`sales-documents/${doc.id}/outcome/`, {
+            status: status.value, order_value: modal.querySelector('#oc-value').value, lost_reason: modal.querySelector('#oc-reason').value,
+          });
+          closeModal(); onDone();
+        } catch (e) { toast(apiErrorMessage(e), 'error'); }
+      };
+    },
+  });
+}
+
+async function cloneDoc(doc, onDone) {
+  try { const copy = await api.post(`sales-documents/${doc.id}/clone/`, {}); toast(`Cloned as ${copy.doc_number}.`, 'success'); onDone(); }
+  catch (e) { toast(apiErrorMessage(e), 'error'); }
+}
+
+// Record supply (Pending PO) or "Invoice Done" (challan) against one item. A quantity
+// above the balance asks for confirmation (the server answers 409 + needs_confirmation).
+function recordAgainstItems(doc, onDone) {
+  const isPo = doc.type === 'po';
+  openModal(`
+    <h2>${isPo ? 'Supply' : 'Invoice Done'} — ${escapeHtml(doc.doc_number)}</h2>
+    <table class="report"><tr><th>Item</th><th>Ordered</th><th>${isPo ? 'Supplied' : 'Invoiced'}</th><th>${isPo ? 'Pending' : 'Balance'}</th><th></th></tr>
+      ${doc.items.map((it) => `<tr><td>${escapeHtml(it.item_name)}</td><td>${it.qty}</td><td>${isPo ? it.supplied : it.invoiced}</td><td>${isPo ? it.pending : it.balance}</td>
+        <td><button class="btn sm" data-item="${it.id}">Add</button></td></tr>`).join('')}
+    </table>
+    <div class="field-row" style="margin-top:10px;">
+      <div class="field"><label>Date</label><input type="date" id="rec-date" value="${new Date().toISOString().slice(0, 10)}"></div>
+      <div class="field"><label>Quantity</label><input type="number" step="0.01" min="0" id="rec-qty"></div>
+      ${isPo ? '<div class="field"><label>Remarks</label><input id="rec-remarks"></div>' : '<div class="field"><label>Bill number *</label><input id="rec-bill"></div>'}
+    </div>
+    <div class="modal-actions"><button class="btn" id="rec-close">Close</button></div>`, {
+    onMount: (modal) => {
+      modal.querySelector('#rec-close').onclick = () => { closeModal(); onDone(); };
+      modal.querySelectorAll('[data-item]').forEach((btn) => btn.onclick = async () => {
+        const body = isPo
+          ? { qty_supplied: modal.querySelector('#rec-qty').value, date: modal.querySelector('#rec-date').value, remarks: modal.querySelector('#rec-remarks').value }
+          : { qty_invoiced: modal.querySelector('#rec-qty').value, bill_date: modal.querySelector('#rec-date').value, bill_number: modal.querySelector('#rec-bill').value };
+        const url = `sales-document-items/${btn.dataset.item}/${isPo ? 'supply-log' : 'invoice-log'}/`;
+        try {
+          try { await api.post(url, body); } catch (e) {
+            if (e.status === 409 && e.body && e.body.needs_confirmation && await confirmDialog(`${e.body.error}`)) await api.post(url, { ...body, confirm_over: true });
+            else throw e;
+          }
+          toast('Recorded.', 'success'); closeModal(); onDone();
+        } catch (e) { toast(apiErrorMessage(e), 'error'); }
+      });
     },
   });
 }
@@ -255,16 +361,20 @@ async function openCallLog(doc) {
     <div style="max-height:260px;overflow-y:auto;margin-bottom:12px;">
       ${calls.length ? calls.map((c) => `<div class="card" style="margin-bottom:6px;padding:8px 12px;">
         <div class="sub">${escapeHtml(c.user ? c.user.full_name : '—')} · ${fmtDateTime(c.timestamp)}</div>
-        <div>${escapeHtml(c.message)}</div></div>`).join('') : '<p class="sub">No calls logged yet.</p>'}
+        <div>${escapeHtml(c.message)}</div>${c.outcome ? `<div class="sub">${escapeHtml(c.outcome)}</div>` : ''}${c.call_later_date ? `<div class="sub">Call again: ${fmtDate(c.call_later_date)}</div>` : ''}</div>`).join('') : '<p class="sub">No calls logged yet.</p>'}
     </div>
-    <div class="field"><textarea id="cl-msg" rows="2" placeholder="Log a call..."></textarea></div>
+    <div class="field"><textarea id="cl-msg" rows="2" placeholder="Log a call or note..."></textarea></div>
+    <div class="field-row">
+      <div class="field"><label>Outcome</label><select id="cl-outcome"><option value="">—</option><option>Answered</option><option>Busy</option><option>Not reachable</option><option>Not Answering</option></select></div>
+      <div class="field"><label>Call me later (creates a task)</label><input type="date" id="cl-later"></div>
+    </div>
     <div class="modal-actions"><button class="btn" id="cl-close">Close</button><button class="btn primary" id="cl-add">Add entry</button></div>`, {
     onMount: (modal) => {
       modal.querySelector('#cl-close').onclick = closeModal;
       modal.querySelector('#cl-add').onclick = async () => {
         const message = modal.querySelector('#cl-msg').value.trim();
         if (!message) return;
-        try { await api.post(`sales-documents/${doc.id}/calls/`, { message }); closeModal(); openCallLog(doc); } catch (e) { toast(apiErrorMessage(e), 'error'); }
+        try { await api.post(`sales-documents/${doc.id}/calls/`, { message, outcome: modal.querySelector('#cl-outcome').value, call_later_date: modal.querySelector('#cl-later').value || null }); closeModal(); openCallLog(doc); } catch (e) { toast(apiErrorMessage(e), 'error'); }
       };
     },
   });
@@ -290,11 +400,24 @@ async function renderList(root, type) {
       Customer: escapeHtml(customerName(d.customer_id, customers)),
       Date: fmtDate(d.date), Status: badge(d.order_status || 'Pending'),
       Total: cfg.hasCharges ? `₹${fmtMoney(d.total_amount)}` : '',
-      '': `<button class="btn sm" data-calls="${d.id}">Calls</button> <button class="btn sm danger" data-delete="${d.id}">Remove</button>`,
+      '': [
+        PRINTABLE_TYPES.includes(type) ? `<button class="btn sm" data-preview="${d.id}">Preview</button> <button class="btn sm" data-pdf="${d.id}">PDF</button>` : '',
+        ['quotation', 'proforma'].includes(type) && !['Win', 'Lose'].includes(d.order_status) ? `<button class="btn sm" data-outcome="${d.id}">Win / Lose</button>` : '',
+        type === 'po' ? `<button class="btn sm" data-record="${d.id}">Supply</button>` : '',
+        type === 'dc' ? `<button class="btn sm" data-record="${d.id}">Invoice</button>` : '',
+        type === 'enquiry' || type === 'po' ? '' : `<button class="btn sm" data-calls="${d.id}">Calls</button>`,
+        `<button class="btn sm" data-clone="${d.id}">Clone</button>`,
+        `<button class="btn sm danger" data-delete="${d.id}">Remove</button>`].join(' '),
     })), { empty: `No ${cfg.label.toLowerCase()} records yet.` })}`;
 
   root.querySelector('#newDocBtn').onclick = () => openForm(type, null, () => renderList(root, type));
   root.querySelectorAll('[data-open]').forEach((a) => a.onclick = () => openForm(type, docs.find((d) => String(d.id) === a.dataset.open), () => renderList(root, type)));
+  const byId = (btn, attr) => docs.find((d) => String(d.id) === btn.dataset[attr]);
+  root.querySelectorAll('[data-preview]').forEach((btn) => btn.onclick = () => window.open(pdfUrl(byId(btn, 'preview')), '_blank'));
+  root.querySelectorAll('[data-pdf]').forEach((btn) => btn.onclick = () => { window.location.href = pdfUrl(byId(btn, 'pdf'), true); });
+  root.querySelectorAll('[data-outcome]').forEach((btn) => btn.onclick = () => askOutcome(byId(btn, 'outcome'), () => renderList(root, type)));
+  root.querySelectorAll('[data-record]').forEach((btn) => btn.onclick = () => recordAgainstItems(byId(btn, 'record'), () => renderList(root, type)));
+  root.querySelectorAll('[data-clone]').forEach((btn) => btn.onclick = () => cloneDoc(byId(btn, 'clone'), () => renderList(root, type)));
   root.querySelectorAll('[data-calls]').forEach((btn) => btn.onclick = () => openCallLog(docs.find((d) => String(d.id) === btn.dataset.calls)));
   root.querySelectorAll('[data-delete]').forEach((btn) => btn.onclick = () => deleteDoc(docs.find((d) => String(d.id) === btn.dataset.delete), () => renderList(root, type)));
 }

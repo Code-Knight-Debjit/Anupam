@@ -1,6 +1,10 @@
 """Branch, numbering config, employee profile, lookups, site settings."""
+import re
+
 from django.conf import settings
 from django.db import models
+
+from ..fields import EncryptedCharField
 
 
 class Branch(models.Model):
@@ -11,6 +15,36 @@ class Branch(models.Model):
     letterhead_gstin = models.CharField(max_length=20, blank=True)
     letterhead_phone = models.CharField(max_length=40, blank=True)
     letterhead_email = models.CharField(max_length=120, blank=True)
+    letterhead_mobile = models.CharField(max_length=40, blank=True)
+    letterhead_website = models.CharField(max_length=200, blank=True)
+    udyam_number = models.CharField(max_length=40, blank=True)
+
+    # Bank details printed on quotation / proforma (not on challans).
+    bank_name = models.CharField(max_length=120, blank=True)
+    bank_branch = models.CharField(max_length=120, blank=True)
+    bank_account_no = models.CharField(max_length=40, blank=True)
+    bank_ifsc = models.CharField(max_length=20, blank=True)
+
+    # Branding images — uploaded through api/views_core.branch_image (type + size checked).
+    logo = models.ImageField(upload_to='threesixty/branding/', blank=True, null=True)
+    dealer_logo = models.ImageField(upload_to='threesixty/branding/', blank=True, null=True)
+    footer_image = models.ImageField(upload_to='threesixty/branding/', blank=True, null=True)
+    payment_qr = models.ImageField(upload_to='threesixty/branding/', blank=True, null=True)
+
+    accent_color = models.CharField(max_length=7, blank=True, help_text='#rrggbb')
+    # Print/PDF layout: format 1 or 2 (REQ §18). Header and footer are shared.
+    doc_format = models.PositiveSmallIntegerField(default=1, choices=[(1, 'Format 1'), (2, 'Format 2')])
+
+    WATERMARK_LOGO = 'logo'
+    WATERMARK_TEXT = 'text'
+    watermark_enabled = models.BooleanField(default=False)
+    watermark_type = models.CharField(
+        max_length=4, default=WATERMARK_LOGO, choices=[(WATERMARK_LOGO, 'Logo'), (WATERMARK_TEXT, 'Text')],
+    )
+    watermark_text = models.CharField(max_length=80, blank=True)
+    watermark_size = models.PositiveSmallIntegerField(default=50, help_text='Percent of the page width')
+
+    terms = models.TextField(blank=True, help_text='Default terms & conditions for this branch')
     is_active = models.BooleanField(default=True)
     legacy_id = models.CharField(max_length=64, blank=True, null=True, unique=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -21,6 +55,15 @@ class Branch(models.Model):
 
     def __str__(self):
         return self.name
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.watermark_enabled and self.watermark_type == self.WATERMARK_TEXT and not self.watermark_text.strip():
+            raise ValidationError({'watermark_text': 'Watermark text is required when the watermark type is text.'})
+        if self.accent_color and not re.fullmatch(r'#[0-9a-fA-F]{6}', self.accent_color):
+            raise ValidationError({'accent_color': 'Use a colour like #a14000.'})
+        if not 10 <= self.watermark_size <= 100:
+            raise ValidationError({'watermark_size': 'Watermark size must be between 10 and 100 percent.'})
 
 
 class BranchNumbering(models.Model):
@@ -51,14 +94,17 @@ class BranchNumbering(models.Model):
     def __str__(self):
         return f'{self.branch.name} / {self.get_doc_type_display()}'
 
+    def effective_config(self) -> dict:
+        """prefix/suffix/start with the spec fallbacks applied: a blank prefix
+        falls back to the type's default, a blank suffix means none (REQ-DOC-02)."""
+        from ..rules import anupam_rules as rules
+        return rules.numbering_cfg(self.doc_type, {
+            self.doc_type: {'prefix': self.prefix, 'suffix': self.suffix, 'start': self.start_at},
+        })
+
     def format_number(self, seq: int) -> str:
-        # Mirrors the original `formatDocNumber()` exactly: fixed 4-digit
-        # padding, hyphen only inserted when prefix/suffix are present.
-        padded = str(seq).zfill(4)
-        out = f'{self.prefix}{"-" if self.prefix else ""}{padded}'
-        if self.suffix:
-            out += f'-{self.suffix}'
-        return out
+        from ..rules import anupam_rules as rules
+        return rules.format_doc_number(self.effective_config(), seq)
 
 
 class EmployeeProfile(models.Model):
@@ -85,9 +131,9 @@ class EmployeeProfile(models.Model):
     job_title = models.CharField(max_length=120, blank=True)
     phone = models.CharField(max_length=40, blank=True)
     emp_code = models.CharField(max_length=40, blank=True, null=True)
-    # Sensitive — masked in every API response except to Admin (never exported/logged).
-    aadhaar_number = models.CharField(max_length=20, blank=True)
-    pan_number = models.CharField(max_length=20, blank=True)
+    # Sensitive — encrypted at rest; shown only to Admin (and masked to the person themselves); never exported/logged.
+    aadhaar_number = EncryptedCharField(blank=True)
+    pan_number = EncryptedCharField(blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
     # Attendance scheduling — mirrors the original's `emp.workStart`/`workEnd`/
     # `weeklyOff`/`doj` (contact_management.html attDayStatus, L12201-12220).

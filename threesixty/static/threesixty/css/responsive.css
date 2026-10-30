@@ -1,0 +1,21 @@
+/* Anupam 360 — small-screen and accessibility layer (loaded by js/a11y.js; independent of app.css). */
+:focus-visible{outline:2px solid #ff6a00;outline-offset:2px}
+button:focus-visible,.nav-item:focus-visible{box-shadow:0 0 0 3px rgba(255,106,0,.35)}
+.table-scroll,.report{max-width:100%}
+.table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.stat{background:var(--card,#fff);border:1px solid var(--border,rgba(0,0,0,.07));border-radius:var(--radius,10px);padding:12px 14px;cursor:pointer}
+.stat:hover{box-shadow:var(--shadow,0 2px 16px rgba(0,0,0,.07))}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:900px){
+  #app-view{padding:.75rem}
+  .field-row{flex-direction:column}
+  .field-row>.field{width:100%}
+  .modal{width:calc(100vw - 1rem)!important;max-width:none!important;max-height:92vh;overflow-y:auto}
+  table{display:block;overflow-x:auto;white-space:nowrap}
+  .btn,button,select,input,textarea{min-height:40px}
+  .flex-between{flex-wrap:wrap;gap:8px}
+  .tabbar{overflow-x:auto;white-space:nowrap}
+  #notifDropdown{position:fixed!important;left:.5rem;right:.5rem;top:56px!important;width:auto!important}
+}
+@media print{#app-sidebar,#app-topbar,.modal-actions{display:none!important}}

@@ -26,7 +26,8 @@ class TestImporter:
         assert Branch.objects.count() == 0
         assert User.objects.count() == 0
 
-    def test_import_resolves_relations_and_hashes_passwords(self):
+    def test_import_resolves_relations_and_hashes_passwords(self, settings):
+        settings.PASSWORD_HASHERS = ['django.contrib.auth.hashers.PBKDF2PasswordHasher']   # production default
         run_import()
         quote = SalesDocument.objects.get(doc_number='QUO-CHN-0100')
         assert quote.reference.doc_number == 'ENQ-0001'

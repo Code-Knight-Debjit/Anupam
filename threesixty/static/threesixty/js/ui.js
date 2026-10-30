@@ -171,3 +171,46 @@ export function loadScript(src) {
   });
   return loadedScripts[src];
 }
+
+// ---- Customer pick-lists (REQ-CUS-07/08) ---------------------------------
+// Every customer drop-down shows "Customer name, Plant, Area" (the server's
+// `label`, never the city) and searches by word: typing "su" lists labels that
+// start with "su" first, then labels where a LATER word starts with "su", then
+// anything containing it. Same order as the server's `rank_by_query`.
+export function rankByQuery(items, query, labelOf) {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return items.slice();
+  const starts = [], words = [], contains = [];
+  items.forEach((item) => {
+    const text = labelOf(item).toLowerCase();
+    if (text.startsWith(q)) starts.push(item);
+    else if (text.split(/[\s,.\-()/&]+/).some((w) => w.startsWith(q))) words.push(item);
+    else if (text.includes(q)) contains.push(item);
+  });
+  return starts.concat(words, contains);
+}
+
+export const customerLabel = (c) => c.label || c.name;
+
+/** Adds a search box above an existing <select> of customers and keeps the
+ * select's value/ids untouched, so callers keep reading `select.value`. */
+export function enhanceCustomerSelect(select, customers, { blank = '— select —' } = {}) {
+  const render = (query) => {
+    const keep = select.value;
+    let shown = rankByQuery(customers, query, customerLabel);
+    const kept = customers.find((c) => String(c.id) === String(keep));
+    if (kept && !shown.includes(kept)) shown = [kept].concat(shown);
+    select.innerHTML = `<option value="">${blank}</option>` +
+      shown.map((c) => `<option value="${c.id}">${escapeHtml(customerLabel(c))}</option>`).join('');
+    select.value = keep;
+  };
+  const box = document.createElement('input');
+  box.type = 'search';
+  box.placeholder = 'Type to search customers…';
+  box.setAttribute('aria-label', 'Search customers');
+  box.style.marginBottom = '4px';
+  box.addEventListener('input', () => render(box.value));
+  select.parentNode.insertBefore(box, select);
+  render('');
+  return { refresh: render, search: box };
+}
