@@ -5,7 +5,7 @@
 import { api } from './api.js';
 import { loadBootstrap, state } from './state.js';
 import { registerView, navigate, startRouter } from './router.js';
-import { el, escapeHtml, fmtDateTime, toast } from './ui.js';
+import { el, escapeHtml, fmtDateTime, toast, initials } from './ui.js';
 
 import { mountDashboard } from './views/dashboard.js';
 import { mountTasks } from './views/tasks.js';
@@ -25,41 +25,24 @@ import { mountBackup, mountAuditLog } from './views/backup.js';
 import { mountApprovals } from './views/approvals.js';
 import { initA11y } from './a11y.js';
 
-const PAGE_TITLES = {
-  dashboard: 'Dashboard', tasks: 'Tasks', callinglist: 'Outreach', attendance: 'Attendance',
-  customers: 'Customers', map: 'Map & Nearby', sales: 'Sales', payments: 'Payment Collection',
-  labels: 'Print Label', reports: 'Reports', managelists: 'Manage Lists', import: 'Import Excel',
-  users: 'Users', branches: 'Branches', backup: 'Backup & restore', auditlog: 'Audit log', approvals: 'Approvals',
-};
+const ROLE_LABELS = { ADMIN: 'Admin', BRANCH_MANAGER: 'Branch Manager', BRANCH_STAFF: 'Branch Staff', SALES_MANAGER: 'Sales Manager' };
 
-function setTitleOnNavigate() {
-  window.addEventListener('hashchange', updateTitle);
-  updateTitle();
-}
-function updateTitle() {
-  const view = (window.location.hash || '').replace(/^#\/?/, '').split('/')[0] || 'dashboard';
-  el('pageTitle').textContent = PAGE_TITLES[view] || 'Anupam 360';
-}
-
-// Menu visibility comes from the server (`me.nav`, REQ-ROLE-03/04) — the
-// endpoints behind each menu enforce the same rules, this only tidies the UI.
+// Menu visibility comes from the server (`me.nav`, REQ-ROLE-03/04) — the endpoints behind each menu enforce the
+// same rules, this only tidies the UI. Group headings with nothing visible under them are hidden too (the
+// reference shows e.g. no "Main panel" heading to a non-admin).
 function applyRoleVisibility() {
-  const items = Array.from(document.querySelectorAll('#app-sidebar .nav-item'));
-  items.forEach((btn) => {
+  document.querySelectorAll('#app-sidebar .nav-item').forEach((btn) => {
     const label = (btn.querySelector('span') || btn).textContent.trim();
-    btn.style.display = (btn.dataset.always || state.nav.includes(label) || (label === 'Audit log' && state.nav.includes('Backup & restore'))) ? '' : 'none';
+    btn.style.display = state.nav.includes(label) ? '' : 'none';
   });
-  document.querySelectorAll('#app-sidebar .nav-label').forEach((heading) => {
-    let node = heading.nextElementSibling, anyVisible = false;
-    while (node && !node.classList.contains('nav-label') && !node.classList.contains('sidebar-footer')) {
-      if (node.classList.contains('nav-item') && node.style.display !== 'none') anyVisible = true;
-      node = node.nextElementSibling;
-    }
-    heading.style.display = anyVisible ? '' : 'none';
+  document.querySelectorAll('#app-sidebar .nav-group').forEach((group) => {
+    const anyVisible = Array.from(group.querySelectorAll('.nav-item')).some((b) => b.style.display !== 'none');
+    group.style.display = anyVisible ? '' : 'none';
   });
-  const userChipName = el('curUserName'), userChipRole = el('curUserRole');
-  if (userChipName) userChipName.textContent = state.me.full_name || state.me.username;
-  if (userChipRole) userChipRole.textContent = (state.me.role || '').replace(/_/g, ' ');
+  const name = state.me.full_name || state.me.username;
+  el('curAvatar').textContent = initials(name);
+  el('curName').textContent = name;
+  el('curRole').textContent = ROLE_LABELS[state.me.role] || (state.me.role || '').replace(/_/g, ' ');
 }
 
 function setNavBadge(selector, count) {
@@ -114,61 +97,68 @@ async function updateAttBadge() {
 async function refreshNotifBadge() {
   try {
     const unread = await api.all('notifications/', { unread: '1' });
-    setNavBadge('#notifBadge', unread.length);
+    setNavBadge('#notifBadge, #notifBadgeMobile', unread.length);
   } catch (e) { /* ignore */ }
 }
 
 async function renderNotifList() {
   const list = await api.all('notifications/');
-  const box = el('notifList');
-  box.innerHTML = list.length
+  const html = list.length
     ? list.map((n) => `
-      <div class="notif-item" data-id="${n.id}" style="padding:10px 14px;cursor:pointer;${n.read ? '' : 'background:var(--surface-container-low);'}">
-        <div style="font-size:13px;">${escapeHtml(n.text || '')}</div>
-        <div class="sub" style="font-size:11px;margin-top:2px;">${fmtDateTime(n.created_at)}</div>
+      <div class="notif-item ${n.read ? '' : 'unread'}" data-id="${n.id}">
+        <div class="ni-text">${escapeHtml(n.text || '')}</div>
+        <div class="ni-meta">${fmtDateTime(n.created_at)}</div>
       </div>`).join('')
-    : '<div class="empty-state">No notifications yet.</div>';
-  box.querySelectorAll('.notif-item').forEach((node) => {
-    node.addEventListener('click', async () => {
-      const id = node.dataset.id;
-      const n = list.find((x) => String(x.id) === id);
-      await api.patch(`notifications/${id}/`, { read: true });
-      el('notifDropdown').style.display = 'none';
-      refreshNotifBadge();
-      if (n && n.type === 'leave') navigate('attendance');
-      else if (n && n.related_document_id) navigate('sales');
-      else navigate('tasks');
+    : '<div class="notif-empty">No notifications yet.</div>';
+  ['notifList', 'notifListMobile'].forEach((id) => {
+    const box = el(id);
+    box.innerHTML = html;
+    box.querySelectorAll('.notif-item').forEach((node) => {
+      node.addEventListener('click', async () => {
+        const n = list.find((x) => String(x.id) === node.dataset.id);
+        await api.patch(`notifications/${node.dataset.id}/`, { read: true });
+        closeNotifDropdowns();
+        refreshNotifBadge();
+        if (n && n.type === 'leave') navigate('attendance');
+        else if (n && n.related_document_id) navigate('sales');
+        else navigate('tasks');
+      });
     });
   });
 }
 
+function closeNotifDropdowns() {
+  el('notifDropdown').classList.remove('open');
+  el('notifDropdownMobile').classList.remove('open');
+}
+
 function wireNotifBell() {
-  const btn = el('notifBellBtn'), dd = el('notifDropdown');
-  btn.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    const opening = dd.style.display === 'none';
-    dd.style.display = opening ? 'block' : 'none';
-    if (opening) await renderNotifList();
+  [['notifBellBtn', 'notifDropdown'], ['notifBellBtnMobile', 'notifDropdownMobile']].forEach(([btnId, ddId]) => {
+    el(btnId).addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const dd = el(ddId);
+      const opening = !dd.classList.contains('open');
+      closeNotifDropdowns();
+      if (opening) { dd.classList.add('open'); await renderNotifList(); }
+    });
   });
-  el('notifMarkAllBtn').addEventListener('click', async (e) => {
+  ['notifMarkAllBtn', 'notifMarkAllBtnMobile'].forEach((id) => el(id).addEventListener('click', async (e) => {
     e.stopPropagation();
     const unread = await api.all('notifications/', { unread: '1' });
     await Promise.all(unread.map((n) => api.patch(`notifications/${n.id}/`, { read: true })));
     refreshNotifBadge();
     renderNotifList();
-  });
-  document.addEventListener('click', () => { dd.style.display = 'none'; });
+  }));
+  document.addEventListener('click', closeNotifDropdowns);
 }
 
 function wireSidebarMobile() {
   const burger = el('topbarBurger'), sidebar = el('app-sidebar'), backdrop = el('sidebarBackdrop');
+  const close = () => { sidebar.classList.remove('open'); backdrop.classList.remove('open'); };
   burger.addEventListener('click', () => { sidebar.classList.add('open'); backdrop.classList.add('open'); });
-  backdrop.addEventListener('click', () => { sidebar.classList.remove('open'); backdrop.classList.remove('open'); });
+  backdrop.addEventListener('click', close);
   document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      navigate(btn.dataset.view, btn.dataset.subtab);
-      sidebar.classList.remove('open'); backdrop.classList.remove('open');
-    });
+    btn.addEventListener('click', () => { navigate(btn.dataset.view, btn.dataset.subtab); close(); });
   });
 }
 
@@ -178,41 +168,16 @@ function refreshBadges() {
   updateAttBadge();
   updateSalesNavBadges();
   refreshNotifBadge();
-  updateApprovalsBadge();
-}
-
-// Screens that have no entry in the page template get their menu button here.
-// Approvals is for everyone (approvers decide, others follow their own requests); Backup and Audit log are Admin-only.
-function addExtraMenu() {
-  const footer = document.querySelector('#app-sidebar .sidebar-footer');
-  const add = (view, label, always) => {
-    const btn = document.createElement('button');
-    btn.className = 'nav-item';
-    btn.dataset.view = view;
-    if (always) btn.dataset.always = '1';
-    btn.innerHTML = `<span>${label}</span><span class="nav-badge" id="${view}Badge" style="display:none;"></span>`;
-    footer.parentNode.insertBefore(btn, footer);
-  };
-  add('approvals', state.flags.is_approver ? 'Approvals' : 'My requests', true);
-  if (state.nav.includes('Backup & restore')) { add('backup', 'Backup & restore'); add('auditlog', 'Audit log'); }
-}
-
-async function updateApprovalsBadge() {
-  try {
-    const pending = await api.all('approvals/', { status: 'pending' });
-    setNavBadge('#approvalsBadge', pending.length);
-  } catch (e) { /* best-effort */ }
 }
 
 async function boot() {
   await loadBootstrap();
-  addExtraMenu();
   initA11y();
   applyRoleVisibility();
-  setTitleOnNavigate();
   wireNotifBell();
   wireSidebarMobile();
-  el('logoutBtn').addEventListener('click', () => { window.location.href = '/360/logout/'; });
+  const logout = () => { window.location.href = '/360/logout/'; };
+  ['logoutBtn', 'mobileLogoutBtn', 'switchUserBtn'].forEach((id) => el(id).addEventListener('click', logout));
 
   registerView('dashboard', mountDashboard);
   registerView('tasks', mountTasks);
