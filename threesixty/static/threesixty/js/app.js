@@ -3,7 +3,7 @@
 // `afterLogin()`/`setNavBadge`/`renderNotifBadge`/`renderNotifList`
 // (contact_management.html ~L4560-4660, ~L13560-13630).
 import { api } from './api.js';
-import { loadBootstrap, state } from './state.js';
+import { loadBootstrap, state, roleLabel, applyLogos } from './state.js';
 import { registerView, navigate, startRouter } from './router.js';
 import { el, escapeHtml, fmtDateTime, toast, initials } from './ui.js';
 
@@ -12,9 +12,14 @@ import { mountTasks } from './views/tasks.js';
 import { mountOutreach } from './views/outreach.js';
 import { mountAttendance } from './views/attendance.js';
 import { mountCustomers } from './views/customers.js';
+import { mountCustomerForm } from './views/customerform.js';
+import { mountCustomerView } from './views/customerview.js';
+import { mountPersonProfile } from './views/personprofile.js';
 import { mountMap } from './views/map.js';
 import { mountSales } from './views/sales.js';
-import { mountPayments } from './views/payments.js';
+import { mountSalesForm } from './views/salesform.js';
+import { mountContactLog, mountEnqHistory, mountQuotationHistory, mountProformaHistory, mountDcHistory, mountPoHistory } from './views/sales_pages.js';
+import { mountPayments, mountPaymentForm, mountPaymentHistory, mountPaymentLog } from './views/payments.js';
 import { mountLabels } from './views/labels.js';
 import { mountReports } from './views/reports.js';
 import { mountManageLists } from './views/managelists.js';
@@ -25,24 +30,18 @@ import { mountBackup, mountAuditLog } from './views/backup.js';
 import { mountApprovals } from './views/approvals.js';
 import { initA11y } from './a11y.js';
 
-const ROLE_LABELS = { ADMIN: 'Admin', BRANCH_MANAGER: 'Branch Manager', BRANCH_STAFF: 'Branch Staff', SALES_MANAGER: 'Sales Manager' };
-
 // Menu visibility comes from the server (`me.nav`, REQ-ROLE-03/04) — the endpoints behind each menu enforce the
-// same rules, this only tidies the UI. Group headings with nothing visible under them are hidden too (the
-// reference shows e.g. no "Main panel" heading to a non-admin).
+// same rules, this only tidies the UI. Like the reference, only the items are hidden — a non-admin still sees the
+// "Main panel" heading.
 function applyRoleVisibility() {
   document.querySelectorAll('#app-sidebar .nav-item').forEach((btn) => {
     const label = (btn.querySelector('span') || btn).textContent.trim();
     btn.style.display = state.nav.includes(label) ? '' : 'none';
   });
-  document.querySelectorAll('#app-sidebar .nav-group').forEach((group) => {
-    const anyVisible = Array.from(group.querySelectorAll('.nav-item')).some((b) => b.style.display !== 'none');
-    group.style.display = anyVisible ? '' : 'none';
-  });
   const name = state.me.full_name || state.me.username;
   el('curAvatar').textContent = initials(name);
   el('curName').textContent = name;
-  el('curRole').textContent = ROLE_LABELS[state.me.role] || (state.me.role || '').replace(/_/g, ' ');
+  el('curRole').textContent = roleLabel(state.me.role);
 }
 
 function setNavBadge(selector, count) {
@@ -89,8 +88,10 @@ async function updateCallingListBadge() {
 
 async function updateAttBadge() {
   try {
-    const pending = await api.all('leave-requests/');
-    setNavBadge('#attBadge', pending.filter((l) => l.status === 'Pending').length);
+    // Leave requests waiting on THIS person's decision (never their own) — the reference's attPendingForMe().
+    if (!state.flags.is_approver) { setNavBadge('#attBadge', 0); return; }
+    const pending = await api.all('leave-requests/', { status: 'Pending' });
+    setNavBadge('#attBadge', pending.filter((l) => l.status === 'Pending' && l.user && l.user.id !== state.me.user_id).length);
   } catch (e) { /* ignore */ }
 }
 
@@ -162,7 +163,22 @@ function wireSidebarMobile() {
   });
 }
 
+// Dashboard badge (reference: refreshDashBadge): approvals waiting on this person; otherwise, for the company view,
+// how many customers were added since the Dashboard was last opened.
+async function updateDashBadge() {
+  try {
+    if (!state.flags.can_see_dashboard) return;
+    const pending = state.flags.is_approver ? (await api.all('approvals/', { status: 'pending' })).length : 0;
+    if (pending > 0) { setNavBadge('#dashBadge', pending); return; }
+    if (state.flags.uses_personal_dashboard) { setNavBadge('#dashBadge', 0); return; }
+    const total = (await api.get('customers/?page_size=1')).count;
+    const seen = parseInt(localStorage.getItem(`360:dashSeen:${state.me.user_id}`) || '0', 10);
+    setNavBadge('#dashBadge', Math.max(0, total - seen));
+  } catch (e) { /* best-effort */ }
+}
+
 function refreshBadges() {
+  updateDashBadge();
   updateTaskBadge();
   updateCallingListBadge();
   updateAttBadge();
@@ -172,6 +188,7 @@ function refreshBadges() {
 
 async function boot() {
   await loadBootstrap();
+  applyLogos();
   initA11y();
   applyRoleVisibility();
   wireNotifBell();
@@ -184,9 +201,22 @@ async function boot() {
   registerView('callinglist', mountOutreach);
   registerView('attendance', mountAttendance);
   registerView('customers', mountCustomers);
+  registerView('customerform', mountCustomerForm);
+  registerView('customerview', mountCustomerView);
+  registerView('person', mountPersonProfile);
   registerView('map', mountMap);
   registerView('sales', mountSales);
+  registerView('salesform', mountSalesForm);
+  registerView('contactlog', mountContactLog);
+  registerView('enqhistory', mountEnqHistory);
+  registerView('quotationhistory', mountQuotationHistory);
+  registerView('proformahistory', mountProformaHistory);
+  registerView('dchistory', mountDcHistory);
+  registerView('pohistory', mountPoHistory);
   registerView('payments', mountPayments);
+  registerView('paymentform', mountPaymentForm);
+  registerView('paymenthistory', mountPaymentHistory);
+  registerView('paymentlog', mountPaymentLog);
   registerView('labels', mountLabels);
   registerView('reports', mountReports);
   registerView('managelists', mountManageLists);

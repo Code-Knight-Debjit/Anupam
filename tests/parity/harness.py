@@ -18,7 +18,7 @@ def app_page(b, user='admin', w=1440, h=900):
     pg.goto(APP+'login/'); pg.wait_for_timeout(500)
     return ctx,pg
 def app_login(pg, user='admin'):
-    pg.fill('#li-user',user); pg.fill('#li-pass',PW); pg.click('form button'); pg.wait_for_timeout(2000)
+    pg.fill('#li-user',user); pg.click('#useridSubmit'); pg.fill('#li-pass',PW); pg.click('#pinSubmit'); pg.wait_for_timeout(2000)
 OUTLINE_JS = """() => {
   const vis = e => e.offsetParent !== null || getComputedStyle(e).position==='fixed';
   const root = document.querySelector('.view.active') || document.querySelector('#app-view') || document.body;
@@ -37,6 +37,10 @@ OUTLINE_JS = """() => {
 def outline(pg): return pg.evaluate(OUTLINE_JS)
 def ref_login(pg, user='admin', pw='secret1'):
     pg.wait_for_timeout(300)
+    if not pg.is_visible('#useridInput'):
+        who=pg.evaluate("currentUser ? currentUser.userId : ''")
+        if who==user: return
+        pg.click('#logoutBtn'); pg.wait_for_timeout(300); pg.click('#dlgButtons button:last-child'); pg.wait_for_timeout(500)
     if pg.is_visible('#useridInput'):
         pg.fill('#useridInput',user); pg.click('#useridSubmit'); pg.wait_for_timeout(300)
         pg.fill('#pinInput',pw); pg.click('#pinSubmit'); pg.wait_for_timeout(1200)

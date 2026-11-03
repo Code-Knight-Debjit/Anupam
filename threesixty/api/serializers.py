@@ -66,6 +66,7 @@ def serialize_holiday(holiday):
         'name': holiday.name,
         'is_all_branches': holiday.is_all_branches,
         'branch_ids': list(holiday.branches.values_list('id', flat=True)),
+        'created_by': serialize_user_ref(holiday.created_by),
         'legacy_id': holiday.legacy_id,
     }
 
@@ -76,6 +77,7 @@ def serialize_lookup_item(item):
         'kind': item.kind,
         'name': item.name,
         'extra': item.extra,
+        'details': item.details or {},
         'is_active': item.is_active,
         'sort_order': item.sort_order,
         'legacy_id': item.legacy_id,
@@ -110,6 +112,7 @@ def serialize_employee(profile, viewer):
     if is_admin or is_self:
         data.update({
             'phone': profile.phone,
+            'email': profile.user.email,
             'emp_code': profile.emp_code,
             'is_active_employee': profile.is_active_employee,
             'aadhaar_number': profile.aadhaar_number if is_admin else mask_id_number(profile.aadhaar_number),
@@ -316,7 +319,9 @@ def serialize_sales_document(document, include_items=True):
         data['order_value'] = str(document.order_value) if document.order_value is not None else None
         data['lost_reason'] = document.lost_reason
         data['customer_label'] = document.customer.select_label
+        data['customer_name'] = document.customer.name
         data['contact_name'] = document.contact.name if document.contact_id else ''
+        data['contact_phone'] = (document.contact.phone or document.contact.phone2) if document.contact_id else ''
         data['branch_name'] = document.branch.name
         data['reference_number'] = document.reference.doc_number if document.reference_id else ''
         last = doc_service.last_contact_on(document)
@@ -363,8 +368,12 @@ def serialize_payment_collection(payment, include_receipts=True):
         'branch_id': payment.branch_id,
         'customer_id': payment.customer_id,
         'customer_label': payment.customer.select_label,
+        # The reference's companyLabel(): "Name — Plant".
+        'customer_name': f'{payment.customer.name} — {payment.customer.plant.strip()}' if (payment.customer.plant or '').strip() else payment.customer.name,
+        'branch_name': payment.branch.name,
         'contact_id': payment.contact_id,
         'contact_name': payment.contact.name if payment.contact_id else '',
+        'contact_phone': (payment.contact.phone or payment.contact.phone2) if payment.contact_id else '',
         'amount': str(payment.amount),
         'received': str(received),
         'balance': str(payment.balance()),
@@ -389,12 +398,18 @@ def serialize_payment_collection(payment, include_receipts=True):
 
 
 def serialize_task(task):
+    people = [task.assigned_to] + [u for u in task.joint_with.all() if u.pk != task.assigned_to_id]
+    contact = task.related_contact
+    doc = task.related_document
     return {
         'id': task.id,
         'title': task.title,
         'description': task.description,
         'assigned_to': serialize_user_ref(task.assigned_to),
+        # Everyone the task is given to, primary first (the reference's `assignees`).
+        'assignees': [serialize_user_ref(u) for u in people],
         'joint_with_user_ids': [u.id for u in task.joint_with.all()],
+        'joint_names': task.joint_names or [],
         'kind': task_kind(task),
         'auto_closed_by_visit': task.auto_closed_by_visit,
         'priority': task.priority,
@@ -402,11 +417,16 @@ def serialize_task(task):
         'task_type': task.task_type,
         'due_date': task.due_date.isoformat() if task.due_date else None,
         'related_customer_id': task.related_customer_id,
+        'related_customer_name': task.related_customer.name if task.related_customer_id else '',
         'related_contact_id': task.related_contact_id,
+        'related_contact_name': contact.name if contact else '',
+        'related_contact_phone': (contact.phone or contact.phone2) if contact else '',
         'related_document_id': task.related_document_id,
+        'related_document': {'id': doc.id, 'type': doc.type, 'label': doc.get_type_display(), 'number': doc.doc_number} if doc else None,
         'created_by': serialize_user_ref(task.created_by),
         'created_at': task.created_at.isoformat(),
         'completed_at': task.completed_at.isoformat() if task.completed_at else None,
+        'completed_by': serialize_user_ref(task.completed_by),
         'version': task.version,
         'legacy_id': task.legacy_id,
     }
@@ -458,7 +478,10 @@ def serialize_call_assignment(assignment, include_attempts=True):
     data = {
         'id': assignment.id,
         'customer_id': assignment.customer_id,
+        'customer_name': assignment.customer.name,
         'contact_id': assignment.contact_id,
+        'contact_name': assignment.contact.name if assignment.contact_id else '',
+        'contact_phone': (assignment.contact.phone or assignment.contact.phone2) if assignment.contact_id else '',
         'week_of': assignment.week_of.isoformat(),
         'status': assignment.status,
         'remarks': assignment.remarks,

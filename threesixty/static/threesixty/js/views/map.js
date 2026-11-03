@@ -1,124 +1,82 @@
-// Map & Nearby — ported from `renderMapPage`/`mapRefresh` (contact_management.html
-// ~L4808-4848). Uses vendored Leaflet (already linked in index.html) + OSM
-// tiles, with a sortable/filterable list alongside the map pins.
+// Map & Nearby — the reference's page: a toolbar (what to show, state, assignee, "Near me", radius), the map on the left
+// and the list of pins on the right. Leaflet is vendored; tiles come from OpenStreetMap, and the list works without them.
 import { api } from '../api.js';
-import { el, escapeHtml, toast, loadScript } from '../ui.js';
+import { state } from '../state.js';
+import { el, escapeHtml, customAlert, loadScript } from '../ui.js';
 import { navigate } from '../router.js';
+import { mountRefView, geoDist, geoFmtDist, geoDirLink, pinOf } from '../customer_common.js';
+import { getLocation } from '../attendance_actions.js';
 
-function geoDist(a, b) {
-  const R = 6371000, r = (x) => (x * Math.PI) / 180;
-  const dLat = r(b.lat - a.lat), dLng = r(b.lng - a.lng);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-function geoFmtDist(m) { return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`; }
-function geoDirLink(g) { return `https://www.google.com/maps/dir/?api=1&destination=${g.lat},${g.lng}`; }
+let mapObj = null, mapLayer = null, me = null, cards = [];
 
-function getLocation() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) { reject(new Error('This device/browser cannot share location.')); return; }
-    navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      (err) => reject(new Error(err && err.code === 1 ? 'Location permission was denied.' : 'Could not get your location.')),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-    );
-  });
-}
-
-function mapItems(customers, show, stateFilter, assignedId) {
-  const comps = customers.filter((c) => (!stateFilter || c.state === stateFilter)
-    && (!assignedId || (c.assigned_to_ids || []).includes(Number(assignedId))));
-  const items = [];
-  let missing = 0;
+function items() {
+  const show = el('mapShow').value, st = el('mapState').value, as = el('mapAssigned').value;
+  const comps = cards.filter((c) => (!st || c.state === st) && (!as || c.assigned_to.some((a) => a.full_name === as)));
+  const out = [];
   comps.forEach((c) => {
-    const hasPlant = c.plant_geo_lat != null && c.plant_geo_lng != null;
-    const hasHo = c.ho_geo_lat != null && c.ho_geo_lng != null;
-    if (show === 'missing') { if (!hasPlant && !hasHo) items.push({ c, kind: 'none' }); return; }
-    if (!hasPlant && !hasHo) missing += 1;
-    if (show !== 'ho' && hasPlant) items.push({ c, kind: 'plant', g: { lat: c.plant_geo_lat, lng: c.plant_geo_lng } });
-    if (show !== 'plant' && hasHo) items.push({ c, kind: 'ho', g: { lat: c.ho_geo_lat, lng: c.ho_geo_lng } });
+    const plant = pinOf(c, 'plant'), ho = pinOf(c, 'ho');
+    if (show === 'missing') { if (!plant && !ho) out.push({ c, kind: 'none' }); return; }
+    if (show !== 'ho' && plant) out.push({ c, kind: 'plant', g: plant });
+    if (show !== 'plant' && ho) out.push({ c, kind: 'ho', g: ho });
   });
-  return { items, missing };
+  return { items: out, missing: comps.filter((c) => !pinOf(c, 'plant') && !pinOf(c, 'ho')).length };
 }
 
-let mapObj = null, mapLayer = null, mapMe = null;
-let L = null;
+async function refresh(fit) {
+  const { items: all, missing } = items();
+  const radius = +el('mapRadius').value;
+  all.forEach((it) => { it.d = (me && it.g) ? geoDist(me, it.g) : null; });
+  let list = all;
+  if (me && radius) list = list.filter((it) => it.d == null || it.d <= radius * 1000);
+  list.sort((a, b) => (me && a.d != null && b.d != null ? a.d - b.d : (a.c.name || '').localeCompare(b.c.name || '')));
+  el('mapCount').textContent = `${list.length} shown · ${missing} customer${missing === 1 ? '' : 's'} without any pin`;
+  el('mapList').innerHTML = list.length ? list.map((it, i) => `<div class="map-item">
+      <b>${escapeHtml(it.c.name)}</b>${it.kind === 'plant' ? '<span class="map-badge">Plant</span>' : it.kind === 'ho' ? '<span class="map-badge ho">Head office</span>' : '<span class="map-badge">No pin</span>'}
+      <div class="mi-meta">${escapeHtml([it.c.area, it.c.city, it.c.state].filter(Boolean).join(', ') || '—')}${it.d != null ? ' · <b>' + geoFmtDist(it.d) + ' away</b>' : ''}</div>
+      <div class="cv-geo-links"><a href="#" data-open="${it.c.id}">Open customer</a>${it.g ? `<a href="${geoDirLink(it.g)}" target="_blank" rel="noopener">Directions</a>` : `<a href="#" data-pin="${it.c.id}">Add pin</a>`}</div>
+    </div>`).join('') : '<div class="map-item" style="color:var(--text-dim);">Nothing to show for these filters.</div>';
+  el('mapList').querySelectorAll('[data-open]').forEach((a) => a.onclick = (e) => { e.preventDefault(); navigate('customerview', a.dataset.open); });
+  el('mapList').querySelectorAll('[data-pin]').forEach((a) => a.onclick = (e) => { e.preventDefault(); navigate('customerform', a.dataset.pin); });
+  const box = el('mapBox');
+  let L = window.L;
+  if (!L) { try { await loadScript(window.THREESIXTY_VENDOR.leaflet); L = window.L; } catch (e) { L = null; } }
+  if (!L) { box.textContent = 'The map couldn’t load (it needs an internet connection). The list on the right still works, and each row has a Directions link.'; return; }
+  if (!mapObj || mapObj._container !== box) {
+    box.textContent = ''; box.style.display = 'block';
+    mapObj = L.map('mapBox').setView([20.5937, 78.9629], 5);
+    // OpenStreetMap's tile policy refuses requests that carry no Referer. This site sends none by default
+    // (Referrer-Policy: same-origin), so the tiles ask for the site's origin only — never the path or any data.
+    const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, referrerPolicy: 'origin', attribution: '&copy; OpenStreetMap contributors' }).addTo(mapObj);
+    let failed = 0;
+    tiles.on('tileerror', () => {
+      if (++failed === 3) { const n = document.createElement('div'); n.className = 'map-tile-warn'; n.textContent = 'Map tiles could not be loaded (check the internet connection). The list on the right still works.'; box.appendChild(n); }
+    });
+    mapLayer = L.layerGroup().addTo(mapObj);
+  }
+  setTimeout(() => mapObj.invalidateSize(), 50);
+  mapLayer.clearLayers();
+  const pts = [];
+  list.filter((it) => it.g).forEach((it) => {
+    const m = L.circleMarker([it.g.lat, it.g.lng], { radius: 8, weight: 2, color: '#fff', fillOpacity: 0.95, fillColor: it.kind === 'plant' ? '#e8702a' : '#2f6fd1' }).addTo(mapLayer);
+    m.bindPopup(`<b>${escapeHtml(it.c.name)}</b><br>${it.kind === 'plant' ? 'Plant' : 'Head office'}${it.d != null ? ' · ' + geoFmtDist(it.d) + ' away' : ''}<br><a href="${geoDirLink(it.g)}" target="_blank" rel="noopener">Directions</a>`);
+    pts.push([it.g.lat, it.g.lng]);
+  });
+  if (me) { L.circleMarker([me.lat, me.lng], { radius: 9, weight: 3, color: '#fff', fillColor: '#1a9a4a', fillOpacity: 1 }).addTo(mapLayer).bindPopup('You are here'); pts.push([me.lat, me.lng]); }
+  if (fit && pts.length) mapObj.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
+}
 
 export async function mountMap(root) {
-  const [customers, employees] = await Promise.all([api.all('customers/'), api.all('employees/')]);
-  const states = [...new Set(customers.map((c) => c.state).filter(Boolean))].sort();
-  if (window.THREESIXTY_VENDOR && window.THREESIXTY_VENDOR.leaflet) {
-    try { await loadScript(window.THREESIXTY_VENDOR.leaflet); } catch (e) { /* handled below via L==null fallback */ }
-  }
-  L = window.L || null;
-
-  root.innerHTML = `
-    <div class="map-layout" style="display:grid;grid-template-columns:1fr 360px;gap:16px;align-items:start;">
-      <div id="mapBox" style="height:70vh;border-radius:var(--radius-md);background:var(--surface-container-low);"></div>
-      <div>
-        <div class="field"><label>Show</label><select id="mapShow">
-          <option value="both">Plant &amp; head office</option>
-          <option value="plant">Plant only</option>
-          <option value="ho">Head office only</option>
-          <option value="missing">Missing pin</option>
-        </select></div>
-        <div class="field"><label>State</label><select id="mapState"><option value="">All states</option>${states.map((s) => `<option>${escapeHtml(s)}</option>`).join('')}</select></div>
-        <div class="field"><label>Assigned to</label><select id="mapAssigned"><option value="">All assignees</option>${employees.map((e) => `<option value="${e.user_id}">${escapeHtml(e.full_name)}</option>`).join('')}</select></div>
-        <div class="field"><label>Within (km)</label><input type="number" id="mapRadius" min="0" placeholder="no limit"></div>
-        <button class="btn sm" id="mapNearBtn">📍 Near me</button>
-        <div class="sub" id="mapCount" style="margin:10px 0;"></div>
-        <div id="mapList" style="max-height:48vh;overflow-y:auto;"></div>
-      </div>
-    </div>`;
-
-  async function refresh(fit) {
-    const show = el('mapShow').value, stFilter = el('mapState').value, as = el('mapAssigned').value;
-    const { items, missing } = mapItems(customers, show, stFilter, as);
-    const radius = Number(el('mapRadius').value) || 0;
-    items.forEach((it) => { it.d = (mapMe && it.g) ? geoDist(mapMe, it.g) : null; });
-    let list = items;
-    if (mapMe && radius) list = list.filter((it) => it.d == null || it.d <= radius * 1000);
-    list.sort((a, b) => (mapMe && a.d != null && b.d != null) ? a.d - b.d : (a.c.name || '').localeCompare(b.c.name || ''));
-
-    el('mapCount').textContent = `${list.length} shown · ${missing} customer${missing === 1 ? '' : 's'} without any pin`;
-    el('mapList').innerHTML = list.length ? list.map((it) => `
-      <div class="card" style="margin-bottom:8px;padding:10px 14px;">
-        <div><strong>${escapeHtml(it.c.name)}</strong> ${it.kind === 'plant' ? '<span class="badge">Plant</span>' : it.kind === 'ho' ? '<span class="badge">Head office</span>' : '<span class="badge">No pin</span>'}</div>
-        <div class="sub">${escapeHtml([it.c.area, it.c.city, it.c.state].filter(Boolean).join(', ') || '—')}${it.d != null ? ` · <b>${geoFmtDist(it.d)} away</b>` : ''}</div>
-        <div style="margin-top:4px;"><a data-open="${it.c.id}" style="cursor:pointer;color:var(--primary);">Open customer</a>${it.g ? ` · <a href="${geoDirLink(it.g)}" target="_blank" rel="noopener">Directions</a>` : ''}</div>
-      </div>`).join('') : '<p class="sub">Nothing to show for these filters.</p>';
-    root.querySelectorAll('[data-open]').forEach((a) => a.onclick = () => navigate('customers'));
-
-    if (!L) { el('mapBox').textContent = 'The map couldn’t load (it needs an internet connection). The list on the right still works, and each row has a Directions link.'; return; }
-    if (!mapObj) {
-      mapObj = L.map('mapBox').setView([20.5937, 78.9629], 5);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(mapObj);
-      mapLayer = L.layerGroup().addTo(mapObj);
-    }
-    setTimeout(() => mapObj.invalidateSize(), 50);
-    mapLayer.clearLayers();
-    const pts = [];
-    list.filter((it) => it.g).forEach((it) => {
-      const m = L.circleMarker([it.g.lat, it.g.lng], { radius: 8, weight: 2, color: '#fff', fillOpacity: .95, fillColor: it.kind === 'plant' ? '#e8702a' : '#2f6fd1' }).addTo(mapLayer);
-      m.bindPopup(`<b>${escapeHtml(it.c.name)}</b><br>${it.kind === 'plant' ? 'Plant' : 'Head office'}${it.d != null ? ` · ${geoFmtDist(it.d)} away` : ''}<br><a href="${geoDirLink(it.g)}" target="_blank" rel="noopener">Directions</a>`);
-      pts.push([it.g.lat, it.g.lng]);
-    });
-    if (mapMe) {
-      L.circleMarker([mapMe.lat, mapMe.lng], { radius: 9, weight: 3, color: '#fff', fillColor: '#1a9a4a', fillOpacity: 1 }).addTo(mapLayer).bindPopup('You are here');
-      pts.push([mapMe.lat, mapMe.lng]);
-    }
-    if (fit && pts.length) mapObj.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
-  }
-
+  mapObj = null; me = null;
+  mountRefView(root, 'view-map');
+  cards = (await api.get('customers/cards/')).results;
+  el('mapState').innerHTML = '<option value="">All states</option>' + [...new Set(cards.map((c) => c.state).filter(Boolean))].sort().map((s) => `<option>${escapeHtml(s)}</option>`).join('');
+  el('mapAssigned').innerHTML = '<option value="">All assignees</option>' + state.employees.map((e) => `<option>${escapeHtml(e.full_name)}</option>`).join('');
   ['mapShow', 'mapState', 'mapAssigned', 'mapRadius'].forEach((id) => el(id).addEventListener('change', () => refresh(true)));
   el('mapNearBtn').addEventListener('click', async () => {
-    const btn = el('mapNearBtn');
-    btn.textContent = 'Locating…';
-    try { mapMe = await getLocation(); btn.textContent = '📍 Near me ✓'; } catch (e) { toast(e.message, 'error'); btn.textContent = '📍 Near me'; }
+    el('mapNearBtn').textContent = 'Locating…';
+    try { me = await getLocation(); } catch (err) { await customAlert(err.message); me = null; }
+    el('mapNearBtn').textContent = me ? '📍 Near me ✓' : '📍 Near me';
     refresh(true);
   });
-
   await refresh(true);
-
-  return () => { if (mapObj) { mapObj.remove(); mapObj = null; mapLayer = null; } };
 }

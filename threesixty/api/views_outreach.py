@@ -24,12 +24,14 @@ class CallAssignmentResource(JsonResource):
     model = CallAssignment
 
     def list_queryset(self, request, **kwargs):
-        qs = CallAssignment.objects.select_related('assigned_to', 'assigned_by', 'called_by').prefetch_related('attempts__by')
+        qs = CallAssignment.objects.select_related('assigned_to', 'assigned_by', 'called_by', 'customer', 'contact').prefetch_related('attempts__by')
         week_of = request.GET.get('week_of')
         if week_of:
             qs = qs.filter(week_of=week_of)
         if RoleRules.is_admin(request.user) or RoleRules.is_branch_manager(request.user):
             return qs
+        if RoleRules.is_branch_staff(request.user):       # reference: Branch Staff also see their branch team's calls
+            return qs.filter(assigned_to_id__in=RoleRules.user_ids_in_manager_scope(request.user))
         return qs.filter(assigned_to=request.user)
 
     def serialize(self, request, instance):

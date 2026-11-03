@@ -266,9 +266,17 @@ class TestCorrection:
 
 
 # ----------------------------------------------------------------------------- leave & holidays
+def _d(n):
+    return timezone.localdate() + timedelta(days=n)
+
+
+def _nice(d):
+    return d.strftime('%d %b %Y')
+
+
 class TestLeave:
     def request(self, who, **extra):
-        body = {'date_from': '2026-11-02', 'date_to': '2026-11-03', 'reason': 'Family function', **extra}
+        body = {'date_from': _d(2).isoformat(), 'date_to': _d(3).isoformat(), 'reason': 'Family function', **extra}
         return call(client_for(team_[who]), 'post', '/360/api/leave-requests/', body)
 
     @pytest.fixture(autouse=True)
@@ -276,34 +284,50 @@ class TestLeave:
         global team_
         team_ = team
 
-    def test_REQ_AUT_09_request_notifies_admins_but_not_the_requester(self, team):
+    def test_REQ_AUT_09_request_notifies_admins_and_the_same_branch_managers_but_not_the_requester(self, team):
         make_employee('admin2', ADMIN)
         assert self.request('bs').status_code == 201
-        assert Notification.objects.filter(user=team['admin'], text='Staff requested leave: 2026-11-02 – 2026-11-03.').count() == 1
+        text = f'Staff requested leave: {_nice(_d(2))} – {_nice(_d(3))}.'
+        assert Notification.objects.filter(user=team['admin'], text=text).count() == 1
         assert Notification.objects.filter(user__username='admin2', type='leave').count() == 1
-        assert not Notification.objects.filter(user=team['bs']).exists() and not Notification.objects.filter(user=team['bm']).exists()
+        assert Notification.objects.filter(user=team['bm'], text=text).count() == 1               # same branch (Chennai)
+        assert not Notification.objects.filter(user=team['bs']).exists()
+        # a Branch Manager of another branch is not asked
+        assert self.request('blr').status_code == 201
+        assert not Notification.objects.filter(user=team['bm'], text__startswith='Bengaluru Staff').exists()
 
-    def test_an_admin_requesting_leave_does_not_notify_themself(self, team):
-        self.request('admin')
-        assert not Notification.objects.filter(user=team['admin']).exists()
+    def test_an_admins_own_leave_is_approved_at_once_and_tells_nobody(self, team):
+        res = self.request('admin')
+        assert res.status_code == 201 and res.json()['status'] == 'Approved' and res.json()['decided_by']['id'] == team['admin'].pk
+        assert not Notification.objects.exists()
 
-    def test_leave_validation(self, team):
-        assert self.request('bs', date_to='2026-11-01').status_code == 400
-        assert self.request('bs', reason='  ').status_code == 400
-        assert self.request('bs', date_from=None).status_code == 400
+    def test_leave_validation_messages(self, team):
+        err = lambda r: r.json()['error']
+        assert err(self.request('bs', date_to=_d(1).isoformat())) == 'End date cannot be before the start date.'
+        assert err(self.request('bs', reason='  ')) == 'Add a short reason.'
+        assert err(self.request('bs', date_from=None)) == 'Pick the first day of leave.'
+        assert err(self.request('bs', date_from=_d(-1).isoformat(), date_to=_d(1).isoformat())).startswith('Leave cannot start in the past')
+        assert self.request('bs').status_code == 201
+        assert err(self.request('bs', date_from=_d(3).isoformat(), date_to=_d(5).isoformat())) == 'You already have a leave request overlapping these dates.'
+
+    def test_a_rejected_request_does_not_block_a_new_one(self, team):
+        first = self.request('bs').json()['id']
+        call(client_for(team['admin']), 'post', f'/360/api/leave-requests/{first}/reject/', {})
+        assert self.request('bs').status_code == 201
 
     def test_REQ_AUT_09_decision_notifies_the_employee(self, team):
         leave_id = self.request('bs').json()['id']
         res = call(client_for(team['bm']), 'post', f'/360/api/leave-requests/{leave_id}/approve/', {'note': 'Enjoy'})
         assert res.status_code == 200 and res.json()['status'] == 'Approved'
         note = Notification.objects.get(user=team['bs'], type='leave')
-        assert note.text == 'Your leave (2026-11-02 – 2026-11-03) was approved by Bala. Enjoy'
-        assert day(team['bs'], date(2026, 11, 2), today=date(2026, 11, 5))['code'] == 'LV'
+        assert note.text == f'Your leave ({_nice(_d(2))} – {_nice(_d(3))}) was approved by Bala. Enjoy'
+        assert day(team['bs'], _d(2), today=_d(5))['code'] == 'LV'
 
     def test_rejection_message(self, team):
         leave_id = self.request('bs').json()['id']
         call(client_for(team['admin']), 'post', f'/360/api/leave-requests/{leave_id}/reject/', {})
-        assert Notification.objects.get(user=team['bs']).text == 'Your leave (2026-11-02 – 2026-11-03) was rejected by Sanjeev.'
+        assert Notification.objects.get(user=team['bs'], text__startswith='Your leave').text == \
+            f'Your leave ({_nice(_d(2))} – {_nice(_d(3))}) was rejected by Sanjeev.'
 
     def test_REQ_ATT_05_who_may_decide(self, team):
         mine = self.request('bm').json()['id']
@@ -323,7 +347,8 @@ class TestLeave:
         assert call(client_for(team['admin']), 'post', f'/360/api/leave-requests/{leave_id}/reject/', {}).status_code == 404
 
     def test_owner_can_cancel_while_pending_only(self, team):
-        a, b = self.request('bs').json()['id'], self.request('bs').json()['id']
+        a = self.request('bs', date_from=_d(2).isoformat(), date_to=_d(2).isoformat()).json()['id']
+        b = self.request('bs', date_from=_d(10).isoformat(), date_to=_d(10).isoformat()).json()['id']
         call(client_for(team['admin']), 'post', f'/360/api/leave-requests/{b}/approve/', {})
         bs = client_for(team['bs'])
         assert call(bs, 'delete', f'/360/api/leave-requests/{a}/').status_code == 200
@@ -340,7 +365,7 @@ class TestLeave:
 
 class TestHolidays:
     def add(self, who='admin', **extra):
-        body = {'date': '2026-11-14', 'name': 'Diwali', 'is_all_branches': True, **extra}
+        body = {'date': _d(30).isoformat(), 'name': 'diwali', 'is_all_branches': True, **extra}
         return call(client_for(team_[who]), 'post', '/360/api/holidays/', body)
 
     @pytest.fixture(autouse=True)
@@ -348,31 +373,91 @@ class TestHolidays:
         global team_
         team_ = team
 
-    def test_REQ_AUT_09_holiday_for_all_branches_notifies_everyone(self, team):
+    def test_REQ_AUT_09_holiday_for_all_branches_notifies_everyone_but_the_person_adding_it(self, team):
         assert self.add().status_code == 201
-        assert set(Notification.objects.values_list('user__username', flat=True)) == {'admin', 'bm', 'bs', 'sm', 'blr'}
-        assert Notification.objects.filter(user=team['bs']).get().text == 'Holiday: Diwali on 2026-11-14'
+        assert set(Notification.objects.values_list('user__username', flat=True)) == {'bm', 'bs', 'sm', 'blr'}
+        assert Notification.objects.filter(user=team['bs']).get().text == f'Holiday: Diwali on {_nice(_d(30))}.'
+
+    def test_the_name_is_title_cased_and_the_person_who_added_it_is_kept(self, team):
+        body = self.add().json()
+        assert body['name'] == 'Diwali' and body['created_by']['id'] == team['admin'].pk
 
     def test_REQ_AUT_09_branch_holiday_notifies_only_those_branches(self, team, bengaluru):
-        res = self.add(is_all_branches=False, branch_ids=[bengaluru.id], date_to='2026-11-16')
+        res = self.add(is_all_branches=False, branch_ids=[bengaluru.id], date_to=_d(32).isoformat())
         assert res.status_code == 201
         assert set(Notification.objects.values_list('user__username', flat=True)) == {'blr'}
-        assert Notification.objects.get().text == 'Holiday: Diwali on 2026-11-14 – 2026-11-16'
+        assert Notification.objects.get().text == f'Holiday: Diwali on {_nice(_d(30))} – {_nice(_d(32))}.'
 
-    def test_holiday_needs_branches_or_all_and_valid_dates(self, team):
-        assert self.add(is_all_branches=False).status_code == 400
-        assert self.add(date_to='2026-11-01').status_code == 400
-        assert self.add(name='  ').status_code == 400
+    def test_holiday_validation_messages(self, team, bengaluru):
+        err = lambda r: r.json()['error']
+        assert err(self.add(is_all_branches=False)) == 'Pick at least one branch.'
+        assert err(self.add(date_to=_d(1).isoformat())) == 'End date cannot be before the start date.'
+        assert err(self.add(name='  ')) in ('date and name are required.', 'Enter the holiday name.')
+        assert self.add().status_code == 201
+        assert err(self.add(name='Again')).startswith('A holiday (Diwali) already covers some of these dates')
 
-    def test_only_admin_adds_and_removes_holidays(self, team):
-        for who in ('bm', 'bs', 'sm'):
+    def test_a_branch_manager_adds_and_removes_holidays_for_their_own_branches_only(self, team, chennai, bengaluru):
+        assert self.add('bm').status_code == 403                                    # all branches is Admin-only
+        assert self.add('bm', is_all_branches=False, branch_ids=[bengaluru.id]).status_code == 403
+        mine = self.add('bm', is_all_branches=False, branch_ids=[chennai.id])
+        assert mine.status_code == 201
+        everyone = self.add('admin', date=_d(40).isoformat()).json()
+        assert call(client_for(team['bm']), 'delete', f'/360/api/holidays/{everyone["id"]}/').status_code == 403
+        assert call(client_for(team['bm']), 'delete', f'/360/api/holidays/{mine.json()["id"]}/').status_code == 200
+
+    def test_staff_cannot_add_or_remove_holidays(self, team):
+        for who in ('bs', 'sm'):
             assert self.add(who).status_code == 403
         h = self.add().json()
-        assert call(client_for(team['bm']), 'delete', f'/360/api/holidays/{h["id"]}/').status_code == 403
+        assert call(client_for(team['bs']), 'delete', f'/360/api/holidays/{h["id"]}/').status_code == 403
         assert call(client_for(team['admin']), 'delete', f'/360/api/holidays/{h["id"]}/').status_code == 200
         assert not Holiday.objects.exists()
+
+    def test_everyone_sees_only_the_holidays_that_apply_to_them(self, team, chennai, bengaluru):
+        self.add()
+        blr_only = self.add(is_all_branches=False, branch_ids=[bengaluru.id], date=_d(50).isoformat()).json()['id']
+        ids = lambda who: {h['id'] for h in call(client_for(team[who]), 'get', '/360/api/holidays/').json()['results']}
+        assert blr_only in ids('admin') and blr_only in ids('blr') and blr_only not in ids('bs')
 
     def test_inactive_staff_get_no_holiday_notice(self, team):
         EmployeeProfile.objects.filter(user=team['sm']).update(is_active_employee=False)
         self.add()
         assert not Notification.objects.filter(user=team['sm']).exists()
+
+
+class TestTeamMonth:
+    def test_everyone_gets_their_own_month_and_approvers_their_team(self, team):
+        record(team['bs'], _d(0), time(9, 30), time(18, 30))
+        month = timezone.localdate().strftime('%Y-%m')
+        as_bs = call(client_for(team['bs']), 'get', f'/360/api/attendance/month/?month={month}').json()
+        assert [p['user_id'] for p in as_bs['people']] == [team['bs'].pk]
+        row = next(d for d in as_bs['people'][0]['days'] if d['date'] == _d(0).isoformat())
+        assert row['check_in'] == '09:30' and row['check_out'] == '18:30' and row['worked'] == 540
+        as_bm = call(client_for(team['bm']), 'get', f'/360/api/attendance/month/?month={month}').json()
+        assert {p['user_id'] for p in as_bm['people']} >= {team['bm'].pk, team['bs'].pk} and team['blr'].pk not in {p['user_id'] for p in as_bm['people']}
+
+    def test_locations_only_for_the_admin_and_the_person(self, team):
+        record(team['bs'], _d(0), time(9, 30), time(18, 30), in_loc_lat=13.0, in_loc_lng=80.0)
+        month = timezone.localdate().strftime('%Y-%m')
+        def loc(who):
+            people = call(client_for(team[who]), 'get', f'/360/api/attendance/month/?month={month}').json()['people']
+            row = next(p for p in people if p['user_id'] == team['bs'].pk)
+            return next(d for d in row['days'] if d['date'] == _d(0).isoformat()).get('in_location')
+        assert loc('admin') and loc('bs') and not loc('bm')
+
+
+class TestDayLabels:
+    """The wording shown next to a day matches the reference (not just the one-letter code)."""
+
+    def test_labels(self, team, chennai):
+        Holiday.objects.create(date=MON, date_to=MON, name='Pongal', is_all_branches=True)
+        record(team['bs'], TUE, time(9, 30), time(18, 30))
+        record(team['bs'], date(2026, 10, 28), time(10, 15), time(18, 30))
+        record(team['bs'], date(2026, 10, 27) + timedelta(days=2), None, None, status='Half day')
+        label = lambda d: day(team['bs'], d, today=date(2026, 11, 5))['label']
+        assert label(MON) == 'Holiday — Pongal'
+        assert label(SUN) == 'Weekly off'
+        assert label(TUE) == 'Present'
+        assert label(date(2026, 10, 28)) == 'Present (late)'
+        assert label(date(2026, 10, 29)) == 'Half day'
+        assert label(date(2026, 10, 30)) == 'Absent'

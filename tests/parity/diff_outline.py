@@ -11,8 +11,10 @@ def load(f):
             if n: s.add((tag if tag in('h1','h2','h3','button','th','label') else 'f',n))
     return s
 tot_m=0
-for rf in sorted(glob.glob(f'{S}/shots/ref_admin_*.txt')):
-    name=os.path.basename(rf)[10:-4]; af=f'{S}/shots/app_admin_{name}.txt'
+USER=[a for a in sys.argv[1:] if not a.startswith('-')]
+USER=USER[0] if USER else 'admin'
+for rf in sorted(glob.glob(f'{S}/shots/ref_{USER}_*.txt')):
+    name=os.path.basename(rf)[len(USER)+5:-4]; af=f'{S}/shots/app_{USER}_{name}.txt'
     r,a=load(rf),load(af); miss=sorted(r-a); extra=sorted(a-r)
     tot_m+=len(miss)
     print(f'## {name}: ref={len(r)} app={len(a)} missing_in_app={len(miss)} extra_in_app={len(extra)}')

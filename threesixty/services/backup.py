@@ -110,6 +110,31 @@ def parse(raw: bytes) -> dict:
     return data
 
 
+def _count_rows(data: dict) -> dict:
+    """The figures the Backup page quotes: customers, contacts, interactions, sales documents, payments, tasks, users, branches."""
+    def n(model):
+        label = f'threesixty.{model.lower()}'
+        return sum(1 for rows in data['datasets'].values() for r in rows if r.get('model') == label)
+    return {'customers': n('Customer'), 'contacts': n('Contact'), 'interactions': n('Interaction'), 'sales_documents': n('SalesDocument'),
+            'payments': n('PaymentCollection'), 'tasks': n('Task'), 'users': len(data.get('users', [])), 'branches': n('Branch')}
+
+
+def summary() -> dict:
+    """The same figures for the data as it is now, and when a backup was last downloaded."""
+    from ..models import SiteSetting
+    counts = {'customers': 'Customer', 'contacts': 'Contact', 'interactions': 'Interaction', 'sales_documents': 'SalesDocument', 'payments': 'PaymentCollection',
+              'tasks': 'Task', 'branches': 'Branch'}
+    out = {k: _model(m).objects.count() for k, m in counts.items()}
+    out['users'] = User.objects.filter(threesixty_profile__isnull=False).count()
+    last = SiteSetting.objects.filter(key='lastBackupAt').first()
+    return {'counts': out, 'last_backup_at': (last.value or {}).get('at') if last else None}
+
+
+def mark_backup_downloaded():
+    from ..models import SiteSetting
+    SiteSetting.objects.update_or_create(key='lastBackupAt', defaults={'value': {'at': timezone.now().isoformat()}})
+
+
 def describe(data: dict) -> dict:
     """What the file contains, and which datasets an older backup lacks."""
     present = {k: len(v) for k, v in data['datasets'].items()}
@@ -117,7 +142,7 @@ def describe(data: dict) -> dict:
     missing_from_file = [k for k in known if k not in data['datasets']]
     spec_keys = [k for k in rules.BACKUP_KEYS if k not in ALIASES]
     return {'created_at': data.get('created_at'), 'created_by': data.get('created_by'), 'users': len(data.get('users', [])),
-            'contains': present, 'missing': missing_from_file,
+            'counts': _count_rows(data), 'contains': present, 'missing': missing_from_file,
             'unknown': [k for k in data['datasets'] if k not in known],
             'note': 'Datasets listed under "missing" are not in this backup: restoring leaves them empty.',
             'spec_datasets': spec_keys}

@@ -49,7 +49,7 @@ def print_totals(document, items=None):
         tax_total += line_tax
         name = f'{item.item_name or "—"} ({item.make})' if item.make else (item.item_name or '—')
         lines.append({'sr': number, 'name': name, 'qty': qty, 'unit': item.unit, 'rate': shown_rate,
-                      'discount': disc, 'amount': amount, 'tax': line_tax})
+                      'discount': disc, 'amount': amount, 'tax': line_tax, 'tax_pct': tax})
     packing = _charge(document.packing_charges, document.packing_tax)
     freight = _charge(document.freight_charges, document.freight_tax)
     other = _charge(document.other_charges, document.other_charges_tax)

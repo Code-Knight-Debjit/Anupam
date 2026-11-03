@@ -94,5 +94,6 @@ def log_not_reached(user, assignment, reason, note='', call_again=None):
             user, assignment.assigned_to, assignment.contact.name if assignment.contact_id else '',
             assignment.customer.name, call_again, related_customer=assignment.customer,
             related_contact=assignment.contact,
+            description=f'Outreach: previous attempt — {attempt.reason}.{" " + attempt.note if attempt.note else ""}',
         )
     return attempt

@@ -100,6 +100,22 @@ def _document_or_404(request, pk):
 
 @staff_360_required
 @input_errors_as_400
+def next_number(request):
+    """What the next generated number would be for a branch and type — shown pre-filled on the form (not a reservation)."""
+    from ..models import Branch
+    from ..services.numbering import peek_next_number
+    try:
+        branch = Branch.objects.get(pk=request.GET.get('branch_id'), is_active=True)
+    except (Branch.DoesNotExist, ValueError, TypeError):
+        return error_response(ApiError(400, 'branch_id must be an active branch.'))
+    doc_type = request.GET.get('type')
+    if doc_type not in dict(SalesDocument.TYPE_CHOICES):
+        return error_response(ApiError(400, 'A valid type is required.'))
+    return JsonResponse({'number': peek_next_number(branch, doc_type), 'terms': [t for t in (branch.terms or '').split('\n') if t.strip()]})
+
+
+@staff_360_required
+@input_errors_as_400
 def document_outcome(request, pk):
     """POST {status: Win|Lose, order_value?, lost_reason?} — REQ-AUT-12."""
     if request.method != 'POST':

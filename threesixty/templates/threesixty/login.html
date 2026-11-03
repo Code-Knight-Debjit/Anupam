@@ -14,7 +14,7 @@
 <!-- Same screens as the reference: User ID -> Password (+ Forgot password / Not you?), first-run "create admin". -->
 <div class="login-wrap" id="loginScreen">
   <div class="login-card">
-    <div class="logo-row brand-360" aria-label="Anupam 360" style="border:0;margin:0;padding:0 0 10px;">360</div>
+    <div class="logo-row" id="logoRowLogin"><div style="display:flex; flex-direction:column; align-items:center; gap:4px;"><img src="{% if app_logo_url %}{{ app_logo_url }}{% else %}{% static 'threesixty/img/logo-on-light.png' %}{% endif %}" alt="Anupam 360" style="width:240px; max-width:80vw; height:auto; display:block;"></div></div>
     {% if first_run %}
       <h1>Sign in</h1>
       <p class="sub">No accounts yet — set up the admin account below.</p>
@@ -60,9 +60,9 @@
         {% csrf_token %}
         <input type="hidden" name="action" value="reset">
         <input type="hidden" name="username" id="rp-user">
-        <p class="sub" id="resetPwSub" style="margin-bottom:14px;">Another admin has to confirm with their own password.</p>
-        <div class="field" style="margin-bottom:10px;"><label for="rp-vuser">Verify with another Admin's User ID</label><input id="rp-vuser" name="verifier_username" type="text" required autocapitalize="off"></div>
-        <div class="field" style="margin-bottom:10px;"><label for="rp-vpass">That admin's password</label><input id="rp-vpass" name="verifier_password" type="password" required autocomplete="off" placeholder="That admin's password"></div>
+        <p class="sub" id="resetPwSub" style="margin-bottom:14px;">Another admin has to confirm with their own password (not needed if you are the only admin).</p>
+        <div class="field" style="margin-bottom:10px;"><label for="rp-vuser">Verify with another Admin's User ID</label><input id="rp-vuser" name="verifier_username" type="text" autocapitalize="off"></div>
+        <div class="field" style="margin-bottom:10px;"><label for="rp-vpass">That admin's password</label><input id="rp-vpass" name="verifier_password" type="password" autocomplete="off" placeholder="That admin's password"></div>
         <div class="field" style="margin-bottom:10px;"><label for="rp-new">New password</label><input id="rp-new" name="new_password" type="password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters"></div>
         <div class="field" style="margin-bottom:10px;"><label for="rp-confirm">Confirm new password</label><input id="rp-confirm" name="confirm_password" type="password" required minlength="8" autocomplete="new-password" placeholder="Re-type the new password"></div>
         <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center;" id="resetPwSubmit">Reset password</button>

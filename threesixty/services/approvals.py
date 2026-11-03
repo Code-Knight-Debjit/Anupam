@@ -39,7 +39,7 @@ def _label(target):
         return f'Customer {target.select_label}'
     if isinstance(target, Contact):
         return f'Contact {target.name} ({target.customer.name})'
-    return f'{target.get_type_display()} {target.doc_number}'
+    return f'{target.get_type_display()} {target.doc_number} ({target.customer.name})'
 
 
 def snapshot(target):
@@ -113,6 +113,8 @@ def _apply(approval):
         approval.customer.version += 1
         approval.customer.save()
         customer_service.apply_customer_m2m(approval.customer, data)
+        if 'contacts' in data:
+            customer_service.apply_contacts(approval.customer, data['contacts'], approval.requested_by)
     elif approval.contact_id:
         for field in CONTACT_FIELDS:
             if field in data:

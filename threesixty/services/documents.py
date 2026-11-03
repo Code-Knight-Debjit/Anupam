@@ -276,6 +276,11 @@ def apply_edit(document, data, user):
     if 'contact_id' in data and data['contact_id']:
         _contact_for(user, document.customer, data['contact_id'])
     status = data.pop('order_status', None)
+    new_number = (data.pop('doc_number', None) or '').strip()
+    if new_number and new_number != document.doc_number:           # the reference lets the number be retyped (docNumberEditable)
+        document.doc_number = new_number
+        if document.type not in NOT_GENERATED:
+            bump_counter_to(document.branch, document.type, new_number)
     apply_scalars(document, data)
     if status is not None:
         _set_manual_status(document, status)

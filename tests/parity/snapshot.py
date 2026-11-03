@@ -2,6 +2,7 @@ import sys
 from harness import *
 VIEWS=['dashboard','tasks','callinglist','attendance','customers','map','sales:enquiry','sales:quotation','sales:proforma','sales:dc','sales:po','payments','labels','reports','managelists','import','backup','users','branches']
 which=sys.argv[1]; user=sys.argv[2] if len(sys.argv)>2 else 'admin'
+if len(sys.argv)>3: VIEWS=sys.argv[3:]
 with sync_playwright() as p:
     if which=='ref':
         b,ctx,pg=ref_open(p,user)

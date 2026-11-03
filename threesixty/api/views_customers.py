@@ -95,6 +95,8 @@ class CustomerResource(JsonResource):
         customer.save()
         customer_service.apply_customer_m2m(customer, data)
         _apply_assignment(request, customer, to_add, to_remove)
+        if 'contacts' in data:
+            customer_service.apply_contacts(customer, data['contacts'], request.user)
         return Customer.objects.prefetch_related('assigned_to').get(pk=customer.pk)
 
     def apply_update(self, request, instance, data, **kwargs):
@@ -110,6 +112,8 @@ class CustomerResource(JsonResource):
         instance.save()
         customer_service.apply_customer_m2m(instance, data)
         _apply_assignment(request, instance, to_add, to_remove)
+        if 'contacts' in data:
+            customer_service.apply_contacts(instance, data['contacts'], request.user)
         return self.get_object(request, instance.pk)
 
     def apply_delete(self, request, instance, **kwargs):
@@ -296,6 +300,69 @@ def customers_bulk_assign(request):
 @require_GET
 @staff_360_required
 @input_errors_as_400
+def contact_profile(request, pk):
+    try:
+        contact = contact_service.visible_contacts_qs(request.user, Contact.objects.select_related('customer')).get(pk=pk)
+    except Contact.DoesNotExist:
+        return error_response(ApiError(404, 'Not found.'))
+    return JsonResponse(customer_service.contact_profile(request.user, contact))
+
+
+@require_GET
+@staff_360_required
+@input_errors_as_400
+def customer_transactions(request, pk):
+    try:
+        customer = visible_customers(request).get(pk=pk)
+    except Customer.DoesNotExist:
+        return error_response(ApiError(404, 'Not found.'))
+    return JsonResponse(customer_service.company_transactions(request.user, customer))
+
+
+@require_GET
+@staff_360_required
+def customers_cards(request):
+    """Everything the Customer list needs in one call (the reference filters client-side): each visible customer with the
+    names of its languages / brands / products / assignees, its contacts the viewer may see, the date of its last call and
+    last visit, and whether a request about it is waiting."""
+    from collections import defaultdict
+    from django.db.models import Max
+    qs = visible_customers(request).select_related('created_by').prefetch_related(
+        'preferred_languages', 'interested_brands', 'interested_products', 'assigned_to').order_by('created_at', 'id')   # the reference lists in the order added
+    customers = list(qs)
+    ids = [c.pk for c in customers]
+    contacts = defaultdict(list)
+    for ct in contact_service.visible_contacts_qs(request.user, Contact.objects.filter(customer_id__in=ids)).order_by('id'):
+        contacts[ct.customer_id].append(ct)
+    last = defaultdict(dict)
+    for row in (Interaction.objects.filter(contact__customer_id__in=ids)
+                .values('contact__customer_id', 'type').annotate(latest=Max('date'))):
+        last[row['contact__customer_id']][row['type']] = row['latest']
+    pending = set(RoleRules.visible_approval_requests(request.user, ApprovalRequest.objects.filter(status='pending', customer_id__in=ids))
+                  .values_list('customer_id', flat=True))
+    out = []
+    for c in customers:
+        data = serialize_customer(c)
+        calls = [last[c.pk][t] for t in (Interaction.TYPE_CALL, Interaction.TYPE_COLD_CALL) if t in last[c.pk]]
+        data.update({
+            'preferred_languages': [x.name for x in c.preferred_languages.all()],
+            'interested_brands': [x.name for x in c.interested_brands.all()],
+            'interested_products': [x.name for x in c.interested_products.all()],
+            'assigned_to': [{'id': u.id, 'full_name': u.get_full_name() or u.username} for u in c.assigned_to.all()],
+            'created_by_name': (c.created_by.get_full_name() or c.created_by.username) if c.created_by else '',
+            'logo_url': c.logo.url if c.logo else '',
+            'contacts': [serialize_contact(ct) for ct in contacts[c.pk]],
+            'last_call': max(calls).isoformat() if calls else None,
+            'last_visit': last[c.pk][Interaction.TYPE_VISIT].isoformat() if Interaction.TYPE_VISIT in last[c.pk] else None,
+            'pending_approval': c.pk in pending,
+        })
+        out.append(data)
+    return JsonResponse({'results': out})
+
+
+@require_GET
+@staff_360_required
+@input_errors_as_400
 def customer_contact_access(request, pk):
     """Who may see which contacts of a customer (Admin / Branch Manager)."""
     if not RoleRules.is_approver(request.user):
@@ -320,12 +387,15 @@ def duplicate_check(request):
     warned about a customer they can't see — and can request access)."""
     from ..models import ApprovalRequest as AR
     matches = customer_service.find_duplicates(request.GET.get('name', ''))
+    if request.GET.get('exclude'):                      # editing: the customer itself is not a duplicate of itself
+        matches = [c for c in matches if str(c.pk) != request.GET['exclude']]
     visible = set(visible_customers(request).filter(pk__in=[c.pk for c in matches]).values_list('pk', flat=True))
     pending = set(AR.objects.filter(
         status=AR.STATUS_PENDING, type=AR.TYPE_CUSTOMER_ACCESS, requested_by=request.user,
         customer__in=[c.pk for c in matches]).values_list('customer_id', flat=True))
     return JsonResponse({'matches': [
-        {'id': c.pk, 'label': c.select_label, 'has_access': c.pk in visible, 'access_request_pending': c.pk in pending}
+        {'id': c.pk, 'label': c.select_label, 'name': c.name, 'plant': c.plant,
+         'has_access': c.pk in visible, 'access_request_pending': c.pk in pending}
         for c in matches]})
 
 

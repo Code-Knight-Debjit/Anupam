@@ -72,3 +72,37 @@ class TestHardening:
 
     def test_robots_txt_disallows_360(self):
         assert 'Disallow: /360/' in Client().get('/robots.txt').content.decode()
+
+
+class TestImporterBranchShapes:
+    """The reference stores an employee's branches as branch NAMES; older backups used ids. Both must land."""
+
+    def _import_with(self, tmp_path, branches_of):
+        data = json.loads(FIXTURE.read_text())
+        for e in data['employees']:
+            e['branches'] = branches_of(data)
+        path = tmp_path / 'b.json'
+        path.write_text(json.dumps(data))
+        call_command('import_360_backup', str(path))
+        return data
+
+    def test_names(self, tmp_path):
+        data = self._import_with(tmp_path, lambda d: [d['branches'][0]['name']])
+        profile = EmployeeProfile.objects.filter(role=EmployeeProfile.BRANCH_STAFF).first() or EmployeeProfile.objects.exclude(role=EmployeeProfile.ADMIN).first()
+        assert list(profile.branches.values_list('name', flat=True)) == [data['branches'][0]['name']]
+
+    def test_ids(self, tmp_path):
+        data = self._import_with(tmp_path, lambda d: [d['branches'][0]['id']])
+        profile = EmployeeProfile.objects.exclude(role=EmployeeProfile.ADMIN).first()
+        assert list(profile.branches.values_list('name', flat=True)) == [data['branches'][0]['name']]
+
+
+class TestImporterCounters:
+    def test_counters_catch_up_with_imported_documents(self, tmp_path):
+        data = json.loads(FIXTURE.read_text())
+        data['docCounters'] = {}
+        path = tmp_path / 'c.json'; path.write_text(json.dumps(data))
+        call_command('import_360_backup', str(path))
+        from threesixty.services.numbering import peek_next_number
+        quote = SalesDocument.objects.get(doc_number='QUO-CHN-0100')
+        assert peek_next_number(quote.branch, 'quotation') != quote.doc_number

@@ -133,6 +133,7 @@ class Command(BaseCommand):
                 self._import_branch_numbering()
                 self._import_customers()
                 self._import_sales_documents()
+                self._catch_up_counters()
                 self._import_payments()
                 self._import_tasks()
                 self._import_notifications()
@@ -233,6 +234,15 @@ class Command(BaseCommand):
                 )
                 self._bump('branch_numbering', created)
 
+    def _catch_up_counters(self):
+        """The reference seeds its per-branch counters from the documents it holds (a backup may carry none), so numbering
+        never reissues a number. Do the same: every counter is at least the highest sequence already used."""
+        from threesixty.models import SalesDocument
+        from threesixty.services.numbering import NOT_GENERATED, bump_counter_to
+        for doc in SalesDocument.objects.select_related('branch').filter(legacy_id__isnull=False):
+            if doc.type not in NOT_GENERATED and doc.doc_number:
+                bump_counter_to(doc.branch, doc.type, doc.doc_number)
+
     # ---------- Employees -> User + EmployeeProfile ----------
     # Shape confirmed at the Users-page save handler (~L7440-7531): plaintext `password`
     # is hashed via `User.objects.create_user`, never stored as-is.
@@ -268,7 +278,9 @@ class Command(BaseCommand):
                 weekly_off=e.get('weeklyOff', '0'), is_active_employee=is_active,
                 legacy_id=e['id'],
             )
-            branch_ids = [self.branch_by_legacy[bid].id for bid in e.get('branches', []) if bid in self.branch_by_legacy]
+            # The reference stores an employee's branches as branch NAMES (the Users form's chips); older shapes used ids.
+            lookup = lambda b: self.branch_by_name.get(b) or self.branch_by_legacy.get(b)
+            branch_ids = [lookup(b).id for b in e.get('branches', []) if lookup(b)]
             if branch_ids:
                 profile.branches.set(branch_ids)
             self.user_by_emp_legacy[e['id']] = user
@@ -296,7 +308,8 @@ class Command(BaseCommand):
                     self.lookup_by_kind_name[(kind, name)] = by_name
                     self._bump('lookups', False)
                     continue
-                obj = LookupItem.objects.create(kind=kind, name=name, sort_order=order, legacy_id=item['id'])
+                details = {k: str(item.get(k) or '').strip() for k in ('phone', 'mobile', 'gst', 'location', 'address') if str(item.get(k) or '').strip()}
+                obj = LookupItem.objects.create(kind=kind, name=name, sort_order=order, legacy_id=item['id'], details=details)
                 self.lookup_by_kind_name[(kind, name)] = obj
                 self._bump('lookups', True)
 
@@ -539,11 +552,14 @@ class Command(BaseCommand):
             if Task.objects.filter(legacy_id=t['id']).exists():
                 self._bump('tasks', False)
                 continue
-            assigned_to = self.user_by_emp_legacy.get(t.get('assignedToId'))
+            # `assignees` ([{id, name}], first = primary) is the reference's multi-assign; `assignedToId` alone is an older shape.
+            people = [self.user_by_emp_legacy.get(a.get('id')) for a in (t.get('assignees') or [])]
+            people = [u for u in people if u]
+            assigned_to = people[0] if people else self.user_by_emp_legacy.get(t.get('assignedToId'))
             if not assigned_to:
                 self.unresolved.append(f"task {t.get('title')!r}: unknown assignedToId {t.get('assignedToId')!r} — skipped")
                 continue
-            status = Task.STATUS_COMPLETED if t.get('status') == 'Done' else Task.STATUS_OPEN
+            status = {'Done': Task.STATUS_COMPLETED, 'In Progress': Task.STATUS_IN_PROGRESS}.get(t.get('status'), Task.STATUS_OPEN)
             task = Task.objects.create(
                 title=t.get('title', ''), description=t.get('description', ''), assigned_to=assigned_to,
                 priority=t.get('priority') or Task.PRIORITY_MEDIUM, status=status, task_type=t.get('taskType', ''),
@@ -552,12 +568,14 @@ class Command(BaseCommand):
                 related_document=self.salesdoc_by_legacy.get(t.get('relatedDocId')),
                 created_by=self.user_by_emp_legacy.get(t.get('createdById')),
                 completed_at=_datetime(t.get('completedAt')), legacy_id=t['id'],
+                # `jointNames` is display-only in the reference (the "Joint with" tile) — NOT extra assignees.
+                joint_names=[n for n in (t.get('jointNames') or []) if n],
+                completed_by=self.user_by_emp_legacy.get(t.get('completedById')),
             )
             if t.get('createdAt'):
                 task.created_at = _datetime(t['createdAt']) or task.created_at
                 task.save(update_fields=['created_at'])
-            joint_ids = [self.user_by_name[n].id for n in t.get('jointNames', []) if n in self.user_by_name]
-            task.joint_with.set(joint_ids)
+            task.joint_with.set([u.pk for u in people[1:]])
             self._bump('tasks', True)
 
     # ---------- Notifications ----------

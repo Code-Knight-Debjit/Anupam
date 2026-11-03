@@ -1,122 +1,97 @@
-// Print Label — builds the label on the SERVER (`/360/api/labels/pdf/`), so Preview,
-// Print and Download PDF are one and the same PDF (REQ-LBL-08). Labels keep their
-// actual size and are tiled on an A4 sheet; the FROM block is always at the bottom.
-// Picking a customer fills the form, but the person (Attn) and phone only when
-// you pick a contact yourself (REQ-LBL-07).
+// Print Label — the reference's page (the "Custom label" panel) and its options dialog (paper, FROM size, label size,
+// number of boxes, Attn, phone). The label is built on the SERVER (`/360/api/labels/pdf/`), so Print and Download PDF
+// are one and the same PDF (REQ-LBL-08). Picking a customer fills the form; the person (Attn) and phone are filled
+// only when a person is picked (REQ-LBL-07). What is in the form is exactly what is printed.
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { el, escapeHtml, toast, apiErrorMessage, enhanceCustomerSelect } from '../ui.js';
+import { el, escapeHtml, customAlert, apiErrorMessage } from '../ui.js';
+import { mountRefView, useOverlays, openOverlay, closeOverlay } from '../customer_common.js';
 
-const SIZE_LABELS = { a4: 'A4 (210 × 297 mm)', a5: 'A5 (148 × 210 mm)', '4x4': '4 × 4 inch', '6x4': '6 × 4 inch (portrait)' };
+const LABEL_SIZES = [
+  ['a4', 'A4 (210 × 297 mm)'], ['a5', 'A5 (148 × 210 mm)'], ['4x4', '4 × 4 inch'], ['6x4', '6 × 4 inch (portrait)'],
+];
 
-function collect() {
-  return {
-    customer_id: el('lc-cust').value || null, contact_id: el('lc-person').value || null,
-    branch_id: el('lc-branch').value, deliver_to: el('lc-name').value.trim(),
-    address: el('lc-addr').value.trim(), area: el('lc-area').value.trim(), city: el('lc-city').value.trim(),
-    state: el('lc-state').value.trim(), pin: el('lc-pin').value.trim(), transport: el('lc-transport').value.trim(),
-    courier: el('lc-courier').value.trim(), vehicle: el('lc-vehicle').value.trim(),
-    attn: el('lc-attn').value.trim(), phone: el('lc-phone').value.trim(),
-    paper: el('lc-paper').value, size: el('lc-size').value, boxes: el('lc-boxes').value,
-    from_scale: el('lc-from').value, print_attn: el('lc-print-attn').checked, print_phone: el('lc-print-phone').checked,
-  };
-}
-
-function url(download) {
+function labelUrl(fields, download) {
   const params = new URLSearchParams();
-  Object.entries(collect()).forEach(([k, v]) => { if (v !== null && v !== '' && v !== false) params.set(k, v === true ? '1' : v); });
+  Object.entries(fields).forEach(([k, v]) => { if (v !== null && v !== undefined && v !== '') params.set(k, v === true ? '1' : v === false ? '0' : v); });
   if (download) params.set('download', '1');
   return `/360/api/labels/pdf/?${params.toString()}`;
 }
 
-async function check() {
-  // Ask the server first so a missing name etc. is a readable message, not a blank PDF tab.
-  const resp = await fetch(url(false), { credentials: 'same-origin' });
-  if (!resp.ok) { const body = await resp.json().catch(() => ({})); throw new Error(body.error || 'Could not make the label.'); }
+async function run(fields, mode) {
+  // Ask the server first so a problem is a readable message, not a blank PDF tab.
+  const resp = await fetch(labelUrl(fields, false), { credentials: 'same-origin' });
+  if (!resp.ok) { const body = await resp.json().catch(() => ({})); await customAlert(body.error || 'Could not make the label.'); return; }
+  if (mode === 'pdf') { window.location.href = labelUrl(fields, true); return; }
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'position:fixed;width:0;height:0;border:0;';
+  frame.src = labelUrl(fields, false);
+  frame.onload = () => { try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { window.open(labelUrl(fields, false), '_blank'); } };
+  document.body.appendChild(frame);
+  setTimeout(() => frame.remove(), 60000);
+}
+
+/** The options dialog: nothing about paper is asked on the page, only when Print or PDF is pressed. */
+function labelAction(party, mode) {
+  useOverlays('lblOptOverlay');
+  if (!el('lblSizeSel').options.length) el('lblSizeSel').innerHTML = LABEL_SIZES.map(([k, t]) => `<option value="${k}">${t}</option>`).join('');
+  el('lblSizeSel').value = 'a5'; el('lblPaper').value = 'a4'; el('lblFrom').value = '1.5';
+  el('lblOptTitle').textContent = mode === 'pdf' ? 'Download label PDF' : 'Print label';
+  el('lblOptGo').textContent = mode === 'pdf' ? 'Download PDF' : 'Print';
+  openOverlay('lblOptOverlay');
+  el('lblOptCancel').onclick = () => closeOverlay('lblOptOverlay');
+  el('lblOptGo').onclick = () => {
+    closeOverlay('lblOptOverlay');
+    const boxes = Math.max(1, Math.min(99, parseInt(el('lblBoxes').value, 10) || 1));
+    run({
+      ...party, paper: el('lblPaper').value, size: el('lblSizeSel').value, boxes, from_scale: el('lblFrom').value,
+      print_attn: el('lblShowAttn').checked, print_phone: el('lblShowPhone').checked,
+      ...(el('lblShowAttn').checked ? {} : { attn: '' }), ...(el('lblShowPhone').checked ? {} : { phone: '' }),
+    }, mode);
+  };
 }
 
 export async function mountLabels(root) {
-  const [customers, options] = await Promise.all([api.all('customers/'), api.get('labels/options/')]);
-  const d = options.defaults;
-  const myBranchId = (state.branches.find((b) => (state.me.branch_ids || []).includes(b.id)) || state.branches[0] || {}).id;
-  root.innerHTML = `
-    <h2 style="margin-top:0;">Print Label</h2>
-    <div class="card glass" style="max-width:640px;">
-      <div class="field-row">
-        <div class="field"><label>From branch</label><select id="lc-branch">${state.branches.map((b) => `<option value="${b.id}" ${b.id === myBranchId ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('')}</select></div>
-        <div class="field"><label>Paper</label><select id="lc-paper"><option value="a4" ${d.paper === 'a4' ? 'selected' : ''}>A4 sheet</option><option value="label">Label size</option></select></div>
-        <div class="field"><label>Label size</label><select id="lc-size">${Object.keys(options.sizes).map((k) => `<option value="${k}" ${k === d.size ? 'selected' : ''}>${SIZE_LABELS[k] || k}</option>`).join('')}</select></div>
-        <div class="field"><label>Boxes</label><input type="number" id="lc-boxes" min="1" max="${options.max_boxes}" value="${d.boxes}"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Customer</label><select id="lc-cust"></select></div>
-        <div class="field"><label>Contact person (optional)</label><select id="lc-person"><option value="">—</option></select></div>
-      </div>
-      <div class="field"><label>Deliver to *</label><input id="lc-name" placeholder="Customer name, or type another"></div>
-      <div class="field"><label>Address</label><textarea id="lc-addr" rows="2"></textarea></div>
-      <div class="field-row">
-        <div class="field"><label>Area</label><input id="lc-area"></div>
-        <div class="field"><label>City</label><input id="lc-city"></div>
-        <div class="field"><label>State</label><input id="lc-state"></div>
-        <div class="field"><label>PIN</label><input id="lc-pin"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Transport</label><input id="lc-transport"></div>
-        <div class="field"><label>Courier</label><input id="lc-courier"></div>
-        <div class="field"><label>Vehicle</label><input id="lc-vehicle"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Attn</label><input id="lc-attn"></div>
-        <div class="field"><label>Phone</label><input id="lc-phone"></div>
-        <div class="field"><label>FROM size</label><select id="lc-from">${options.from_scales.map((s) => `<option value="${s}" ${s === d.from_scale ? 'selected' : ''}>${Math.round(s * 100)} %</option>`).join('')}</select></div>
-      </div>
-      <div class="field-row">
-        <label><input type="checkbox" id="lc-print-attn" style="width:auto;display:inline;" ${d.print_attn ? 'checked' : ''}> Print person (Attn)</label>
-        <label><input type="checkbox" id="lc-print-phone" style="width:auto;display:inline;" ${d.print_phone ? 'checked' : ''}> Print phone</label>
-      </div>
-      <div class="modal-actions" style="justify-content:flex-start;">
-        <button class="btn" id="lcPreview">Preview</button>
-        <button class="btn" id="lcPrint">Print</button>
-        <button class="btn primary" id="lcPdf">Download PDF</button>
-      </div>
-    </div>`;
-  enhanceCustomerSelect(el('lc-cust'), customers, { blank: '— select, or type below —' });
+  mountRefView(root, 'view-labels');
+  const customers = (await api.all('customers/')).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const set = (id, v) => { el(id).value = v || ''; };
 
+  el('lc-branch').innerHTML = state.branches.map((b) => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
+  const own = (state.me.branch_ids || [])[0];
+  if (own) el('lc-branch').value = String(own);
+  el('lc-cust').innerHTML = '<option value="">— Select customer —</option>' + customers.map((c) => `<option value="${c.id}">${escapeHtml(c.label || c.name || '—')}</option>`).join('');
+  el('lc-person').innerHTML = '<option value="">— Select person —</option>';
+
+  let people = [];
   el('lc-cust').addEventListener('change', async () => {
-    el('lc-person').innerHTML = '<option value="">—</option>';
-    el('lc-attn').value = ''; el('lc-phone').value = '';
-    if (!el('lc-cust').value) return;
+    people = []; set('lc-attn', ''); set('lc-phone', '');
+    el('lc-person').innerHTML = '<option value="">— Select person —</option>';
+    const id = el('lc-cust').value;
+    if (!id) return;
     try {
-      const [fill, contacts] = await Promise.all([api.get(`labels/autofill/?customer_id=${el('lc-cust').value}`), api.all(`customers/${el('lc-cust').value}/contacts/`)]);
-      el('lc-name').value = fill.customer; el('lc-addr').value = fill.address; el('lc-area').value = fill.area; el('lc-city').value = fill.city;
-      el('lc-state').value = fill.state; el('lc-pin').value = fill.pin; el('lc-transport').value = fill.transport; el('lc-courier').value = fill.courier;
-      el('lc-person').innerHTML = '<option value="">—</option>' + contacts.map((p) => `<option value="${p.id}">${escapeHtml(p.name || '—')}</option>`).join('');
-    } catch (e) { toast(apiErrorMessage(e), 'error'); }
+      const [fill, contacts] = await Promise.all([api.get(`labels/autofill/?customer_id=${id}`), api.all(`customers/${id}/contacts/`)]);
+      people = contacts;
+      set('lc-name', fill.customer); set('lc-addr', (fill.address || '').trim()); set('lc-area', fill.area);
+      set('lc-city', [fill.city, fill.state].map((v) => (v || '').trim()).filter(Boolean).join(', ')); set('lc-pin', fill.pin);
+      set('lc-transport', fill.transport || fill.courier);
+      el('lc-person').innerHTML = '<option value="">— Select person —</option>' + contacts.map((p) => `<option value="${p.id}">${escapeHtml(p.name || '—')}</option>`).join('');
+    } catch (e) { await customAlert(apiErrorMessage(e)); }
   });
-  el('lc-person').addEventListener('change', async () => {
-    if (!el('lc-person').value) { el('lc-attn').value = ''; el('lc-phone').value = ''; return; }
-    try {
-      const fill = await api.get(`labels/autofill/?customer_id=${el('lc-cust').value}&contact_id=${el('lc-person').value}`);
-      el('lc-attn').value = fill.attn; el('lc-phone').value = fill.phone;
-    } catch (e) { toast(apiErrorMessage(e), 'error'); }
+  el('lc-person').addEventListener('change', () => {
+    const p = people.find((x) => String(x.id) === el('lc-person').value);
+    if (p) { set('lc-attn', p.name); set('lc-phone', p.phone || p.phone2); }
   });
 
-  const run = async (action) => {
-    try {
-      await check();
-      if (action === 'preview') window.open(url(false), '_blank');
-      else if (action === 'pdf') window.location.href = url(true);
-      else {
-        const frame = document.createElement('iframe');
-        frame.style.cssText = 'position:fixed;width:0;height:0;border:0;';
-        frame.src = url(false);
-        frame.onload = () => { try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { window.open(url(false), '_blank'); } };
-        document.body.appendChild(frame);
-        setTimeout(() => frame.remove(), 60000);
-      }
-    } catch (e) { toast(e.message, 'error'); }
+  const go = async (mode) => {
+    const customer = customers.find((c) => String(c.id) === el('lc-cust').value);
+    const name = el('lc-name').value.trim() || (customer ? (customer.name || '').trim() : '');
+    if (!name) { await customAlert('Enter who the label is for.'); return; }
+    labelAction({
+      branch_id: el('lc-branch').value, deliver_to: name, address: el('lc-addr').value.trim(), area: el('lc-area').value.trim(),
+      city: el('lc-city').value.trim(), pin: el('lc-pin').value.trim(), attn: el('lc-attn').value.trim(), phone: el('lc-phone').value.trim(),
+      transport: el('lc-transport').value.trim(),
+    }, mode);
   };
-  el('lcPreview').onclick = () => run('preview');
-  el('lcPrint').onclick = () => run('print');
-  el('lcPdf').onclick = () => run('pdf');
+  el('lcPrintBtn').onclick = () => go('print');
+  el('lcPdfBtn').onclick = () => go('pdf');
 }

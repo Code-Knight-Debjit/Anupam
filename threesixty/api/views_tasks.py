@@ -23,11 +23,26 @@ User = get_user_model()
 
 
 def _assignable_ids(ids):
-    users = User.objects.filter(pk__in=ids or [], is_active=True, threesixty_profile__is_active_employee=True)
-    found = list(users.values_list('pk', flat=True))
-    if ids and len(set(map(int, ids))) != len(found):
+    """Validated user ids, in the order they were listed (the first is the primary assignee)."""
+    wanted = [int(i) for i in dict.fromkeys(ids or [])]
+    users = User.objects.filter(pk__in=wanted, is_active=True, threesixty_profile__is_active_employee=True)
+    found = set(users.values_list('pk', flat=True))
+    if wanted and len(wanted) != len(found):
         raise ApiError(400, 'One or more assignees do not exist or are inactive.')
-    return found
+    return [i for i in wanted if i in found]
+
+
+def _people(data):
+    """`assigned_to_ids` (one or more people, primary first); older callers send assigned_to_id + joint_with_user_ids."""
+    ids = data.get('assigned_to_ids')
+    if ids is None:
+        ids = ([data['assigned_to_id']] if data.get('assigned_to_id') else []) + list(data.get('joint_with_user_ids') or [])
+    return _assignable_ids(ids)
+
+
+def _links(data):
+    customer = Customer.objects.filter(pk=data['related_customer_id']).first() if data.get('related_customer_id') else None
+    return customer
 
 
 class TaskResource(JsonResource):
@@ -62,14 +77,10 @@ class TaskResource(JsonResource):
         return serialize_task(instance)
 
     def apply_create(self, request, data, **kwargs):
-        ids = data.get('assigned_to_ids') or ([data['assigned_to_id']] if data.get('assigned_to_id') else None)
-        ids = _assignable_ids(ids) if ids else [request.user.pk]
-        extra = _assignable_ids(data.get('joint_with_user_ids')) if data.get('joint_with_user_ids') else []
         return task_service.create_task(
-            request.user, title=data.get('title'), assignee_user_ids=ids + [i for i in extra if i not in ids],
+            request.user, title=data.get('title'), assignee_user_ids=_people(data) or [request.user.pk],
             due_date=parse_date_input(data.get('due_date'), 'due_date'), description=data.get('description', ''),
-            priority=data.get('priority'), task_type=data.get('task_type', ''),
-            customer=Customer.objects.filter(pk=data['related_customer_id']).first() if data.get('related_customer_id') else None,
+            priority=data.get('priority'), task_type=data.get('task_type', ''), customer=_links(data),
         )
 
     def apply_update(self, request, instance, data, **kwargs):
@@ -86,10 +97,17 @@ class TaskResource(JsonResource):
                     setattr(instance, field, value)
             if not (instance.title or '').strip():
                 raise ApiError(400, 'title is required.')
-            if 'assigned_to_id' in data:
-                instance.assigned_to_id = _assignable_ids([data['assigned_to_id']])[0]
-            if 'joint_with_user_ids' in data:
-                instance.joint_with.set(_assignable_ids(data['joint_with_user_ids']))
+            if 'related_customer_id' in data:
+                instance.related_customer = _links(data)
+            if {'assigned_to_ids', 'assigned_to_id', 'joint_with_user_ids'} & set(data):
+                people = _people(data)
+                if not people:
+                    raise ApiError(400, 'Choose at least one person to assign this to.')
+                before = task_service.assignee_ids(instance)
+                instance.assigned_to_id = people[0]
+                instance.save(update_fields=['assigned_to'])
+                instance.joint_with.set(people[1:])
+                task_service.notify_new_assignees(request.user, instance, [p for p in people if p not in before], len(people))
         instance.version += 1
         instance.save()
         return instance

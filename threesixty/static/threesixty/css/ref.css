@@ -281,7 +281,7 @@
   .glassv #reportBody .dash-card:not([class*="pipe-"]):not(.alert){--g1:#5a9be2; --g2:#2f6fb5;}
   .glassv #reportBody .dash-card:not([class*="pipe-"]):not(.alert):nth-child(2n){--g1:#3dbfa3; --g2:#1f8a78;}
   .glassv #reportBody .dash-card:not([class*="pipe-"]):not(.alert):nth-child(3n){--g1:#ad78dc; --g2:#7a45ad;}
-  .glassv #reportBody .dash-card:not([class*="pipe-"]):not(.alert):nth-child(4n){--g1:var(--o-light); --g2:var(--o-mid);}
+  .glassv #reportBody .dash-card:not([class*="pipe-"]):not(.alert):nth-child(4n){--g1:#f2a655; --g2:#d4702a;}
   .glassv .dash-card[style]{background:linear-gradient(135deg,var(--g1),var(--g2)) !important; border-color:rgba(255,255,255,.35) !important;}
   .glassv .dash-card[style] .n{color:#fff !important;}
   .glassv .dash-card .n[style]{color:#fff !important;}
@@ -646,7 +646,7 @@
   .view.glassv .dash-card.pipe-1{--g1:#5a9be2; --g2:#2f6fb5;}
   .view.glassv .dash-card.pipe-2{--g1:#ad78dc; --g2:#7a45ad;}
   .view.glassv .dash-card.pipe-3{--g1:#3dbfa3; --g2:#1f8a78;}
-  .view.glassv .dash-card.pipe-4{--g1:var(--o-light); --g2:var(--o-mid);}
+  .view.glassv .dash-card.pipe-4{--g1:#f2a655; --g2:#d4702a;}
   .view.glassv .dash-card.pipe-5{--g1:#ec79a6; --g2:#c04477;}
   .view.glassv .dash-card.alert{--g1:#ec7468; --g2:#b83a2e;}
   .view.glassv .dash-card.alert.zero{--g1:#9aa4af; --g2:#6f7a86;}

@@ -1,307 +1,271 @@
-// Attendance — check-in/out, team day-status grid, leave requests,
-// holidays. Ported from the original's `attCheckIn`/`attCheckOut`/
-// `attDayStatus` (~L12281-12570) and the leave submit/approve flow.
+// Attendance — the reference's page: subline with my hours, Today card, My month (stats + table), Holidays, Leave,
+// then (Admin / Branch Manager) leave requests to approve, the team month grid (click a cell to correct a day) and
+// the check-in / check-out times for one date. Day statuses, the 10-minute grace and the month tallies are worked out
+// on the server (services/attendance.py); the page lays them out as the reference does.
 import { api } from '../api.js';
 import { state, isAdmin, isBranchManager } from '../state.js';
-import { el, escapeHtml, fmtDate, fmtDateTime, toast, apiErrorMessage, openModal, closeModal, renderTable, badge } from '../ui.js';
+import { el, escapeHtml, customAlert, customConfirm, customPrompt, apiErrorMessage, openModal, closeModal, exportRowsToExcel } from '../ui.js';
+import { checkIn, checkOut, fmtTime, fmtDur } from '../attendance_actions.js';
 
-const ATT_GRACE_MIN = 10;
-let activeTab = 'mine';
-let employees = [];
+const COLORS = { P: '#1f8a4c', L: '#d9822b', H: '#b7791f', A: '#c0392b', LV: '#2f6fb5', O: '#8a94a0' };
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const LV_COLOR = { Pending: '#d9822b', Approved: '#1f8a4c', Rejected: '#c0392b' };
 
-function todayISO() { return new Date().toISOString().slice(0, 10); }
+const me = () => state.me.user_id;
+const isApprover = () => isAdmin() || isBranchManager();
+const localISO = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const fmtDate = (iso) => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); };
+const dowOf = (iso) => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).getDay(); };
+const leaveDays = (l) => Math.round((new Date(l.date_to) - new Date(l.date_from)) / 86400000) + 1;
+const range = (l) => fmtDate(l.date_from) + (l.date_to !== l.date_from ? ' – ' + fmtDate(l.date_to) : '');
 
-function timeToMinutes(t) {
-  if (!t) return null;
-  const [h, m] = t.split(':').map(Number);
-  return h * 60 + m;
+function chip(code, label) {
+  if (!code) return '<span style="color:var(--text-faint);">—</span>';
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11.5px;font-weight:600;color:#fff;background:${COLORS[code] || '#888'};">${escapeHtml(label || code)}</span>`;
+}
+const stat = (label, val) => `<div class="stat-card" style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;"><div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.05em;">${label}</div><div style="font-size:22px;font-weight:600;margin-top:4px;">${val}</div></div>`;
+const locLink = (loc, label) => (loc ? `<a href="https://www.google.com/maps?q=${loc.lat},${loc.lng}" target="_blank" rel="noopener">${label}</a>` : '');
+function locCell(day) {
+  const parts = [locLink(day.in_location, 'In'), locLink(day.out_location, 'Out')].filter(Boolean);
+  return parts.length ? '📍 ' + parts.join(' · ') : '—';
 }
 
-function isLate(checkIn, workStart) {
-  const a = timeToMinutes(checkIn), b = timeToMinutes(workStart || '09:30');
-  return a !== null && b !== null && (a - b) > ATT_GRACE_MIN;
+let teamInit = false;
+let holChipsBuilt = false;
+
+async function render() {
+  const today = localISO();
+  const myMonth = el('attMyMonth').value || (el('attMyMonth').value = today.slice(0, 7));
+  const [mine, leaves, holidays] = await Promise.all([
+    api.get(`attendance/month/?month=${myMonth}${isApprover() ? '' : ''}`), api.all('leave-requests/'), api.all('holidays/')]);
+  const meRow = mine.people.find((p) => p.user_id === me());
+  const offs = (meRow.weekly_off === '' ? [] : String(meRow.weekly_off).split(',').map(Number)).map((d) => DOW[d]).join(' & ') || 'none';
+  el('attSubline').textContent = `Your hours: ${fmtTime(meRow.work_start)} – ${fmtTime(meRow.work_end)} · Weekly off: ${offs}`;
+
+  // Today card — always today's record, whatever month is picked below.
+  const todayData = myMonth === today.slice(0, 7) ? meRow : (await api.get(`attendance/month/?month=${today.slice(0, 7)}`)).people.find((p) => p.user_id === me());
+  const t = todayData.days.find((d) => d.date === today);
+  const approvedLeaveToday = leaves.some((l) => l.user && l.user.id === me() && l.status === 'Approved' && l.date_from <= today && today <= l.date_to);
+  const head = `<div style="flex:1;min-width:200px;"><div style="font-size:12px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.05em;">Today · ${fmtDate(today)}</div>`;
+  let body;
+  if (!t.check_in) body = `${head}<div style="font-size:16px;margin-top:4px;">${approvedLeaveToday ? 'You are on approved leave today.' : 'You have not checked in yet.'}</div></div><button class="btn btn-primary" id="attCheckInBtn">Check in</button>`;
+  else if (!t.check_out) body = `${head}<div style="font-size:16px;margin-top:4px;">Checked in at <b>${fmtTime(t.check_in)}</b> ${t.late ? chip('L', 'Late ' + fmtDur(t.late)) : chip('P', 'On time')}</div></div><button class="btn btn-primary" id="attCheckOutBtn">Check out</button>`;
+  else body = `${head}<div style="font-size:16px;margin-top:4px;">In <b>${fmtTime(t.check_in)}</b> · Out <b>${fmtTime(t.check_out)}</b> · Worked <b>${fmtDur(t.worked)}</b> ${t.late ? chip('L', 'Late') : ''}</div></div><button class="btn" id="attCheckOutBtn" title="Update your check-out time">Update check-out</button>`;
+  el('attTodayCard').innerHTML = `<div class="card" style="align-items:center;flex-wrap:wrap;">${body}</div><p class="sub" style="margin:6px 2px 0;">📍 Your location is recorded when you check in and check out. Your browser will ask for permission.</p>`;
+  const ci = el('attCheckInBtn'); if (ci) ci.onclick = async () => { if (await checkIn()) render(); };
+  const co = el('attCheckOutBtn'); if (co) co.onclick = async () => { if (await checkOut()) render(); };
+
+  // My month
+  const tl = meRow.tally;
+  el('attMyStats').innerHTML = stat('Present', tl.present) + stat('Late', tl.late) + stat('Half days', tl.half) + stat('Absent', tl.absent) + stat('Leave', tl.leave) + stat('Hours worked', fmtDur(tl.worked));
+  const rows = meRow.days.filter((d) => d.date <= today || d.code).map((d) => `<tr><td>${fmtDate(d.date)}</td><td>${DOW[dowOf(d.date)]}</td><td>${chip(d.code, d.label)}</td><td>${d.check_in ? fmtTime(d.check_in) : '—'}</td><td>${d.check_out ? fmtTime(d.check_out) : '—'}</td><td>${d.worked !== null && d.worked !== undefined ? fmtDur(d.worked) : '—'}</td><td>${locCell(d)}</td><td>${d.note ? escapeHtml(d.note) : ''}</td></tr>`).reverse().join('');
+  el('attMyTable').innerHTML = `<div style="overflow-x:auto;"><table class="report"><tr><th>Date</th><th>Day</th><th>Status</th><th>In</th><th>Out</th><th>Worked</th><th>Location</th><th>Note</th></tr>${rows || '<tr><td colspan="8">Nothing to show for this month.</td></tr>'}</table></div>`;
+
+  // My leaves
+  const mineLeaves = leaves.filter((l) => l.user && l.user.id === me()).sort((a, b) => (b.requested_at || '').localeCompare(a.requested_at || ''));
+  el('attMyLeaves').innerHTML = mineLeaves.length ? `<div style="overflow-x:auto;"><table class="report"><tr><th>Dates</th><th>Days</th><th>Reason</th><th>Status</th><th></th></tr>${mineLeaves.map((l) => `<tr><td>${range(l)}</td><td>${leaveDays(l)}</td><td>${escapeHtml(l.reason || '')}</td><td><span style="color:${LV_COLOR[l.status]};font-weight:600;">${l.status}</span>${l.decided_by ? `<div class="sub" style="margin:0;font-size:11.5px;">by ${escapeHtml(l.decided_by.full_name)}${l.decision_note ? ' — ' + escapeHtml(l.decision_note) : ''}</div>` : ''}</td><td>${l.status === 'Pending' ? `<button class="btn-danger-text" data-cancel="${l.id}">Cancel</button>` : ''}</td></tr>`).join('')}</table></div>` : '<p class="sub">No leave requests yet.</p>';
+  el('attMyLeaves').querySelectorAll('[data-cancel]').forEach((b) => b.onclick = async () => {
+    if (!await customConfirm('Cancel this leave request?')) return;
+    try { await api.delete(`leave-requests/${b.dataset.cancel}/`); } catch (e) { await customAlert(apiErrorMessage(e)); }
+    render();
+  });
+
+  renderHolidays(holidays, today);
+  el('attTeamSection').style.display = isApprover() ? '' : 'none';
+  if (isApprover()) await renderTeam(leaves, today);
+  refreshAttBadge(leaves);
 }
 
-function weeklyOffDay(dateStr, emp) {
-  const day = new Date(dateStr).getDay();
-  const offDays = (emp.weekly_off || '0').split(',').map((s) => s.trim());
-  return offDays.includes(String(day));
+function refreshAttBadge(leaves) {
+  const n = isApprover() ? leaves.filter((l) => l.status === 'Pending' && l.user && l.user.id !== me()).length : 0;
+  const b = el('attBadge'); if (b) { b.textContent = n > 99 ? '99+' : n; b.style.display = n ? 'inline-block' : 'none'; }
 }
 
-function holidayFor(dateStr, emp, holidays) {
-  return (holidays || []).find((h) => h.date <= dateStr && dateStr <= h.date_to
-    && (h.is_all_branches || (h.branch_ids || []).some((b) => (emp.branch_ids || []).includes(b))));
+// ---- holidays --------------------------------------------------------------------------------------------------------------
+const myBranchIds = () => state.me.branch_ids || [];
+function canManageHoliday(h) {
+  if (isAdmin()) return true;
+  if (!isBranchManager() || h.is_all_branches) return false;
+  return h.branch_ids.length > 0 && h.branch_ids.every((b) => myBranchIds().includes(b));
 }
-
-function approvedLeaveFor(dateStr, userId, leaves) {
-  return (leaves || []).find((l) => l.user.id === userId && l.status === 'Approved' && l.date_from <= dateStr && dateStr <= l.date_to);
-}
-
-/** Priority: manual override > check-in presence (late if beyond grace) >
- * holiday > weekly-off > approved leave > past-with-no-record = Absent > blank. */
-function attDayStatus(record, emp, dateStr, holidays, leaves, attendanceStart) {
-  if (record && record.status) return record.status;
-  if (record && record.check_in) return isLate(record.check_in, emp.work_start) ? 'Late' : 'Present';
-  const holiday = holidayFor(dateStr, emp, holidays);
-  if (holiday) return `Holiday (${holiday.name})`;
-  if (weeklyOffDay(dateStr, emp)) return 'Weekly off';
-  if (approvedLeaveFor(dateStr, emp.user_id, leaves)) return 'Leave';
-  const cutoff = emp.date_of_joining && emp.date_of_joining > (attendanceStart || '') ? emp.date_of_joining : attendanceStart;
-  if (dateStr < todayISO() && (!cutoff || dateStr >= cutoff)) return 'Absent';
-  return '—';
-}
-
-async function getLocation() {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) { resolve({}); return; }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy_m: Math.round(pos.coords.accuracy) }),
-      () => resolve({}),
-      { timeout: 5000 },
-    );
+function renderHolidays(holidays, today) {
+  const card = el('holFormCard');
+  card.style.display = isApprover() ? 'flex' : 'none';
+  if (isApprover() && !holChipsBuilt) {
+    const mine = isAdmin() ? state.branches : state.branches.filter((b) => myBranchIds().includes(b.id));
+    el('holBranchChips').innerHTML = (isAdmin() ? '<label class="chip-check"><input type="checkbox" id="hol-all"><span>All branches</span></label>' : '')
+      + mine.map((b) => `<label class="chip-check"><input type="checkbox" class="hol-branch-check" value="${b.id}"><span>${escapeHtml(b.name)}</span></label>`).join('');
+    holChipsBuilt = true;
+  }
+  const names = (h) => (h.is_all_branches ? 'All branches' : h.branch_ids.map((id) => (state.branches.find((b) => b.id === id) || {}).name).filter(Boolean).join(', '));
+  const sorted = [...holidays].sort((a, b) => a.date.localeCompare(b.date));
+  const upcoming = sorted.filter((h) => h.date_to >= today), past = sorted.filter((h) => h.date_to < today).reverse();
+  const row = (h) => `<tr><td>${fmtDate(h.date)}${h.date_to !== h.date ? ' – ' + fmtDate(h.date_to) : ''}</td><td>${escapeHtml(h.name)}</td><td>${escapeHtml(names(h))}</td><td class="sub" style="font-size:11.5px;">${escapeHtml((h.created_by && h.created_by.full_name) || '')}</td><td>${canManageHoliday(h) ? `<button class="btn-danger-text" data-delhol="${h.id}">Remove</button>` : ''}</td></tr>`;
+  const tbl = (rows) => `<div style="overflow-x:auto;"><table class="report"><tr><th>Date</th><th>Holiday</th><th>Branch(es)</th><th>Added by</th><th></th></tr>${rows.map(row).join('')}</table></div>`;
+  el('attHolidays').innerHTML = (upcoming.length ? tbl(upcoming) : '<p class="sub">No upcoming holidays for your branch.</p>')
+    + (past.length ? `<details style="margin-top:8px;"><summary class="sub" style="cursor:pointer;">Past holidays (${past.length})</summary>${tbl(past.slice(0, 40))}</details>` : '');
+  el('attHolidays').querySelectorAll('[data-delhol]').forEach((b) => b.onclick = async () => {
+    const h = holidays.find((x) => String(x.id) === b.dataset.delhol);
+    if (!await customConfirm(`Remove the holiday "${h.name}"? Those days will count as normal working days again.`)) return;
+    try { await api.delete(`holidays/${h.id}/`); } catch (e) { await customAlert(apiErrorMessage(e)); }
+    render();
   });
 }
 
-async function renderMine(root) {
-  const [todayRecord, history] = await Promise.all([
-    api.all('attendance/').then((recs) => recs.find((r) => r.date === todayISO())),
-    api.all('attendance/'),
-  ]);
-  history.sort((a, b) => b.date.localeCompare(a.date));
-
-  root.innerHTML = `
-    <div class="card" style="margin-bottom:20px;">
-      <div class="flex-between">
-        <div>
-          <div style="font-weight:600;">Today — ${fmtDate(todayISO())}</div>
-          <div class="sub">${todayRecord && todayRecord.check_in ? `Checked in at ${todayRecord.check_in}` : 'Not checked in yet'}${todayRecord && todayRecord.check_out ? ` · Checked out at ${todayRecord.check_out}` : ''}</div>
-        </div>
-        <div>
-          <button class="btn primary" id="checkInBtn" ${todayRecord && todayRecord.check_in ? 'disabled' : ''}>Check in</button>
-          <button class="btn" id="checkOutBtn" ${!todayRecord || !todayRecord.check_in || todayRecord.check_out ? 'disabled' : ''}>Check out</button>
-        </div>
-      </div>
-    </div>
-    <h3 style="margin-bottom:10px;">My attendance history</h3>
-    ${renderTable(['Date', 'Check-in', 'Check-out', 'Status', 'Note'], history.slice(0, 60).map((r) => ({
-      Date: fmtDate(r.date), 'Check-in': r.check_in || '—', 'Check-out': r.check_out || '—',
-      Status: badge(r.status || (r.check_in ? (isLate(r.check_in, state.me.work_start) ? 'Late' : 'Present') : '—')),
-      Note: escapeHtml(r.note),
-    })), { empty: 'No attendance recorded yet.' })}`;
-
-  root.querySelector('#checkInBtn').onclick = async () => {
-    try {
-      const loc = await getLocation();
-      await api.post('attendance/check-in/', loc);
-      toast('Checked in.', 'success');
-      renderMine(root);
-    } catch (e) { toast(apiErrorMessage(e), 'error'); }
-  };
-  root.querySelector('#checkOutBtn').onclick = async () => {
-    try {
-      const loc = await getLocation();
-      await api.post('attendance/check-out/', loc);
-      toast('Checked out.', 'success');
-      renderMine(root);
-    } catch (e) { toast(apiErrorMessage(e), 'error'); }
-  };
+// ---- team ------------------------------------------------------------------------------------------------------------------
+let teamData = null;
+async function renderTeam(leaves, today) {
+  const tm = el('attTeamMonth'); if (!tm.value) tm.value = today.slice(0, 7);
+  const bsel = el('attTeamBranch');
+  if (!teamInit || !bsel.options.length) {
+    const prev = bsel.value;
+    bsel.innerHTML = '<option value="">All branches</option>' + state.branches.map((b) => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
+    bsel.value = prev; teamInit = true;
+  }
+  const pend = leaves.filter((l) => l.status === 'Pending' && l.user && (isAdmin() || l.user.id !== me()));
+  el('attApprovals').innerHTML = pend.length ? `<div style="overflow-x:auto;"><table class="report"><tr><th>Person</th><th>Dates</th><th>Days</th><th>Reason</th><th></th></tr>${pend.map((l) => `<tr><td>${escapeHtml(l.user.full_name)}</td><td>${range(l)}</td><td>${leaveDays(l)}</td><td>${escapeHtml(l.reason || '')}</td><td style="white-space:nowrap;"><button class="btn btn-primary" style="height:32px;" data-decide="${l.id}:approve">Approve</button> <button class="btn" style="height:32px;" data-decide="${l.id}:reject">Reject</button></td></tr>`).join('')}</table></div>` : '<p class="sub">No pending leave requests.</p>';
+  if (isBranchManager() && leaves.some((l) => l.user && l.user.id === me() && l.status === 'Pending')) el('attApprovals').innerHTML += '<p class="sub">Your own leave request goes to an Admin for approval.</p>';
+  el('attApprovals').querySelectorAll('[data-decide]').forEach((b) => b.onclick = async () => {
+    const [id, action] = b.dataset.decide.split(':');
+    let note = '';
+    if (action === 'reject') { const r = await customPrompt('Reason for rejecting (optional):', '', 'Reject leave'); if (r === null) return; note = (r || '').trim(); }
+    try { await api.post(`leave-requests/${id}/${action}/`, { note }); } catch (e) { await customAlert(apiErrorMessage(e)); }
+    render();
+  });
+  teamData = await api.get(`attendance/month/?month=${tm.value}${bsel.value ? '&branch=' + bsel.value : ''}`);
+  const days = teamData.people[0] ? teamData.people[0].days.map((d) => d.date) : [];
+  const headRow = '<tr><th style="position:sticky;left:0;background:var(--panel-2);">Name</th>' + days.map((d) => `<th style="padding:6px 4px;text-align:center;min-width:26px;">${+d.slice(8)}</th>`).join('') + '<th>P</th><th>A</th><th>LV</th><th>Late</th><th>Hours</th></tr>';
+  const body = teamData.people.map((p) => {
+    const cells = p.days.map((d) => {
+      const bg = d.code ? COLORS[d.code] : 'transparent';
+      const tip = `${p.name} · ${fmtDate(d.date)} · ${d.label || (d.date > today ? 'Upcoming' : '—')}` + (d.check_in ? ` · ${fmtTime(d.check_in)}–${fmtTime(d.check_out)}` : '');
+      return `<td data-att-u="${p.user_id}" data-att-d="${d.date}" title="${escapeHtml(tip)}" style="padding:4px 2px;text-align:center;cursor:pointer;font-size:11px;font-weight:600;color:${d.code ? '#fff' : 'var(--text-faint)'};background:${bg};border-left:1px solid var(--line-soft);">${d.code || ''}</td>`;
+    }).join('');
+    const t2 = p.tally;
+    return `<tr><td style="position:sticky;left:0;background:var(--panel);white-space:nowrap;font-weight:500;">${escapeHtml(p.name)}</td>${cells}<td>${t2.present + t2.half * 0.5}</td><td>${t2.absent}</td><td>${t2.leave}</td><td>${t2.late}</td><td style="white-space:nowrap;">${fmtDur(t2.worked)}</td></tr>`;
+  }).join('');
+  el('attTeamGrid').innerHTML = teamData.people.length ? `<table class="report" style="font-size:12px;">${headRow}${body}</table>` : '<p class="sub">No team members to show.</p>';
+  el('attTeamGrid').querySelectorAll('td[data-att-u]').forEach((td) => td.addEventListener('click', () => openDay(Number(td.dataset.attU), td.dataset.attD)));
+  const dd = el('attDayDate'); if (!dd.value) dd.value = today;
+  // the check-in / check-out table for one date may fall in another month than the grid
+  const dayMonth = dd.value.slice(0, 7);
+  const dayData = dayMonth === tm.value ? teamData : await api.get(`attendance/month/?month=${dayMonth}${bsel.value ? '&branch=' + bsel.value : ''}`);
+  const dayRows = dayData.people.map((p) => {
+    const d = p.days.find((x) => x.date === dd.value) || {};
+    return `<tr><td style="font-weight:500;">${escapeHtml(p.name)}</td><td>${fmtTime(p.work_start)} – ${fmtTime(p.work_end)}</td><td>${chip(d.code, d.label)}</td><td>${d.check_in ? fmtTime(d.check_in) : '—'}${d.late ? ` <span style="color:#d9822b;font-size:11.5px;">(late ${fmtDur(d.late)})</span>` : ''}</td><td>${d.check_out ? fmtTime(d.check_out) : '—'}</td><td>${d.worked !== null && d.worked !== undefined ? fmtDur(d.worked) : '—'}</td><td>${locCell(d)}</td></tr>`;
+  }).join('');
+  el('attDayTable').innerHTML = dayData.people.length ? `<table class="report"><tr><th>Name</th><th>Work hours</th><th>Status</th><th>Check-in</th><th>Check-out</th><th>Worked</th><th>Location</th></tr>${dayRows}</table>` : '<p class="sub">No team members to show.</p>';
 }
 
-function openCorrectModal(emp, dateStr, record, onSaved) {
-  const r = record || {};
+function openDay(userId, date) {
+  if (!isApprover()) return;
+  const person = teamData.people.find((p) => p.user_id === userId); if (!person) return;
+  const d = person.days.find((x) => x.date === date) || {};
+  const statusNow = d.manual ? ({ P: 'Present', H: 'Half day', A: 'Absent', LV: 'Leave', O: 'Off / Holiday' }[d.code] || '') : '';
   openModal(`
-    <h2>Correct attendance — ${escapeHtml(emp.full_name)} · ${fmtDate(dateStr)}</h2>
-    <div class="field-row">
-      <div class="field"><label>Check-in</label><input type="time" id="cr-in" value="${r.check_in || ''}"></div>
-      <div class="field"><label>Check-out</label><input type="time" id="cr-out" value="${r.check_out || ''}"></div>
+    <h2>Correct attendance</h2>
+    <p class="modal-sub">${escapeHtml(person.name)} · ${fmtDate(date)}${d.in_location || d.out_location ? ' · ' + locCell(d) : ''}</p>
+    <div class="field"><label>Status</label><select id="attDayStatus"><option value="">Automatic (from check-in)</option><option>Present</option><option>Half day</option><option>Absent</option><option>Leave</option><option>Off / Holiday</option></select></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="field"><label>Check-in</label><input type="time" id="attDayIn" value="${d.check_in || ''}"></div>
+      <div class="field"><label>Check-out</label><input type="time" id="attDayOut" value="${d.check_out || ''}"></div>
     </div>
-    <div class="field"><label>Status override</label><select id="cr-status">
-      <option value="" ${!r.status ? 'selected' : ''}>— computed automatically —</option>
-      <option ${r.status === 'Present' ? 'selected' : ''}>Present</option>
-      <option ${r.status === 'Half day' ? 'selected' : ''}>Half day</option>
-      <option ${r.status === 'Absent' ? 'selected' : ''}>Absent</option>
-      <option ${r.status === 'Leave' ? 'selected' : ''}>Leave</option>
-      <option ${r.status === 'Off / Holiday' ? 'selected' : ''}>Off / Holiday</option>
-    </select></div>
-    <div class="field"><label>Note</label><input id="cr-note" value="${escapeHtml(r.note || '')}"></div>
-    <p class="sub">Leaving all fields blank removes the record for this day.</p>
-    <div class="modal-actions"><button class="btn" id="cr-cancel">Cancel</button><button class="btn primary" id="cr-save">Save</button></div>`, {
-    onMount: (modal) => {
-      modal.querySelector('#cr-cancel').onclick = closeModal;
-      modal.querySelector('#cr-save').onclick = async () => {
-        try {
-          await api.post('attendance/correct/', {
-            user_id: emp.user_id, date: dateStr,
-            check_in: modal.querySelector('#cr-in').value || null,
-            check_out: modal.querySelector('#cr-out').value || null,
-            status: modal.querySelector('#cr-status').value,
-            note: modal.querySelector('#cr-note').value.trim(),
-          });
-          toast('Saved.', 'success');
-          closeModal();
-          onSaved();
-        } catch (e) { toast(apiErrorMessage(e), 'error'); }
+    <div class="field"><label>Note</label><input type="text" id="attDayNote" placeholder="Optional" value="${escapeHtml(d.note || '')}"></div>
+    <div class="modal-actions"><button class="btn" id="attDayCancel">Cancel</button><button class="btn btn-primary" id="attDaySave">Save</button></div>`, {
+    size: 'narrow',
+    onMount: (m) => {
+      m.querySelector('#attDayStatus').value = statusNow;
+      m.querySelector('#attDayCancel').onclick = closeModal;
+      m.querySelector('#attDaySave').onclick = async () => {
+        const ci = m.querySelector('#attDayIn').value, co = m.querySelector('#attDayOut').value;
+        if (ci && co && co < ci) { await customAlert('Check-out cannot be before check-in.'); return; }
+        try { await api.post('attendance/correct/', { user_id: userId, date, status: m.querySelector('#attDayStatus').value, check_in: ci || null, check_out: co || null, note: m.querySelector('#attDayNote').value.trim() }); }
+        catch (e) { await customAlert(apiErrorMessage(e)); return; }
+        closeModal(); render();
       };
     },
-  });
-}
-
-async function renderTeam(root) {
-  let selectedDate = root.dataset.teamDate || todayISO();
-  const [allRecords, leaves] = await Promise.all([api.all('attendance/'), api.all('leave-requests/')]);
-  employees = employees.length ? employees : await api.all('employees/');
-  const myBranchIds = state.me.branch_ids || [];
-  const scoped = isAdmin() ? employees : employees.filter((e) => e.user_id === state.me.user_id || (e.branch_ids || []).some((b) => myBranchIds.includes(b)));
-
-  const rows = scoped.map((emp) => {
-    const record = allRecords.find((r) => r.user.id === emp.user_id && r.date === selectedDate);
-    return { emp, record, status: attDayStatus(record, emp, selectedDate, state.holidays, leaves, state.siteSettings.attendance_start_date) };
-  });
-
-  root.innerHTML = `
-    <div class="flex-between">
-      <div class="field" style="max-width:200px;margin-bottom:0;"><label>Date</label><input type="date" id="teamDate" value="${selectedDate}"></div>
-    </div>
-    ${renderTable(['Employee', 'Check-in', 'Check-out', 'Status', 'Note', ''], rows.map(({ emp, record, status }) => ({
-      Employee: escapeHtml(emp.full_name),
-      'Check-in': (record && record.check_in) || '—', 'Check-out': (record && record.check_out) || '—',
-      Status: badge(status), Note: escapeHtml(record ? record.note : ''),
-      '': `<button class="btn sm" data-correct="${emp.user_id}">Correct</button>`,
-    })), { empty: 'No team members in scope.' })}`;
-
-  root.querySelector('#teamDate').onchange = (e) => { root.dataset.teamDate = e.target.value; renderTeam(root); };
-  root.querySelectorAll('[data-correct]').forEach((btn) => btn.onclick = () => {
-    const row = rows.find((r) => String(r.emp.user_id) === btn.dataset.correct);
-    openCorrectModal(row.emp, selectedDate, row.record, () => renderTeam(root));
-  });
-}
-
-async function renderLeave(root) {
-  const canDecide = isAdmin() || isBranchManager();
-  const [mine, pending] = await Promise.all([
-    api.all('leave-requests/'),
-    canDecide ? api.all('leave-requests/') : Promise.resolve([]),
-  ]);
-  const myOnly = canDecide ? mine.filter((l) => l.user.id === state.me.user_id) : mine;
-  const pendingOthers = canDecide ? pending.filter((l) => l.status === 'Pending') : [];
-
-  root.innerHTML = `
-    <div class="card" style="margin-bottom:20px;">
-      <h3 style="margin-bottom:10px;">Request leave</h3>
-      <div class="field-row">
-        <div class="field"><label>From</label><input type="date" id="lv-from" value="${todayISO()}"></div>
-        <div class="field"><label>To</label><input type="date" id="lv-to" value="${todayISO()}"></div>
-      </div>
-      <div class="field"><label>Reason</label><input id="lv-reason"></div>
-      <button class="btn primary sm" id="lv-submit">Submit request</button>
-    </div>
-    ${canDecide ? `<h3 style="margin-bottom:10px;">Pending approvals</h3>
-      ${renderTable(['Employee', 'From', 'To', 'Days', 'Reason', ''], pendingOthers.map((l) => ({
-        Employee: escapeHtml(l.user.full_name), From: fmtDate(l.date_from), To: fmtDate(l.date_to), Days: l.days, Reason: escapeHtml(l.reason),
-        '': `<button class="btn sm primary" data-approve="${l.id}">Approve</button> <button class="btn sm danger" data-reject="${l.id}">Reject</button>`,
-      })), { empty: 'Nothing pending.' })}` : ''}
-    <h3 style="margin:20px 0 10px;">My leave requests</h3>
-    ${renderTable(['From', 'To', 'Days', 'Reason', 'Status'], myOnly.map((l) => ({
-      From: fmtDate(l.date_from), To: fmtDate(l.date_to), Days: l.days, Reason: escapeHtml(l.reason), Status: badge(l.status),
-    })), { empty: 'No leave requests yet.' })}`;
-
-  root.querySelector('#lv-submit').onclick = async () => {
-    const reason = root.querySelector('#lv-reason').value.trim();
-    if (!reason) { toast('Reason is required.', 'error'); return; }
-    try {
-      await api.post('leave-requests/', {
-        date_from: root.querySelector('#lv-from').value, date_to: root.querySelector('#lv-to').value, reason,
-      });
-      toast('Leave requested.', 'success');
-      renderLeave(root);
-    } catch (e) { toast(apiErrorMessage(e), 'error'); }
-  };
-  root.querySelectorAll('[data-approve]').forEach((btn) => btn.onclick = async () => { await api.post(`leave-requests/${btn.dataset.approve}/approve/`, {}); renderLeave(root); });
-  root.querySelectorAll('[data-reject]').forEach((btn) => btn.onclick = async () => { await api.post(`leave-requests/${btn.dataset.reject}/reject/`, {}); renderLeave(root); });
-}
-
-function holidayForm(holiday) {
-  const h = holiday || {};
-  return `
-    <div class="field-row">
-      <div class="field"><label>Name *</label><input id="hf-name" value="${escapeHtml(h.name || '')}"></div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label>From</label><input type="date" id="hf-from" value="${h.date || todayISO()}"></div>
-      <div class="field"><label>To</label><input type="date" id="hf-to" value="${h.date_to || h.date || todayISO()}"></div>
-    </div>
-    <div class="field"><label><input type="checkbox" id="hf-all" style="width:auto;display:inline;" ${h.is_all_branches ? 'checked' : ''}> Applies to all branches</label></div>
-    <div class="field" id="hf-branches-wrap" style="${h.is_all_branches ? 'display:none;' : ''}">
-      <label>Branches</label>
-      <select id="hf-branches" multiple size="5">${state.branches.map((b) => `<option value="${b.id}" ${(h.branch_ids || []).includes(b.id) ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('')}</select>
-    </div>
-    <div class="modal-actions"><button class="btn" id="hf-cancel">Cancel</button><button class="btn primary" id="hf-save">${holiday ? 'Save' : 'Add holiday'}</button></div>`;
-}
-
-function openHolidayModal(holiday, onSaved) {
-  openModal(`<h2>${holiday ? 'Edit holiday' : 'New holiday'}</h2>${holidayForm(holiday)}`, {
-    onMount: (modal) => {
-      modal.querySelector('#hf-cancel').onclick = closeModal;
-      modal.querySelector('#hf-all').onchange = (e) => { modal.querySelector('#hf-branches-wrap').style.display = e.target.checked ? 'none' : ''; };
-      modal.querySelector('#hf-save').onclick = async () => {
-        const name = modal.querySelector('#hf-name').value.trim();
-        if (!name) { toast('Name is required.', 'error'); return; }
-        const isAll = modal.querySelector('#hf-all').checked;
-        const branchIds = Array.from(modal.querySelector('#hf-branches').selectedOptions).map((o) => Number(o.value));
-        const data = { name, date: modal.querySelector('#hf-from').value, date_to: modal.querySelector('#hf-to').value, is_all_branches: isAll, branch_ids: isAll ? [] : branchIds };
-        try {
-          if (holiday) await api.patch(`holidays/${holiday.id}/`, data);
-          else await api.post('holidays/', data);
-          toast('Saved.', 'success');
-          closeModal();
-          onSaved();
-        } catch (e) { toast(apiErrorMessage(e), 'error'); }
-      };
-    },
-  });
-}
-
-async function renderHolidays(root) {
-  const holidays = await api.all('holidays/');
-  holidays.sort((a, b) => a.date.localeCompare(b.date));
-  root.innerHTML = `
-    <div class="flex-between"><h3>Holidays</h3><button class="btn primary sm" id="newHolidayBtn">+ Add holiday</button></div>
-    ${renderTable(['Name', 'From', 'To', 'Scope', ''], holidays.map((h) => ({
-      Name: escapeHtml(h.name), From: fmtDate(h.date), To: fmtDate(h.date_to),
-      Scope: h.is_all_branches ? 'All branches' : (h.branch_ids || []).map((id) => escapeHtml((state.branches.find((b) => b.id === id) || {}).name || '?')).join(', ') || '—',
-      '': `<button class="btn sm" data-edit="${h.id}">Edit</button> <button class="btn sm danger" data-del="${h.id}">Remove</button>`,
-    })), { empty: 'No holidays configured.' })}`;
-  root.querySelector('#newHolidayBtn').onclick = () => openHolidayModal(null, () => renderHolidays(root));
-  root.querySelectorAll('[data-edit]').forEach((btn) => btn.onclick = () => openHolidayModal(holidays.find((h) => String(h.id) === btn.dataset.edit), () => renderHolidays(root)));
-  root.querySelectorAll('[data-del]').forEach((btn) => btn.onclick = async () => {
-    await api.delete(`holidays/${btn.dataset.del}/`);
-    renderHolidays(root);
   });
 }
 
 export async function mountAttendance(root) {
-  const canSeeTeam = isAdmin() || isBranchManager();
-  activeTab = (['mine', 'team', 'leave', 'holidays'].includes(root.dataset.tab) && root.dataset.tab) || 'mine';
-  const tabs = { mine: renderMine, leave: renderLeave };
-  if (canSeeTeam) { tabs.team = renderTeam; }
-  if (isAdmin()) tabs.holidays = renderHolidays;
+  teamInit = false; holChipsBuilt = false;
+  root.innerHTML = `
+    <div class="view active" id="view-attendance">
+      <div class="view-head"><div><p class="brand-eyebrow">Work</p><h1>Attendance</h1><p class="sub" id="attSubline"></p></div></div>
+      <div id="attTodayCard"></div>
+      <div class="select-row" style="margin:18px 0 10px;"><h2 style="margin:0;font-size:16px;">My month</h2><input type="month" id="attMyMonth" style="max-width:170px;"></div>
+      <div class="dash-grid" id="attMyStats"></div>
+      <div id="attMyTable"></div>
 
-  const shell = document.createElement('div');
-  shell.innerHTML = `
-    <div class="tabbar">
-      <button data-t="mine" class="active">My attendance</button>
-      ${canSeeTeam ? '<button data-t="team">Team</button>' : ''}
-      <button data-t="leave">Leave</button>
-      ${isAdmin() ? '<button data-t="holidays">Holidays</button>' : ''}
-    </div>
-    <div id="attBody"></div>`;
-  root.innerHTML = '';
-  root.appendChild(shell);
-  const body = shell.querySelector('#attBody');
-  const show = (tab) => {
-    shell.querySelectorAll('[data-t]').forEach((b) => b.classList.toggle('active', b.dataset.t === tab));
-    tabs[tab](body);
+      <h2 style="margin:26px 0 10px;font-size:16px;">Holidays</h2>
+      <div class="card" id="holFormCard" style="display:none;flex-direction:column;align-items:stretch;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
+          <div class="field"><label>From</label><input type="date" id="hol-from"></div>
+          <div class="field"><label>To (optional)</label><input type="date" id="hol-to"></div>
+          <div class="field" style="grid-column:span 2;min-width:200px;"><label>Holiday name</label><input type="text" id="hol-name" placeholder="e.g. Pongal, Ugadi, Diwali"></div>
+        </div>
+        <div class="field" style="margin-top:10px;"><label>Applies to branch(es)</label><div class="chip-group" id="holBranchChips"></div></div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:10px;"><button class="btn btn-primary" id="holAddBtn">Add holiday</button><span class="sub" id="holHint" style="margin:0;"></span></div>
+      </div>
+      <div id="attHolidays" style="margin-top:12px;"></div>
+
+      <h2 style="margin:26px 0 10px;font-size:16px;">Leave</h2>
+      <div class="card" style="flex-direction:column;align-items:stretch;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
+          <div class="field"><label>From</label><input type="date" id="lv-from"></div>
+          <div class="field"><label>To</label><input type="date" id="lv-to"></div>
+          <div class="field" style="grid-column:span 2;min-width:200px;"><label>Reason</label><input type="text" id="lv-reason" placeholder="e.g. Family function, medical, personal"></div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:10px;"><button class="btn btn-primary" id="lvSubmitBtn">Request leave</button><span class="sub" id="lvHint" style="margin:0;"></span></div>
+      </div>
+      <div id="attMyLeaves" style="margin-top:12px;"></div>
+
+      <div id="attTeamSection" style="display:none;">
+        <h2 style="margin:26px 0 10px;font-size:16px;">Leave requests to approve</h2>
+        <div id="attApprovals"></div>
+        <div class="select-row" style="margin:26px 0 10px;">
+          <h2 style="margin:0;font-size:16px;">Team attendance</h2>
+          <input type="month" id="attTeamMonth" style="max-width:170px;">
+          <select id="attTeamBranch" style="max-width:190px;"></select>
+          <button class="btn" id="attExportBtn">Export to Excel</button>
+        </div>
+        <p class="sub" style="margin:0 0 8px;">P present &middot; L late &middot; H half day &middot; A absent &middot; LV leave &middot; O weekly off or holiday. Click a cell to correct a day.</p>
+        <div id="attTeamGrid" style="overflow-x:auto;"></div>
+        <div class="select-row" style="margin:26px 0 10px;"><h2 style="margin:0;font-size:16px;">Check-in &amp; check-out times</h2><input type="date" id="attDayDate" style="max-width:170px;"></div>
+        <div id="attDayTable" style="overflow-x:auto;"></div>
+      </div>
+    </div>`;
+  el('attMyMonth').addEventListener('change', render);
+  ['attTeamMonth', 'attDayDate', 'attTeamBranch'].forEach((id) => el(id).addEventListener('change', render));
+  el('lvSubmitBtn').onclick = async () => {
+    const hint = el('lvHint');
+    const from = el('lv-from').value, to = el('lv-to').value || from, reason = el('lv-reason').value.trim();
+    try { await api.post('leave-requests/', { date_from: from || null, date_to: to || null, reason }); }
+    catch (e) { hint.textContent = apiErrorMessage(e); return; }
+    hint.textContent = '';
+    el('lv-from').value = ''; el('lv-to').value = ''; el('lv-reason').value = '';
+    render();
   };
-  shell.querySelectorAll('[data-t]').forEach((btn) => btn.addEventListener('click', () => show(btn.dataset.t)));
-  show('mine');
+  el('holAddBtn').onclick = async () => {
+    const hint = el('holHint');
+    const all = !!(el('hol-all') && el('hol-all').checked);
+    const ids = all ? [] : [...document.querySelectorAll('.hol-branch-check:checked')].map((c) => Number(c.value));
+    try { await api.post('holidays/', { date: el('hol-from').value || null, date_to: el('hol-to').value || null, name: el('hol-name').value.trim(), is_all_branches: all, branch_ids: ids }); }
+    catch (e) { hint.textContent = apiErrorMessage(e); return; }
+    hint.textContent = '';
+    el('hol-from').value = ''; el('hol-to').value = ''; el('hol-name').value = '';
+    document.querySelectorAll('.hol-branch-check, #hol-all').forEach((c) => { c.checked = false; });
+    render();
+  };
+  el('attExportBtn').onclick = async () => {
+    if (!teamData || !teamData.people.length) { await customAlert('Nothing to export.'); return; }
+    const rows = teamData.people.map((p) => {
+      const r = { Name: p.name, 'Emp code': p.emp_code, Branch: p.branches.join(', '), 'Work hours': fmtTime(p.work_start) + ' – ' + fmtTime(p.work_end) };
+      p.days.forEach((d) => { r[String(+d.date.slice(8))] = d.code; });
+      r.Present = p.tally.present + p.tally.half * 0.5; r.Absent = p.tally.absent; r.Leave = p.tally.leave; r.Late = p.tally.late; r['Hours worked'] = Math.round(p.tally.worked / 6) / 10;
+      return r;
+    });
+    exportRowsToExcel(rows, 'Attendance-' + teamData.month, 'Attendance');
+  };
+  await render();
 }

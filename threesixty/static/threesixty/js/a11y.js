@@ -37,7 +37,8 @@ function labelOrphans(scope) {
 function markActiveNav() {
   const view = (window.location.hash || '').replace(/^#\/?/, '').split('/');
   document.querySelectorAll('#app-sidebar .nav-item').forEach((b) => {
-    const on = b.dataset.view === view[0] && (!b.dataset.subtab || b.dataset.subtab === view[1]);
+    const owner = { customerview: 'customers', customerform: 'customers', person: 'customers', salesform: 'sales', paymentform: 'payments', paymenthistory: 'payments', paymentlog: 'payments' }[view[0]] || view[0];
+    const on = b.dataset.view === owner && (!b.dataset.subtab || b.dataset.subtab === view[1]);
     if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     b.classList.toggle('active', on);
   });

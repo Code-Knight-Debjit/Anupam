@@ -102,12 +102,13 @@ export function apiErrorMessage(err) {
 
 let modalRoot = null;
 // Same markup as the reference's dialogs: `.overlay.open > .modal` (add `narrow` / `wide` via opts.size).
-export function openModal(innerHtml, { onMount, size } = {}) {
+export function openModal(innerHtml, { onMount, size, sticky } = {}) {
   closeModal();
   modalRoot = document.createElement('div');
   modalRoot.className = 'overlay open';
   modalRoot.innerHTML = `<div class="modal${size ? ' ' + size : ''}">${innerHtml}</div>`;
-  modalRoot.addEventListener('mousedown', (e) => { if (e.target === modalRoot) closeModal(); });
+  // A dialog that waits for an answer (alert / confirm / prompt) is closed only by its buttons, as in the reference.
+  if (!sticky) modalRoot.addEventListener('mousedown', (e) => { if (e.target === modalRoot) closeModal(); });
   document.body.appendChild(modalRoot);
   if (onMount) onMount(modalRoot.querySelector('.modal'));
   return modalRoot;
@@ -128,7 +129,7 @@ function dialog({ title, message, input, okLabel = 'OK', cancelLabel = 'Cancel',
         ${showCancel ? `<button class="btn" id="dlgCancel">${escapeHtml(cancelLabel)}</button>` : ''}
         <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="dlgOk">${escapeHtml(okLabel)}</button>
       </div>`, {
-      size: 'narrow',
+      size: 'narrow', sticky: true,
       onMount: (modal) => {
         const inputEl = modal.querySelector('#dlgInput');
         if (inputEl) { inputEl.focus(); inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') modal.querySelector('#dlgOk').click(); }); }
@@ -226,4 +227,34 @@ export function enhanceCustomerSelect(select, customers, { blank = 'â€” select â
   select.parentNode.insertBefore(box, select);
   render('');
   return { refresh: render, search: box };
+}
+
+// ---- exports (reference: exportRowsToExcel) --------------------------------------------------------------------
+export async function getXlsx() {
+  if (!window.XLSX) await loadScript(window.THREESIXTY_VENDOR.xlsx);
+  return window.XLSX;
+}
+/** One sheet from an array of row objects, saved as `<prefix>-<timestamp>.xlsx`. */
+export async function exportRowsToExcel(rows, filenamePrefix, sheetName) {
+  if (!rows.length) { await customAlert('Nothing to export.'); return; }
+  const XLSX = await getXlsx();
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), String(sheetName).slice(0, 31));
+  XLSX.writeFile(wb, `${filenamePrefix}-${Date.now()}.xlsx`);
+}
+
+export async function getJsPdf() {
+  if (!(window.jspdf && window.jspdf.jsPDF)) {
+    await loadScript(window.THREESIXTY_VENDOR.jspdf);
+    await loadScript(window.THREESIXTY_VENDOR.autotable);
+  }
+  return window.jspdf.jsPDF;
+}
+// The branded PDF / Print / multi-sheet Excel exports (letterhead, cards, sections, watermark) live in report_export.js.
+export { exportRowsToPdf, printRowsTable, exportSheetsToExcel } from './report_export.js';
+/** Downloads text as a file. */
+export function downloadText(text, filename, type = 'text/plain') {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }

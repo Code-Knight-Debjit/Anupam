@@ -120,6 +120,20 @@ def _record_dict(r):
     return {'userId': r.user_id, 'date': r.date.isoformat(), 'checkIn': hm(r.check_in), 'checkOut': hm(r.check_out), 'status': r.status}
 
 
+def day_label(status, record, day_iso, emp, holidays) -> str:
+    """The wording the reference shows next to a day: 'Present (late)', 'Holiday — Diwali', 'Weekly off', or the manual
+    status as typed. (The rules module only decides the one-letter code.)"""
+    if record and record.status:
+        return record.status
+    if record and record.check_in:
+        return 'Present (late)' if status['late'] else 'Present'
+    if status['code'] == 'O':
+        mine = set(emp['branches'])
+        hol = next((h for h in holidays if h['from'] <= day_iso <= h['to'] and (h['all'] or mine & set(h['branches']))), None)
+        return f"Holiday — {hol['name']}" if hol else 'Weekly off'
+    return CODES.get(status['code'], '')
+
+
 def compute_range(profiles, start: date, end: date, today=None):
     """{user_id: [ {date, code, late, worked, record} ... ]} for every day start..end."""
     today = (today or timezone.localdate()).isoformat()
@@ -129,7 +143,7 @@ def compute_range(profiles, start: date, end: date, today=None):
     records = defaultdict(dict)
     for r in AttendanceRecord.objects.filter(user_id__in=user_ids, date__range=(start, end)):
         records[r.user_id][r.date] = r
-    holidays = [{'from': h.date.isoformat(), 'to': h.date_to.isoformat(), 'all': h.is_all_branches,
+    holidays = [{'from': h.date.isoformat(), 'to': h.date_to.isoformat(), 'all': h.is_all_branches, 'name': h.name,
                  'branches': [b.pk for b in h.branches.all()]}
                 for h in Holiday.objects.filter(date_to__gte=start, date__lte=end).prefetch_related('branches')]
     leaves = [{'userId': l.user_id, 'from': l.date_from.isoformat(), 'to': l.date_to.isoformat(), 'status': l.status}
@@ -143,7 +157,8 @@ def compute_range(profiles, start: date, end: date, today=None):
         day = start
         while day <= end:
             status = rules.att_day_status(emp, day.isoformat(), rec_dicts, holidays, leaves, today, start_from)
-            days.append({'date': day, 'code': status['code'], 'label': CODES[status['code']], 'late': status['late'],
+            days.append({'date': day, 'code': status['code'], 'label': day_label(status, records[p.user_id].get(day), day.isoformat(), emp, holidays),
+                         'late': status['late'],
                          'worked': status['worked'], 'record': records[p.user_id].get(day)})
             day += timedelta(days=1)
         out[p.user_id] = days
@@ -209,6 +224,34 @@ def detailed_report(viewer, start, end, user_id=None):
     return rows
 
 
+def team_month(viewer, month_text, branch_id=None):
+    """One month for everyone the viewer may see (themselves, plus their team for Admin / Branch Manager): each person's
+    days with times, status, note and (Admin / own record only) the check-in / check-out location, and the tally."""
+    start, end = month_bounds(month_text)
+    profiles = team_profiles(viewer)
+    if branch_id:
+        profiles = profiles.filter(branches__id=branch_id)
+    profiles = list(profiles.distinct().order_by('user__first_name', 'user__username'))
+    computed = compute_range(profiles, start, end)
+    people = []
+    for p in profiles:
+        show_location = RoleRules.is_admin(viewer) or p.user_id == viewer.pk
+        days = []
+        for d in computed[p.user_id]:
+            r = d['record']
+            row = {'date': d['date'].isoformat(), 'code': d['code'], 'label': d['label'], 'late': d['late'], 'worked': d['worked'],
+                   'check_in': hm(r.check_in) if r else '', 'check_out': hm(r.check_out) if r else '', 'note': r.note if r else '',
+                   'manual': bool(r and r.status)}
+            if show_location and r:
+                row['in_location'], row['out_location'] = _loc(r.in_loc_lat, r.in_loc_lng), _loc(r.out_loc_lat, r.out_loc_lng)
+            days.append(row)
+        people.append({'user_id': p.user_id, 'name': p.user.get_full_name() or p.user.username, 'emp_code': p.emp_code or '',
+                       'branches': [b.name for b in p.branches.all()], 'work_start': p.work_start, 'work_end': p.work_end,
+                       'weekly_off': p.weekly_off, 'days': days, 'tally': tally(computed[p.user_id])})
+    return {'month': start.strftime('%Y-%m'), 'from': start.isoformat(), 'to': end.isoformat(), 'people': people,
+            'today': timezone.localdate().isoformat()}
+
+
 def _loc(lat, lng):
     return None if lat is None or lng is None else {'lat': lat, 'lng': lng,
                                                      'map_url': f'https://www.openstreetmap.org/?mlat={lat}&mlon={lng}#map=17/{lat}/{lng}'}
@@ -244,19 +287,55 @@ def correct_day(actor, target_user_id, day, status='', check_in=None, check_out=
 
 
 # --------------------------------------------------------------------------- leave (REQ-AUT-09)
+def nice_date(d) -> str:
+    """14 Nov 2026 — the reference's attFmtDate, used in its leave / holiday notices."""
+    return d.strftime('%d %b %Y')
+
+
+def nice_range(a, b) -> str:
+    return nice_date(a) + (f' – {nice_date(b)}' if b != a else '')
+
+
 def _name(user):
     return user.get_full_name() or user.username
 
 
 @transaction.atomic
+def leave_approvers(user):
+    """Admins, and Branch Managers who share a branch with the requester — never the requester themself."""
+    my_branches = set(user.threesixty_profile.branches.values_list('id', flat=True))
+    people = []
+    for p in active_profiles().select_related('user').prefetch_related('branches'):
+        if p.user_id == user.pk:
+            continue
+        if p.role == EmployeeProfile.ADMIN or (p.role == EmployeeProfile.BRANCH_MANAGER and my_branches & {b.pk for b in p.branches.all()}):
+            people.append(p)
+    return people
+
+
+@transaction.atomic
 def request_leave(user, date_from, date_to, reason):
-    if not date_from or not date_to or not (reason or '').strip():
-        raise ServiceError(400, 'date_from, date_to and reason are required.')
+    """The reference's rules: pick a first day, not in the past, a reason, no overlap with another live request.
+    An Admin's own request is approved at once; everyone else's waits for an approver, who is told."""
+    today = timezone.localdate()
+    if not date_from:
+        raise ServiceError(400, 'Pick the first day of leave.')
+    date_to = date_to or date_from
     if date_to < date_from:
-        raise ServiceError(400, 'The last day of leave is before the first day.')
+        raise ServiceError(400, 'End date cannot be before the start date.')
+    if date_from < today:
+        raise ServiceError(400, 'Leave cannot start in the past — ask your manager to correct the day instead.')
+    if not (reason or '').strip():
+        raise ServiceError(400, 'Add a short reason.')
+    if LeaveRequest.objects.filter(user=user, date_from__lte=date_to, date_to__gte=date_from).exclude(status=LeaveRequest.STATUS_REJECTED).exists():
+        raise ServiceError(400, 'You already have a leave request overlapping these dates.')
     leave = LeaveRequest.objects.create(user=user, date_from=date_from, date_to=date_to, reason=reason.strip())
-    for admin in active_profiles(EmployeeProfile.ADMIN).exclude(user=user):
-        notify(admin.user_id, 'leave', f'{_name(user)} requested leave: {date_from.isoformat()} – {date_to.isoformat()}.')
+    if RoleRules.is_admin(user):
+        leave.status, leave.decided_by, leave.decided_at = LeaveRequest.STATUS_APPROVED, user, timezone.now()
+        leave.save()
+    else:
+        for approver in leave_approvers(user):
+            notify(approver.user_id, 'leave', f'{_name(user)} requested leave: {nice_range(date_from, date_to)}.')
     return leave
 
 
@@ -268,28 +347,61 @@ def decide_leave(actor, leave, new_status, note=''):
         raise ServiceError(403, 'You cannot decide this leave request.')
     leave.status, leave.decided_by, leave.decided_at, leave.decision_note = new_status, actor, timezone.now(), (note or '')[:255]
     leave.save()
-    text = f'Your leave ({leave.date_from.isoformat()} – {leave.date_to.isoformat()}) was {new_status.lower()} by {_name(actor)}.'
+    text = f'Your leave ({nice_range(leave.date_from, leave.date_to)}) was {new_status.lower()} by {_name(actor)}.'
     notify(leave.user_id, 'leave', text + (f' {leave.decision_note}' if leave.decision_note else ''))
     return leave
 
 
 # --------------------------------------------------------------------------- holidays (REQ-AUT-09)
+def holiday_visible(user, holiday) -> bool:
+    if RoleRules.is_admin(user) or holiday.is_all_branches:
+        return True
+    mine = set(user.threesixty_profile.branches.values_list('id', flat=True))
+    return bool(mine & {b.pk for b in holiday.branches.all()})
+
+
+def can_manage_holiday(user, holiday) -> bool:
+    """Admin: any. Branch Manager: only a holiday that is for their own branches (never an all-branches one)."""
+    if RoleRules.is_admin(user):
+        return True
+    if not RoleRules.is_branch_manager(user) or holiday.is_all_branches:
+        return False
+    mine = set(user.threesixty_profile.branches.values_list('id', flat=True))
+    ids = {b.pk for b in holiday.branches.all()}
+    return bool(ids) and ids <= mine
+
+
 @transaction.atomic
-def add_holiday(name, date_from, date_to=None, branch_ids=None, all_branches=False):
-    name = (name or '').strip()
-    if not name or not date_from:
-        raise ServiceError(400, 'date and name are required.')
+def add_holiday(actor, name, date_from, date_to=None, branch_ids=None, all_branches=False):
+    """Admin or Branch Manager (own branches only). Overlapping holidays for the same branch are refused; the people
+    affected (except the person adding it) are told."""
+    if not (RoleRules.is_admin(actor) or RoleRules.is_branch_manager(actor)):
+        raise ServiceError(403, 'Only Admin or Branch Manager can add holidays.')
+    name = ' '.join(w[:1].upper() + w[1:] for w in (name or '').strip().split())
+    if not date_from:
+        raise ServiceError(400, 'Pick the holiday date.')
     date_to = date_to or date_from
     if date_to < date_from:
-        raise ServiceError(400, 'date_to cannot be before date.')
-    chosen = list(branch_ids or [])
+        raise ServiceError(400, 'End date cannot be before the start date.')
+    if not name:
+        raise ServiceError(400, 'Enter the holiday name.')
+    chosen = [int(i) for i in (branch_ids or [])]
+    if all_branches and not RoleRules.is_admin(actor):
+        raise ServiceError(403, 'Only Admin can add an all-branches holiday.')
     if not all_branches and not chosen:
-        raise ServiceError(400, 'Choose the branches this holiday applies to, or all branches.')
-    holiday = Holiday.objects.create(date=date_from, date_to=date_to, name=name, is_all_branches=bool(all_branches))
+        raise ServiceError(400, 'Pick at least one branch.')
+    if not RoleRules.is_admin(actor):
+        mine = set(actor.threesixty_profile.branches.values_list('id', flat=True))
+        if not set(chosen) <= mine:
+            raise ServiceError(403, 'You can only add holidays for your own branches.')
+    for h in Holiday.objects.filter(date__lte=date_to, date_to__gte=date_from).prefetch_related('branches'):
+        if all_branches or h.is_all_branches or {b.pk for b in h.branches.all()} & set(chosen):
+            raise ServiceError(400, f'A holiday ({h.name}) already covers some of these dates for the selected branch(es).')
+    holiday = Holiday.objects.create(date=date_from, date_to=date_to, name=name, is_all_branches=bool(all_branches), created_by=actor)
     if chosen and not all_branches:
         holiday.branches.set(chosen)
-    text = f'Holiday: {name} on {date_from.isoformat()}' + (f' – {date_to.isoformat()}' if date_to != date_from else '')
-    people = active_profiles()
+    text = f'Holiday: {name} on {nice_range(date_from, date_to)}.'
+    people = active_profiles().exclude(user=actor)
     if not all_branches:
         people = people.filter(branches__id__in=chosen).distinct()
     for p in people:

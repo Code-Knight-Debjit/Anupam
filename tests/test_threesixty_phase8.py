@@ -392,7 +392,7 @@ class TestDashboards:
         r = get(team['admin'], 'dashboard/admin/').json()
         row = next(e for e in r['employees'] if e['user_id'] == team['sm'].pk)
         assert (row['customers_added'], row['contacts_added'], row['documents_raised']) == (1, 4, 2) and row['last_activity']
-        assert len(r['activity']) <= 10 and any('raised Quotation' in a['text'] for a in r['activity'])
+        assert len(r['activity']) <= 10 and any(a['label'].startswith('Quotation') and a['meta'].startswith('Raised by') for a in r['activity']) and r['activity_total'] >= 3
         assert len(get(team['admin'], 'dashboard/admin/', activity_limit=2).json()['activity']) == 2
         drill = get(team['admin'], 'dashboard/admin/drill/', user_id=team['sm'].pk, what='documents').json()
         assert drill['count'] == 2
@@ -442,6 +442,36 @@ class TestDashboards:
         interact(contacts[0], team['sm'], 'Call', 60)
         assert get(team['sm'], 'dashboard/personal/', **{'from': D(30)}).json()['activity']['calls_done'] == 1
         assert get(team['sm'], 'dashboard/personal/', **{'from': D(90)}).json()['activity']['calls_done'] == 2
+
+    def test_personal_dashboard_custom_dates_narrow_every_number_but_presets_only_the_activity(self, team, chennai):
+        sm = team['sm']
+        c, contacts = make_customer('Sun Steels', sm)
+        Task.objects.create(title='old', assigned_to=sm, due_date=TODAY - timedelta(days=40), created_by=team['admin'])
+        Task.objects.create(title='new', assigned_to=sm, due_date=TODAY, created_by=team['admin'])
+        doc(chennai, c, sm, 'enquiry')
+        # preset period: pending numbers ignore the dates (reference behaviour) ...
+        assert get(sm, 'dashboard/personal/', **{'from': D(5), 'to': D(0)}).json()['tasks']['pending'] == 2
+        # ... custom dates narrow them, each by its own date
+        r = get(sm, 'dashboard/personal/', **{'from': D(5), 'to': D(0), 'custom': '1'}).json()
+        assert r['tasks']['pending'] == 1 and r['pending']['enquiries'] == 1
+        assert get(sm, 'dashboard/personal/', **{'from': D(90), 'to': D(60), 'custom': '1'}).json()['pending']['enquiries'] == 0
+
+    def test_personal_dashboard_last_seven_days_chart(self, team):
+        c, contacts = make_customer('Sun Steels', team['sm'])
+        interact(contacts[0], team['sm'], 'Call', 0)
+        interact(contacts[0], team['sm'], 'Visit', 2)
+        interact(contacts[0], team['sm'], 'Call', 9)
+        week = get(team['sm'], 'dashboard/personal/').json()['week']
+        assert len(week) == 7 and week[-1]['date'] == TODAY.isoformat()
+        assert week[-1]['Call'] == 1 and week[-3]['Visit'] == 1 and sum(d['Call'] for d in week) == 1
+
+    def test_home_strip_shows_my_state_and_the_team_to_approvers_only(self, team, chennai):
+        Task.objects.create(title='today', assigned_to=team['bs'], due_date=TODAY, created_by=team['admin'])
+        Task.objects.create(title='late', assigned_to=team['bs'], due_date=TODAY - timedelta(days=1), created_by=team['admin'])
+        bs = get(team['bs'], 'dashboard/home/').json()
+        assert bs['tasks'] == {'due_today': 1, 'overdue': 1} and bs['team'] is None and bs['today']['check_in'] == ''
+        admin = get(team['admin'], 'dashboard/home/').json()
+        assert admin['team'] is not None and admin['team']['in'] <= admin['team']['total']
 
     def test_personal_dashboard_ignores_a_user_id(self, team):
         c, contacts = make_customer('Sun Steels', team['sm'])

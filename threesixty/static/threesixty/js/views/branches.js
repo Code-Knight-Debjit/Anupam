@@ -1,157 +1,210 @@
-// Branches — Admin-only Branch CRUD + per-branch document numbering
-// (prefix/start-at per doc type, `branch_numbering_detail`).
+// Branches — the reference's page: the App logo and Sidebar logo panel, the list of branches (Edit Details / Edit Numbering /
+// Rename / Remove) with an "Add a new branch…" row, the branch-details dialog (letterhead, logos, watermark, accent colour,
+// bank details) and the document-numbering dialog. Only an Admin may change anything here (the server enforces it).
 import { api } from '../api.js';
-import { el, escapeHtml, toast, apiErrorMessage, openModal, closeModal, confirmDialog, renderTable } from '../ui.js';
+import { state, loadBootstrap, applyLogos } from '../state.js';
+import { el, escapeHtml, customAlert, customConfirm, customPrompt, apiErrorMessage } from '../ui.js';
+import { mountRefView, useOverlays, openOverlay, closeOverlay } from '../customer_common.js';
 
-// Pending PO is not listed: it carries the customer's own PO number (REQ-DOC-02).
-const DOC_TYPES = [['enquiry', 'Enquiry'], ['quotation', 'Quotation'], ['proforma', 'Proforma Invoice'], ['dc', 'Delivery Challan']];
-const IMAGE_KINDS = [['logo', 'Company logo'], ['dealer_logo', 'Dealer logo'], ['footer_image', 'Footer image'], ['payment_qr', 'Payment QR']];
+const DEFAULT_ACCENT = '#d97b2f';
+// What Print / PDF number: Pending PO carries the customer's own PO number, and the stock bills of the reference's Sales / Purchase
+// numbering are not part of Anupam 360's screens.
+const NUMBERING_TYPES = [['enquiry', 'Enquiry', 'ENQ'], ['quotation', 'Quotation', 'QUO'], ['dc', 'Delivery Challan', 'DC'], ['proforma', 'Proforma Invoice', 'PI']];
+const SIZE = { small: 30, medium: 50, large: 75 };
+const sizeKey = (n) => (n <= 40 ? 'small' : n >= 65 ? 'large' : 'medium');
+const IMAGE_SLOTS = [['logo', 'bd-logo', 'logo_url'], ['dealer_logo', 'bd-dealer-logo', 'dealer_logo_url'], ['footer_image', 'bd-footer-image', 'footer_image_url'], ['payment_qr', 'bd-qr', 'payment_qr_url']];
 
-function branchForm(branch) {
-  const b = branch || {};
-  const v = (k) => escapeHtml(b[k] == null ? '' : b[k]);
-  const imageBlock = branch ? `
-    <h3>Images</h3>
-    <div class="field-row">${IMAGE_KINDS.map(([k, label]) => `
-      <div class="field"><label>${label}</label>
-        ${b[k + '_url'] ? `<img src="${escapeHtml(b[k + '_url'])}" alt="" style="max-height:48px;max-width:100%;display:block;margin-bottom:4px;">` : '<div class="sub">None</div>'}
-        <input type="file" accept="image/png,image/jpeg,image/webp" data-image="${k}">
-        ${b[k + '_url'] ? `<button type="button" class="link-btn" data-image-remove="${k}">Remove</button>` : ''}
-      </div>`).join('')}</div>` : '<p class="sub">Save the branch first, then add its logo and QR images.</p>';
-  return `
-    <div class="field"><label>Name *</label><input id="bf-name" value="${v('name')}"></div>
-    <h3>Letterhead</h3>
-    <div class="field"><label>Company name</label><input id="bf-letterhead_name" value="${v('letterhead_name')}"></div>
-    <div class="field"><label>Address</label><textarea id="bf-letterhead_address" rows="2">${v('letterhead_address')}</textarea></div>
-    <div class="field-row">
-      <div class="field"><label>Phone</label><input id="bf-letterhead_phone" value="${v('letterhead_phone')}"></div>
-      <div class="field"><label>Mobile</label><input id="bf-letterhead_mobile" value="${v('letterhead_mobile')}"></div>
-      <div class="field"><label>Email</label><input id="bf-letterhead_email" value="${v('letterhead_email')}"></div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label>Website</label><input id="bf-letterhead_website" value="${v('letterhead_website')}"></div>
-      <div class="field"><label>GSTIN</label><input id="bf-letterhead_gstin" value="${v('letterhead_gstin')}"></div>
-      <div class="field"><label>Udyam</label><input id="bf-udyam_number" value="${v('udyam_number')}"></div>
-    </div>
-    <h3>Bank details</h3>
-    <div class="field-row">
-      <div class="field"><label>Bank</label><input id="bf-bank_name" value="${v('bank_name')}"></div>
-      <div class="field"><label>Branch</label><input id="bf-bank_branch" value="${v('bank_branch')}"></div>
-      <div class="field"><label>A/C no.</label><input id="bf-bank_account_no" value="${v('bank_account_no')}"></div>
-      <div class="field"><label>IFSC</label><input id="bf-bank_ifsc" value="${v('bank_ifsc')}"></div>
-    </div>
-    ${imageBlock}
-    <h3>Print layout</h3>
-    <div class="field-row">
-      <div class="field"><label>Document format</label><select id="bf-doc_format"><option value="1" ${b.doc_format !== 2 ? 'selected' : ''}>Format 1</option><option value="2" ${b.doc_format === 2 ? 'selected' : ''}>Format 2</option></select></div>
-      <div class="field"><label>Accent colour</label><input id="bf-accent_color" placeholder="#a14000" value="${v('accent_color')}"></div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label><input type="checkbox" id="bf-watermark_enabled" style="width:auto;display:inline;" ${b.watermark_enabled ? 'checked' : ''}> Watermark on all prints</label></div>
-      <div class="field"><label>Type</label><select id="bf-watermark_type"><option value="logo" ${b.watermark_type !== 'text' ? 'selected' : ''}>Logo</option><option value="text" ${b.watermark_type === 'text' ? 'selected' : ''}>Text</option></select></div>
-      <div class="field"><label>Text</label><input id="bf-watermark_text" value="${v('watermark_text')}"></div>
-      <div class="field"><label>Size %</label><input type="number" min="10" max="100" id="bf-watermark_size" value="${b.watermark_size || 50}"></div>
-    </div>
-    <div class="field"><label>Default terms &amp; conditions</label><textarea id="bf-terms" rows="4">${v('terms')}</textarea></div>
-    <div class="field"><label><input type="checkbox" id="bf-active" style="width:auto;display:inline;" ${b.is_active !== false ? 'checked' : ''}> Active</label></div>
-    <div class="modal-actions"><button class="btn" id="bf-cancel">Cancel</button><button class="btn primary" id="bf-save">${branch ? 'Save changes' : 'Create branch'}</button></div>`;
+let branches = [];
+const appLogo = () => (state.siteSettings || {}).appLogo;
+const sidebarLogo = () => (state.siteSettings || {}).sidebarLogo;
+const defaultOf = (selector) => { const i = document.querySelector(selector); return i ? (i.dataset.default || i.getAttribute('src')) : ''; };
+
+// ---- App logo & sidebar logo --------------------------------------------------------------------------------------------------------
+function paintLogos() {
+  el('appLogoPreview').src = (appLogo() && appLogo().url) || defaultOf('#logoRowMobile img');
+  el('sidebarLogoPreview').src = (sidebarLogo() && sidebarLogo().url) || (appLogo() && appLogo().url) || defaultOf('#logoRowApp img');
 }
-
-const TEXT_FIELDS = ['name', 'letterhead_name', 'letterhead_address', 'letterhead_phone', 'letterhead_mobile', 'letterhead_email',
-  'letterhead_website', 'letterhead_gstin', 'udyam_number', 'bank_name', 'bank_branch', 'bank_account_no', 'bank_ifsc',
-  'accent_color', 'watermark_text', 'terms'];
-
-function openBranchForm(branch, onSaved) {
-  openModal(`<h2>${branch ? 'Edit branch' : 'New branch'}</h2>${branchForm(branch)}`, {
-    onMount: (modal) => {
-      modal.querySelector('#bf-cancel').onclick = closeModal;
-      modal.querySelectorAll('[data-image]').forEach((input) => input.addEventListener('change', async () => {
-        if (!input.files[0]) return;
-        try { await api.upload(`branches/${branch.id}/images/${input.dataset.image}/`, input.files[0]); toast('Image uploaded.', 'success'); closeModal(); onSaved(); }
-        catch (e) { toast(apiErrorMessage(e), 'error'); }
-      }));
-      modal.querySelectorAll('[data-image-remove]').forEach((btn) => btn.addEventListener('click', async () => {
-        try { await api.delete(`branches/${branch.id}/images/${btn.dataset.imageRemove}/`); closeModal(); onSaved(); }
-        catch (e) { toast(apiErrorMessage(e), 'error'); }
-      }));
-      modal.querySelector('#bf-save').onclick = async () => {
-        const data = {};
-        TEXT_FIELDS.forEach((k) => { data[k] = modal.querySelector(`#bf-${k}`).value.trim(); });
-        if (!data.name) { toast('Name is required.', 'error'); return; }
-        data.doc_format = Number(modal.querySelector('#bf-doc_format').value);
-        data.watermark_type = modal.querySelector('#bf-watermark_type').value;
-        data.watermark_enabled = modal.querySelector('#bf-watermark_enabled').checked;
-        data.watermark_size = Number(modal.querySelector('#bf-watermark_size').value) || 50;
-        data.is_active = modal.querySelector('#bf-active').checked;
-        try {
-          if (branch) await api.patch(`branches/${branch.id}/`, data);
-          else await api.post('branches/', data);
-          toast('Saved.', 'success');
-          closeModal();
-          onSaved();
-        } catch (e) { toast(apiErrorMessage(e), 'error'); }
+/** Shrinks a big image (keeping transparency) so the stored logo stays small, as the reference does. */
+function shrink(file, maxW) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const scale = img.naturalWidth > maxW ? maxW / img.naturalWidth : 1;
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob((blob) => resolve({ blob, aspect: c.width / c.height }), 'image/png');
       };
-    },
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
   });
 }
+function wireLogo({ input, reset, hint, kind, key, maxW, done, resetText }) {
+  el(input).onchange = async () => {
+    const file = el(input).files[0]; if (!file) return;
+    if (!file.type.startsWith('image/')) { el(hint).textContent = 'Please choose an image file.'; return; }
+    try {
+      const { blob, aspect } = await shrink(file, maxW);
+      const fd = new FormData(); fd.append('file', blob, 'logo.png'); fd.append('aspect', aspect);
+      state.siteSettings[key] = await api.post(`branding/${kind}/`, fd);
+      applyLogos(); paintLogos(); renderBranchList();
+      el(hint).textContent = done; el(input).value = '';
+    } catch (e) { el(hint).textContent = e && e.status ? apiErrorMessage(e) : "Couldn't read that image. Try a PNG or JPG."; }
+  };
+  el(reset).onclick = async () => {
+    try { await api.delete(`branding/${kind}/`); } catch (e) { el(hint).textContent = apiErrorMessage(e); return; }
+    delete state.siteSettings[key];
+    applyLogos(); paintLogos(); renderBranchList();
+    el(hint).textContent = resetText; el(input).value = '';
+  };
+}
 
-async function openNumberingModal(branch) {
-  const configs = await Promise.all(DOC_TYPES.map(([dt]) => api.get(`branches/${branch.id}/numbering/${dt}/`)));
-  openModal(`
-    <h2>Document numbering — ${escapeHtml(branch.name)}</h2>
-    <div class="table-scroll"><table class="report">
-      <tr><th>Document</th><th>Prefix</th><th>Suffix</th><th>Start at</th><th>Next number</th></tr>
-      ${DOC_TYPES.map(([dt, label], i) => `<tr data-dt="${dt}">
-        <td>${escapeHtml(label)}</td>
-        <td><input class="num-prefix" value="${escapeHtml(configs[i].prefix || '')}" placeholder="${escapeHtml(configs[i].effective_prefix || '')}" style="width:90px;"></td>
-        <td><input class="num-suffix" value="${escapeHtml(configs[i].suffix || '')}" style="width:80px;"></td>
-        <td><input class="num-start" type="number" value="${configs[i].start_at}" style="width:80px;"></td>
-        <td class="sub">${escapeHtml(configs[i].next_number || '—')}</td>
-      </tr>`).join('')}
-    </table></div>
-    <p class="sub">Blank prefix uses the default shown in grey. Pending PO has no generated number — it uses the customer's own PO number.</p>
-    <div class="modal-actions"><button class="btn" id="num-close">Close</button><button class="btn primary" id="num-save">Save all</button></div>`, {
-    onMount: (modal) => {
-      modal.querySelector('#num-close').onclick = closeModal;
-      modal.querySelector('#num-save').onclick = async () => {
-        try {
-          await Promise.all(Array.from(modal.querySelectorAll('tr[data-dt]')).map((tr) => api.patch(`branches/${branch.id}/numbering/${tr.dataset.dt}/`, {
-            prefix: tr.querySelector('.num-prefix').value.trim(),
-            suffix: tr.querySelector('.num-suffix').value.trim(),
-            start_at: Number(tr.querySelector('.num-start').value) || 1,
-          })));
-          toast('Numbering saved.', 'success');
-          closeModal();
-        } catch (e) { toast(apiErrorMessage(e), 'error'); }
-      };
-    },
+// ---- list --------------------------------------------------------------------------------------------------------------------------------
+function renderBranchList() {
+  const listEl = el('branchesList');
+  if (!branches.length) { listEl.innerHTML = '<p class="sub">No branches yet.</p>'; return; }
+  const fallback = (appLogo() && appLogo().url) || defaultOf('#logoRowMobile img');
+  listEl.innerHTML = branches.map((b) => `
+    <div class="manage-item">
+      <span class="mi-name" style="display:flex; align-items:center; gap:8px;">
+        <img src="${escapeHtml(b.logo_url || fallback)}" alt="" style="width:22px; height:22px; object-fit:contain; border-radius:4px; background:#fff; border:1px solid var(--line);">
+        <span title="Accent colour" style="width:12px; height:12px; border-radius:50%; background:${escapeHtml(b.accent_color || DEFAULT_ACCENT)}; border:1px solid var(--line); display:inline-block;"></span>
+        ${escapeHtml(b.name)}
+        ${b.letterhead_name ? `<span style="color:var(--text-faint); font-weight:400; font-size:12px;">&middot; ${escapeHtml(b.letterhead_name)}</span>` : ''}
+      </span>
+      <span class="mi-actions">
+        <button data-act="details" data-id="${b.id}">Edit Details</button>
+        <button data-act="numbering" data-id="${b.id}">Edit Numbering</button>
+        <button data-act="rename" data-id="${b.id}">Rename</button>
+        <button class="danger" data-act="remove" data-id="${b.id}">Remove</button>
+      </span>
+    </div>`).join('');
+  listEl.querySelectorAll('[data-act]').forEach((btn) => {
+    btn.onclick = () => {
+      const b = branches.find((x) => String(x.id) === btn.dataset.id); if (!b) return;
+      if (btn.dataset.act === 'details') openDetails(b); else if (btn.dataset.act === 'numbering') openNumbering(b); else if (btn.dataset.act === 'rename') rename(b); else remove(b);
+    };
   });
 }
-
-async function deleteBranch(branch, onDone) {
-  if (!await confirmDialog(`Remove branch "${branch.name}"? If documents or people use it, it is hidden instead and they keep it.`)) return;
-  try {
-    const res = await api.delete(`branches/${branch.id}/`);
-    toast(res && res.deactivated ? 'Branch is in use, so it was deactivated instead of deleted.' : 'Removed.', 'success');
-    onDone();
-  } catch (e) { toast(apiErrorMessage(e), 'error'); }
+async function reload() {
+  branches = await api.all('branches/');
+  await loadBootstrap();
+  renderBranchList();
+}
+async function rename(b) {
+  const val = await customPrompt('Rename branch to:', b.name); if (val === null || !val.trim()) return;
+  try { await api.patch(`branches/${b.id}/`, { name: val.trim() }); } catch (e) { await customAlert(apiErrorMessage(e)); return; }
+  await reload();
+}
+async function remove(b) {
+  if (!await customConfirm('Remove this branch? Users already assigned to it will keep the old name as text.')) return;
+  try { await api.delete(`branches/${b.id}/`); } catch (e) { await customAlert(apiErrorMessage(e)); return; }
+  await reload();
 }
 
-async function render(root) {
-  const branches = await api.all('branches/');
-  root.innerHTML = `
-    <div class="flex-between"><h2 style="margin:0;">Branches</h2><button class="btn primary" id="newBranchBtn">+ New branch</button></div>
-    ${renderTable(['Name', 'GSTIN', 'Phone', 'Active', ''], branches.map((b) => ({
-      Name: escapeHtml(b.name), GSTIN: escapeHtml(b.letterhead_gstin), Phone: escapeHtml(b.letterhead_phone),
-      Active: b.is_active ? 'Yes' : 'No',
-      '': `<button class="btn sm" data-numbering="${b.id}">Numbering</button> <button class="btn sm" data-edit="${b.id}">Edit</button> <button class="btn sm danger" data-del="${b.id}">Remove</button>`,
-    })), { empty: 'No branches yet.' })}`;
-  root.querySelector('#newBranchBtn').onclick = () => openBranchForm(null, () => render(root));
-  root.querySelectorAll('[data-numbering]').forEach((btn) => btn.onclick = () => openNumberingModal(branches.find((b) => String(b.id) === btn.dataset.numbering)));
-  root.querySelectorAll('[data-edit]').forEach((btn) => btn.onclick = () => openBranchForm(branches.find((b) => String(b.id) === btn.dataset.edit), () => render(root)));
-  root.querySelectorAll('[data-del]').forEach((btn) => btn.onclick = () => deleteBranch(branches.find((b) => String(b.id) === btn.dataset.del), () => render(root)));
+// ---- branch details ----------------------------------------------------------------------------------------------------------------------
+function openDetails(b) {
+  useOverlays('branchDetailOverlay');
+  const pending = {};              // slot -> { file } to upload, or { remove: true }
+  el('branchDetailTitle').textContent = `Branch Details — ${b.name}`;
+  [['bd-companyname', 'letterhead_name'], ['bd-address', 'letterhead_address'], ['bd-phone', 'letterhead_phone'], ['bd-mobile', 'letterhead_mobile'], ['bd-email', 'letterhead_email'], ['bd-website', 'letterhead_website'],
+    ['bd-gst', 'letterhead_gstin'], ['bd-udyam', 'udyam_number'], ['bd-bank-acno', 'bank_account_no'], ['bd-bank-ifsc', 'bank_ifsc'], ['bd-bank-name', 'bank_name'], ['bd-bank-branch', 'bank_branch']]
+    .forEach(([id, field]) => { el(id).value = b[field] || ''; });
+  el('bd-docfmt').value = b.doc_format === 2 ? '2' : '1';
+  el('bd-wm-enabled').checked = !!b.watermark_enabled;
+  el('bd-wm-type').value = b.watermark_type === 'text' ? 'text' : 'logo';
+  el('bd-wm-text').value = b.watermark_text || ''; el('bd-wm-size').value = sizeKey(b.watermark_size || 50);
+  el('bd-wm-text-wrap').style.display = b.watermark_type === 'text' ? '' : 'none';
+  el('bd-wm-type').onchange = (e) => { el('bd-wm-text-wrap').style.display = e.target.value === 'text' ? '' : 'none'; };
+  el('bd-accent').value = b.accent_color || DEFAULT_ACCENT;
+  el('bd-accent-reset').onclick = () => { el('bd-accent').value = DEFAULT_ACCENT; };
+
+  const paint = (slot, prefix, urlField) => {
+    const img = el(prefix + '-preview'), p = pending[slot];
+    const src = p ? (p.file ? URL.createObjectURL(p.file) : '') : (b[urlField] || '');
+    if (src) { img.src = src; img.style.display = 'block'; } else { img.src = ''; img.style.display = 'none'; }
+  };
+  IMAGE_SLOTS.forEach(([slot, prefix, urlField]) => {
+    el(prefix + '-input').value = '';
+    el(prefix + '-input').onchange = async () => {
+      const file = el(prefix + '-input').files[0]; if (!file) return;
+      if (!file.type.startsWith('image/')) { await customAlert('Please choose an image file.'); el(prefix + '-input').value = ''; return; }
+      pending[slot] = { file }; paint(slot, prefix, urlField);
+    };
+    el(prefix + '-remove').onclick = () => { pending[slot] = { remove: true }; el(prefix + '-input').value = ''; paint(slot, prefix, urlField); };
+    paint(slot, prefix, urlField);
+  });
+  el('branchDetailCancelBtn').onclick = () => closeOverlay('branchDetailOverlay');
+  el('branchDetailSaveBtn').onclick = async () => {
+    const text = el('bd-wm-text').value.trim();
+    if (el('bd-wm-enabled').checked && el('bd-wm-type').value === 'text' && !text) { await customAlert('Enter the watermark text, or switch the watermark off.'); return; }
+    const data = {
+      letterhead_name: el('bd-companyname').value.trim(), letterhead_address: el('bd-address').value.trim(), letterhead_phone: el('bd-phone').value.trim(), letterhead_mobile: el('bd-mobile').value.trim(),
+      letterhead_email: el('bd-email').value.trim(), letterhead_website: el('bd-website').value.trim(), letterhead_gstin: el('bd-gst').value.trim(), udyam_number: el('bd-udyam').value.trim(),
+      doc_format: el('bd-docfmt').value === '2' ? 2 : 1, watermark_enabled: el('bd-wm-enabled').checked, watermark_type: el('bd-wm-type').value, watermark_text: text || b.watermark_text || '',
+      watermark_size: SIZE[el('bd-wm-size').value], bank_account_no: el('bd-bank-acno').value.trim(), bank_ifsc: el('bd-bank-ifsc').value.trim(), bank_name: el('bd-bank-name').value.trim(),
+      bank_branch: el('bd-bank-branch').value.trim(), accent_color: el('bd-accent').value === DEFAULT_ACCENT ? '' : el('bd-accent').value,
+    };
+    try {
+      await api.patch(`branches/${b.id}/`, data);
+      for (const [slot, p] of Object.entries(pending)) {
+        if (p.file) { const fd = new FormData(); fd.append('file', p.file); await api.post(`branches/${b.id}/images/${slot}/`, fd); }
+        else if (p.remove && b[IMAGE_SLOTS.find((s) => s[0] === slot)[2]]) await api.delete(`branches/${b.id}/images/${slot}/`);
+      }
+    } catch (e) { await customAlert(apiErrorMessage(e)); return; }
+    closeOverlay('branchDetailOverlay');
+    await reload();
+    await customAlert("Branch details saved. They will now show on this branch's Quotation letterhead.");
+  };
+  openOverlay('branchDetailOverlay');
+}
+
+// ---- document numbering --------------------------------------------------------------------------------------------------------------
+async function openNumbering(b) {
+  useOverlays('branchNumberingOverlay');
+  let configs;
+  try { configs = await Promise.all(NUMBERING_TYPES.map(([key]) => api.get(`branches/${b.id}/numbering/${key}/`))); } catch (e) { await customAlert(apiErrorMessage(e)); return; }
+  el('branchNumberingTitle').textContent = `Document Numbering — ${b.name}`;
+  el('branchNumberingBody').innerHTML = NUMBERING_TYPES.map(([key, label, def], i) => `
+    <div style="border:1px solid var(--line); border-radius:8px; padding:12px;">
+      <div style="font-weight:600; margin-bottom:8px;">${escapeHtml(label)} <span style="font-weight:400; color:var(--text-faint); font-size:12px;">&middot; next number ${escapeHtml(configs[i].next_number || '—')}</span></div>
+      <div class="form-grid">
+        <div class="field"><label for="bn-${key}-prefix">Prefix</label><input type="text" id="bn-${key}-prefix" placeholder="${escapeHtml(configs[i].effective_prefix || def)}" value="${escapeHtml(configs[i].prefix || '')}"></div>
+        <div class="field"><label for="bn-${key}-suffix">Suffix</label><input type="text" id="bn-${key}-suffix" placeholder="none" value="${escapeHtml(configs[i].suffix || '')}"></div>
+        <div class="field"><label for="bn-${key}-start">Serial Number Start From</label><input type="number" id="bn-${key}-start" min="1" placeholder="1" value="${configs[i].start_at && configs[i].start_at !== 1 ? configs[i].start_at : ''}"></div>
+      </div>
+    </div>`).join('');
+  el('branchNumberingCancelBtn').onclick = () => closeOverlay('branchNumberingOverlay');
+  el('branchNumberingSaveBtn').onclick = async () => {
+    try {
+      await Promise.all(NUMBERING_TYPES.map(([key]) => {
+        const startRaw = el(`bn-${key}-start`).value;
+        return api.patch(`branches/${b.id}/numbering/${key}/`, {
+          prefix: el(`bn-${key}-prefix`).value.trim(), suffix: el(`bn-${key}-suffix`).value.trim(), start_at: startRaw !== '' ? Math.max(1, Number(startRaw) || 1) : 1,
+        });
+      }));
+    } catch (e) { await customAlert(apiErrorMessage(e)); return; }
+    closeOverlay('branchNumberingOverlay');
+    await customAlert('Numbering settings saved for this branch. New documents for this branch will use them.');
+  };
+  openOverlay('branchNumberingOverlay');
 }
 
 export async function mountBranches(root) {
-  await render(root);
+  mountRefView(root, 'view-branches');
+  branches = await api.all('branches/');
+  paintLogos(); renderBranchList();
+  wireLogo({ input: 'appLogoInput', reset: 'appLogoResetBtn', hint: 'appLogoHint', kind: 'app', key: 'appLogo', maxW: 900, done: 'Logo updated.', resetText: 'Back to the default logo.' });
+  wireLogo({ input: 'sidebarLogoInput', reset: 'sidebarLogoResetBtn', hint: 'sidebarLogoHint', kind: 'sidebar', key: 'sidebarLogo', maxW: 600, done: 'Sidebar logo updated.', resetText: 'The sidebar now uses the app logo.' });
+  el('addBranchBtn').onclick = async () => {
+    const val = el('newBranchInput').value.trim(); if (!val) return;
+    try { await api.post('branches/', { name: val }); } catch (e) { await customAlert(apiErrorMessage(e)); return; }
+    el('newBranchInput').value = ''; await reload();
+  };
+  el('newBranchInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') el('addBranchBtn').click(); });
 }

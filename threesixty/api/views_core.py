@@ -7,6 +7,7 @@ import re
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils import timezone
 from django.http import JsonResponse
 
 from ..models import (
@@ -224,24 +225,38 @@ def _numbering_payload(config):
     return payload
 
 
-class HolidayResource(AdminWriteMixin, JsonResource):
+class HolidayResource(JsonResource):
+    """Everyone sees the holidays that apply to them (all branches, or one of theirs; the Admin sees all). Admin and
+    Branch Manager add them — a Branch Manager only for their own branches (reference: attCanManageHoliday)."""
     model = Holiday
+
+    def list_queryset(self, request, **kwargs):
+        qs = Holiday.objects.select_related('created_by').prefetch_related('branches')
+        return [h for h in qs if attendance_service.holiday_visible(request.user, h)]
+
+    def get_object(self, request, pk, **kwargs):
+        try:
+            holiday = Holiday.objects.select_related('created_by').prefetch_related('branches').get(pk=pk)
+        except Holiday.DoesNotExist:
+            raise ApiError(404, 'Not found.')
+        if not attendance_service.holiday_visible(request.user, holiday):
+            raise ApiError(404, 'Not found.')
+        return holiday
 
     def serialize(self, request, instance):
         return serialize_holiday(instance)
 
-    def apply_create(self, request, data):
-        """Adds the holiday and tells everyone (or the chosen branches') — REQ-AUT-09."""
-        self._require_admin(request)
+    def apply_create(self, request, data, **kwargs):
         if not data.get('date') or not data.get('name'):
             raise ApiError(400, 'date and name are required.')
         date = parse_date_input(data['date'], 'date')
         date_to = parse_date_input(data['date_to'], 'date_to') if data.get('date_to') else date
         return attendance_service.add_holiday(
-            data['name'], date, date_to, data.get('branch_ids'), bool(data.get('is_all_branches')))
+            request.user, data['name'], date, date_to, data.get('branch_ids'), bool(data.get('is_all_branches')))
 
-    def apply_update(self, request, instance, data):
-        self._require_admin(request)
+    def apply_update(self, request, instance, data, **kwargs):
+        if not attendance_service.can_manage_holiday(request.user, instance):
+            raise ApiError(403, 'You cannot change this holiday.')
         for field in ('date', 'date_to'):
             if field in data:
                 setattr(instance, field, parse_date_input(data[field], field))
@@ -255,9 +270,40 @@ class HolidayResource(AdminWriteMixin, JsonResource):
             instance.branches.set(data['branch_ids'])
         return instance
 
-    def apply_delete(self, request, instance):
-        self._require_admin(request)
+    def apply_delete(self, request, instance, **kwargs):
+        if not attendance_service.can_manage_holiday(request.user, instance):
+            raise ApiError(403, 'You cannot remove this holiday.')
         instance.delete()
+
+
+DETAIL_KEYS = ('phone', 'mobile', 'gst', 'location', 'address')
+
+
+def clean_details(value):
+    """A transporter's / courier's contact details: only the known keys, as trimmed text."""
+    return {k: str(value.get(k) or '').strip() for k in DETAIL_KEYS if isinstance(value, dict) and str(value.get(k) or '').strip()}
+
+
+def check_tax_rate(kind, name):
+    if kind == LookupItem.KIND_TAX_RATE:
+        try:
+            float(name)
+        except ValueError:
+            raise ApiError(400, 'A tax rate must be a number, e.g. 18.')
+
+
+@role_360_required(EmployeeProfile.ADMIN)
+@input_errors_as_400
+def default_tax_rate(request):
+    """POST {rate} sets the tax % new document lines start with (one of the Tax % list; the reference's built-in is 18)."""
+    if request.method != 'POST':
+        return error_response(ApiError(405, 'POST only.'))
+    rate = str(parse_body(request).get('rate', '')).strip()
+    if not LookupItem.objects.filter(kind=LookupItem.KIND_TAX_RATE, name=rate, is_active=True).exists():
+        raise ApiError(400, 'Pick one of the rates in the Tax % list.')
+    SiteSetting.objects.update_or_create(key='defaultTaxRate', defaults={'value': {'rate': rate}})
+    audit_service.record(request.user, 'lists.default_tax', summary=f'default tax {rate}%', request=request)
+    return JsonResponse({'rate': rate})
 
 
 class LookupItemResource(AdminWriteMixin, JsonResource):
@@ -278,25 +324,31 @@ class LookupItemResource(AdminWriteMixin, JsonResource):
         kind, name = data.get('kind'), (data.get('name') or '').strip()
         if kind not in dict(LookupItem.KIND_CHOICES) or not name:
             raise ApiError(400, 'A valid kind and non-empty name are required.')
+        check_tax_rate(kind, name)
         # A previously removed (deactivated) value comes back instead of colliding.
         item, created = LookupItem.objects.get_or_create(
             kind=kind, name=name,
             defaults={'extra': data.get('extra', ''), 'is_active': data.get('is_active', True),
-                      'sort_order': data.get('sort_order', 0)},
+                      'sort_order': data.get('sort_order', 0), 'details': clean_details(data.get('details'))},
         )
         if not created:
             if item.is_active:
                 raise ApiError(400, 'That value already exists in this list.')
             item.is_active = True
             item.extra = data.get('extra', item.extra)
+            item.details = clean_details(data.get('details')) or item.details
             item.save()
         return item
 
     def apply_update(self, request, instance, data):
         self._require_admin(request)
+        if 'name' in data:
+            check_tax_rate(instance.kind, str(data['name']).strip())
         for field in ('name', 'extra', 'is_active', 'sort_order'):
             if field in data:
                 setattr(instance, field, data[field])
+        if 'details' in data:
+            instance.details = clean_details(data['details'])
         instance.save()
         return instance
 
@@ -358,6 +410,43 @@ class SiteSettingResource(AdminWriteMixin, JsonResource):
         instance.delete()
 
 
+_PAN = re.compile(r'^[A-Z]{5}[0-9]{4}[A-Z]$')
+_EMAIL = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+
+
+def clean_profile(data, instance=None):
+    """The Users form's rules, enforced here too: phone (10+ digits), email, Aadhaar (12 digits, not shared), PAN
+    (ABCDE1234F, not shared), birth / joining dates, and at least one branch for everyone but an Admin (when branches are sent). Fixes the
+    values in `data` in place (digits only, upper-case PAN, trimmed text)."""
+    exclude = instance.pk if instance else None
+    others = EmployeeProfile.objects.exclude(pk=exclude) if exclude else EmployeeProfile.objects.all()
+    if data.get('phone') and len(re.sub(r'\D', '', str(data['phone']))) < 10:
+        raise ApiError(400, 'Enter a valid phone number (at least 10 digits), or leave it blank.')
+    if data.get('email') and not _EMAIL.match(str(data['email']).strip()):
+        raise ApiError(400, 'Enter a valid email address, or leave it blank.')
+    if 'aadhaar_number' in data:
+        data['aadhaar_number'] = re.sub(r'\D', '', str(data['aadhaar_number'] or ''))
+        if data['aadhaar_number'] and len(data['aadhaar_number']) != 12:
+            raise ApiError(400, 'Aadhaar number must be 12 digits, or leave it blank.')
+        if data['aadhaar_number'] and any(o.aadhaar_number == data['aadhaar_number'] for o in others):      # encrypted at rest: compare the plain values
+            raise ApiError(400, 'That Aadhaar number is already recorded for another user.')
+    if 'pan_number' in data:
+        data['pan_number'] = str(data['pan_number'] or '').strip().upper()
+        if data['pan_number'] and not _PAN.match(data['pan_number']):
+            raise ApiError(400, 'PAN must look like ABCDE1234F (5 letters, 4 digits, 1 letter), or leave it blank.')
+        if data['pan_number'] and any((o.pan_number or '').upper() == data['pan_number'] for o in others):
+            raise ApiError(400, 'That PAN is already recorded for another user.')
+    dob = parse_date_input(data['date_of_birth'], 'date_of_birth') if data.get('date_of_birth') else (getattr(instance, 'date_of_birth', None) if 'date_of_birth' not in data else None)
+    doj = parse_date_input(data['date_of_joining'], 'date_of_joining') if data.get('date_of_joining') else (getattr(instance, 'date_of_joining', None) if 'date_of_joining' not in data else None)
+    if dob and dob > timezone.localdate():
+        raise ApiError(400, 'Date of birth cannot be in the future.')
+    if dob and doj and doj < dob:
+        raise ApiError(400, 'Date of joining cannot be before the date of birth.')
+    role = data.get('role') or getattr(instance, 'role', None)
+    if role and role != EmployeeProfile.ADMIN and 'branch_ids' in data and not data['branch_ids']:
+        raise ApiError(400, 'Pick at least one branch for this user.')
+
+
 class EmployeeResource(AdminWriteMixin, JsonResource):
     """Users/Employees administration — list/detail visible to any staff
     member (needed for assignment pickers etc.), but create/update/delete
@@ -388,8 +477,9 @@ class EmployeeResource(AdminWriteMixin, JsonResource):
         if not username or not password or role not in dict(EmployeeProfile.ROLE_CHOICES):
             raise ApiError(400, 'username, password and a valid role are required.')
         self._check_password(password, User(username=username, first_name=data.get('full_name', '')))
-        if User.objects.filter(username=username).exists():
-            raise ApiError(400, 'That username is already taken.')
+        if User.objects.filter(username__iexact=username).exists():
+            raise ApiError(400, 'That User ID is already taken.')
+        clean_profile(data)
         emp_code = (data.get('emp_code') or '').strip() or None
         if emp_code and EmployeeProfile.objects.filter(emp_code__iexact=emp_code).exists():
             raise ApiError(400, 'That employee code is already used by another user.')
@@ -398,7 +488,7 @@ class EmployeeResource(AdminWriteMixin, JsonResource):
         with transaction.atomic():
             user = User.objects.create_user(
                 username=username, password=password, is_staff=True,
-                first_name=data.get('full_name', ''),
+                first_name=data.get('full_name', ''), email=(data.get('email') or '').strip(),
             )
             limit_stock_access(user)
             profile = EmployeeProfile.objects.create(
@@ -429,6 +519,16 @@ class EmployeeResource(AdminWriteMixin, JsonResource):
                 user_service.check_can_deactivate(request.user, instance)
         except user_service.AccountError as exc:
             raise ApiError(exc.status, exc.message)
+        clean_profile(data, instance)
+        if 'username' in data and data['username'].strip() != instance.user.username:
+            new_name = data['username'].strip()
+            if not new_name or User.objects.exclude(pk=instance.user_id).filter(username__iexact=new_name).exists():
+                raise ApiError(400, 'That User ID is already taken.')
+            instance.user.username = new_name
+            instance.user.save(update_fields=['username'])
+        if 'email' in data:
+            instance.user.email = (data['email'] or '').strip()
+            instance.user.save(update_fields=['email'])
         if 'emp_code' in data:
             emp_code = (data['emp_code'] or '').strip() or None
             if emp_code and EmployeeProfile.objects.exclude(pk=instance.pk).filter(emp_code__iexact=emp_code).exists():
