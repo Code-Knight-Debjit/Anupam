@@ -3,18 +3,23 @@
 // `afterLogin()`/`setNavBadge`/`renderNotifBadge`/`renderNotifList`
 // (contact_management.html ~L4560-4660, ~L13560-13630).
 import { api } from './api.js';
-import { loadBootstrap, state } from './state.js';
+import { loadBootstrap, state, roleLabel, applyLogos } from './state.js';
 import { registerView, navigate, startRouter } from './router.js';
-import { el, escapeHtml, fmtDateTime, toast } from './ui.js';
+import { el, escapeHtml, fmtDateTime, toast, initials } from './ui.js';
 
 import { mountDashboard } from './views/dashboard.js';
 import { mountTasks } from './views/tasks.js';
 import { mountOutreach } from './views/outreach.js';
 import { mountAttendance } from './views/attendance.js';
 import { mountCustomers } from './views/customers.js';
+import { mountCustomerForm } from './views/customerform.js';
+import { mountCustomerView } from './views/customerview.js';
+import { mountPersonProfile } from './views/personprofile.js';
 import { mountMap } from './views/map.js';
 import { mountSales } from './views/sales.js';
-import { mountPayments } from './views/payments.js';
+import { mountSalesForm } from './views/salesform.js';
+import { mountContactLog, mountEnqHistory, mountQuotationHistory, mountProformaHistory, mountDcHistory, mountPoHistory } from './views/sales_pages.js';
+import { mountPayments, mountPaymentForm, mountPaymentHistory, mountPaymentLog } from './views/payments.js';
 import { mountLabels } from './views/labels.js';
 import { mountReports } from './views/reports.js';
 import { mountManageLists } from './views/managelists.js';
@@ -25,41 +30,18 @@ import { mountBackup, mountAuditLog } from './views/backup.js';
 import { mountApprovals } from './views/approvals.js';
 import { initA11y } from './a11y.js';
 
-const PAGE_TITLES = {
-  dashboard: 'Dashboard', tasks: 'Tasks', callinglist: 'Outreach', attendance: 'Attendance',
-  customers: 'Customers', map: 'Map & Nearby', sales: 'Sales', payments: 'Payment Collection',
-  labels: 'Print Label', reports: 'Reports', managelists: 'Manage Lists', import: 'Import Excel',
-  users: 'Users', branches: 'Branches', backup: 'Backup & restore', auditlog: 'Audit log', approvals: 'Approvals',
-};
-
-function setTitleOnNavigate() {
-  window.addEventListener('hashchange', updateTitle);
-  updateTitle();
-}
-function updateTitle() {
-  const view = (window.location.hash || '').replace(/^#\/?/, '').split('/')[0] || 'dashboard';
-  el('pageTitle').textContent = PAGE_TITLES[view] || 'Anupam 360';
-}
-
-// Menu visibility comes from the server (`me.nav`, REQ-ROLE-03/04) — the
-// endpoints behind each menu enforce the same rules, this only tidies the UI.
+// Menu visibility comes from the server (`me.nav`, REQ-ROLE-03/04) — the endpoints behind each menu enforce the
+// same rules, this only tidies the UI. Like the reference, only the items are hidden — a non-admin still sees the
+// "Main panel" heading.
 function applyRoleVisibility() {
-  const items = Array.from(document.querySelectorAll('#app-sidebar .nav-item'));
-  items.forEach((btn) => {
+  document.querySelectorAll('#app-sidebar .nav-item').forEach((btn) => {
     const label = (btn.querySelector('span') || btn).textContent.trim();
-    btn.style.display = (btn.dataset.always || state.nav.includes(label) || (label === 'Audit log' && state.nav.includes('Backup & restore'))) ? '' : 'none';
+    btn.style.display = state.nav.includes(label) ? '' : 'none';
   });
-  document.querySelectorAll('#app-sidebar .nav-label').forEach((heading) => {
-    let node = heading.nextElementSibling, anyVisible = false;
-    while (node && !node.classList.contains('nav-label') && !node.classList.contains('sidebar-footer')) {
-      if (node.classList.contains('nav-item') && node.style.display !== 'none') anyVisible = true;
-      node = node.nextElementSibling;
-    }
-    heading.style.display = anyVisible ? '' : 'none';
-  });
-  const userChipName = el('curUserName'), userChipRole = el('curUserRole');
-  if (userChipName) userChipName.textContent = state.me.full_name || state.me.username;
-  if (userChipRole) userChipRole.textContent = (state.me.role || '').replace(/_/g, ' ');
+  const name = state.me.full_name || state.me.username;
+  el('curAvatar').textContent = initials(name);
+  el('curName').textContent = name;
+  el('curRole').textContent = roleLabel(state.me.role);
 }
 
 function setNavBadge(selector, count) {
@@ -106,122 +88,135 @@ async function updateCallingListBadge() {
 
 async function updateAttBadge() {
   try {
-    const pending = await api.all('leave-requests/');
-    setNavBadge('#attBadge', pending.filter((l) => l.status === 'Pending').length);
+    // Leave requests waiting on THIS person's decision (never their own) — the reference's attPendingForMe().
+    if (!state.flags.is_approver) { setNavBadge('#attBadge', 0); return; }
+    const pending = await api.all('leave-requests/', { status: 'Pending' });
+    setNavBadge('#attBadge', pending.filter((l) => l.status === 'Pending' && l.user && l.user.id !== state.me.user_id).length);
   } catch (e) { /* ignore */ }
 }
 
 async function refreshNotifBadge() {
   try {
     const unread = await api.all('notifications/', { unread: '1' });
-    setNavBadge('#notifBadge', unread.length);
+    setNavBadge('#notifBadge, #notifBadgeMobile', unread.length);
   } catch (e) { /* ignore */ }
 }
 
 async function renderNotifList() {
   const list = await api.all('notifications/');
-  const box = el('notifList');
-  box.innerHTML = list.length
+  const html = list.length
     ? list.map((n) => `
-      <div class="notif-item" data-id="${n.id}" style="padding:10px 14px;cursor:pointer;${n.read ? '' : 'background:var(--surface-container-low);'}">
-        <div style="font-size:13px;">${escapeHtml(n.text || '')}</div>
-        <div class="sub" style="font-size:11px;margin-top:2px;">${fmtDateTime(n.created_at)}</div>
+      <div class="notif-item ${n.read ? '' : 'unread'}" data-id="${n.id}">
+        <div class="ni-text">${escapeHtml(n.text || '')}</div>
+        <div class="ni-meta">${fmtDateTime(n.created_at)}</div>
       </div>`).join('')
-    : '<div class="empty-state">No notifications yet.</div>';
-  box.querySelectorAll('.notif-item').forEach((node) => {
-    node.addEventListener('click', async () => {
-      const id = node.dataset.id;
-      const n = list.find((x) => String(x.id) === id);
-      await api.patch(`notifications/${id}/`, { read: true });
-      el('notifDropdown').style.display = 'none';
-      refreshNotifBadge();
-      if (n && n.type === 'leave') navigate('attendance');
-      else if (n && n.related_document_id) navigate('sales');
-      else navigate('tasks');
+    : '<div class="notif-empty">No notifications yet.</div>';
+  ['notifList', 'notifListMobile'].forEach((id) => {
+    const box = el(id);
+    box.innerHTML = html;
+    box.querySelectorAll('.notif-item').forEach((node) => {
+      node.addEventListener('click', async () => {
+        const n = list.find((x) => String(x.id) === node.dataset.id);
+        await api.patch(`notifications/${node.dataset.id}/`, { read: true });
+        closeNotifDropdowns();
+        refreshNotifBadge();
+        if (n && n.type === 'leave') navigate('attendance');
+        else if (n && n.related_document_id) navigate('sales');
+        else navigate('tasks');
+      });
     });
   });
 }
 
+function closeNotifDropdowns() {
+  el('notifDropdown').classList.remove('open');
+  el('notifDropdownMobile').classList.remove('open');
+}
+
 function wireNotifBell() {
-  const btn = el('notifBellBtn'), dd = el('notifDropdown');
-  btn.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    const opening = dd.style.display === 'none';
-    dd.style.display = opening ? 'block' : 'none';
-    if (opening) await renderNotifList();
+  [['notifBellBtn', 'notifDropdown'], ['notifBellBtnMobile', 'notifDropdownMobile']].forEach(([btnId, ddId]) => {
+    el(btnId).addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const dd = el(ddId);
+      const opening = !dd.classList.contains('open');
+      closeNotifDropdowns();
+      if (opening) { dd.classList.add('open'); await renderNotifList(); }
+    });
   });
-  el('notifMarkAllBtn').addEventListener('click', async (e) => {
+  ['notifMarkAllBtn', 'notifMarkAllBtnMobile'].forEach((id) => el(id).addEventListener('click', async (e) => {
     e.stopPropagation();
     const unread = await api.all('notifications/', { unread: '1' });
     await Promise.all(unread.map((n) => api.patch(`notifications/${n.id}/`, { read: true })));
     refreshNotifBadge();
     renderNotifList();
-  });
-  document.addEventListener('click', () => { dd.style.display = 'none'; });
+  }));
+  document.addEventListener('click', closeNotifDropdowns);
 }
 
 function wireSidebarMobile() {
   const burger = el('topbarBurger'), sidebar = el('app-sidebar'), backdrop = el('sidebarBackdrop');
+  const close = () => { sidebar.classList.remove('open'); backdrop.classList.remove('open'); };
   burger.addEventListener('click', () => { sidebar.classList.add('open'); backdrop.classList.add('open'); });
-  backdrop.addEventListener('click', () => { sidebar.classList.remove('open'); backdrop.classList.remove('open'); });
+  backdrop.addEventListener('click', close);
   document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      navigate(btn.dataset.view, btn.dataset.subtab);
-      sidebar.classList.remove('open'); backdrop.classList.remove('open');
-    });
+    btn.addEventListener('click', () => { navigate(btn.dataset.view, btn.dataset.subtab); close(); });
   });
 }
 
+// Dashboard badge (reference: refreshDashBadge): approvals waiting on this person; otherwise, for the company view,
+// how many customers were added since the Dashboard was last opened.
+async function updateDashBadge() {
+  try {
+    if (!state.flags.can_see_dashboard) return;
+    const pending = state.flags.is_approver ? (await api.all('approvals/', { status: 'pending' })).length : 0;
+    if (pending > 0) { setNavBadge('#dashBadge', pending); return; }
+    if (state.flags.uses_personal_dashboard) { setNavBadge('#dashBadge', 0); return; }
+    const total = (await api.get('customers/?page_size=1')).count;
+    const seen = parseInt(localStorage.getItem(`360:dashSeen:${state.me.user_id}`) || '0', 10);
+    setNavBadge('#dashBadge', Math.max(0, total - seen));
+  } catch (e) { /* best-effort */ }
+}
+
 function refreshBadges() {
+  updateDashBadge();
   updateTaskBadge();
   updateCallingListBadge();
   updateAttBadge();
   updateSalesNavBadges();
   refreshNotifBadge();
-  updateApprovalsBadge();
-}
-
-// Screens that have no entry in the page template get their menu button here.
-// Approvals is for everyone (approvers decide, others follow their own requests); Backup and Audit log are Admin-only.
-function addExtraMenu() {
-  const footer = document.querySelector('#app-sidebar .sidebar-footer');
-  const add = (view, label, always) => {
-    const btn = document.createElement('button');
-    btn.className = 'nav-item';
-    btn.dataset.view = view;
-    if (always) btn.dataset.always = '1';
-    btn.innerHTML = `<span>${label}</span><span class="nav-badge" id="${view}Badge" style="display:none;"></span>`;
-    footer.parentNode.insertBefore(btn, footer);
-  };
-  add('approvals', state.flags.is_approver ? 'Approvals' : 'My requests', true);
-  if (state.nav.includes('Backup & restore')) { add('backup', 'Backup & restore'); add('auditlog', 'Audit log'); }
-}
-
-async function updateApprovalsBadge() {
-  try {
-    const pending = await api.all('approvals/', { status: 'pending' });
-    setNavBadge('#approvalsBadge', pending.length);
-  } catch (e) { /* best-effort */ }
 }
 
 async function boot() {
   await loadBootstrap();
-  addExtraMenu();
+  applyLogos();
   initA11y();
   applyRoleVisibility();
-  setTitleOnNavigate();
   wireNotifBell();
   wireSidebarMobile();
-  el('logoutBtn').addEventListener('click', () => { window.location.href = '/360/logout/'; });
+  const logout = () => { window.location.href = '/360/logout/'; };
+  ['logoutBtn', 'mobileLogoutBtn', 'switchUserBtn'].forEach((id) => el(id).addEventListener('click', logout));
 
   registerView('dashboard', mountDashboard);
   registerView('tasks', mountTasks);
   registerView('callinglist', mountOutreach);
   registerView('attendance', mountAttendance);
   registerView('customers', mountCustomers);
+  registerView('customerform', mountCustomerForm);
+  registerView('customerview', mountCustomerView);
+  registerView('person', mountPersonProfile);
   registerView('map', mountMap);
   registerView('sales', mountSales);
+  registerView('salesform', mountSalesForm);
+  registerView('contactlog', mountContactLog);
+  registerView('enqhistory', mountEnqHistory);
+  registerView('quotationhistory', mountQuotationHistory);
+  registerView('proformahistory', mountProformaHistory);
+  registerView('dchistory', mountDcHistory);
+  registerView('pohistory', mountPoHistory);
   registerView('payments', mountPayments);
+  registerView('paymentform', mountPaymentForm);
+  registerView('paymenthistory', mountPaymentHistory);
+  registerView('paymentlog', mountPaymentLog);
   registerView('labels', mountLabels);
   registerView('reports', mountReports);
   registerView('managelists', mountManageLists);

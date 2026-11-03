@@ -7,85 +7,101 @@
   <title>Sign in — Anupam 360</title>
   <link rel="icon" type="image/png" href="{% static 'images/logo.webp' %}">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--orange:#ff6a00;--orange-dk:#a14000;--grad:linear-gradient(135deg,#a14000 0%,#ff6a00 100%)}
-body{font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem;
-  background:linear-gradient(160deg,#0a0a0a 0%,#1a1208 50%,#1a0a00 100%);color:#fff}
-.login-wrap{width:100%;max-width:420px}
-.login-brand{font-family:'Space Grotesk',sans-serif;font-size:4.5rem;font-weight:700;line-height:1;text-align:center;
-  letter-spacing:-.02em;color:var(--orange);margin-bottom:1.5rem}
-.login-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:2rem}
-h1{font-family:'Space Grotesk',sans-serif;font-size:1.4rem;margin-bottom:1rem}
-.sub{font-size:.85rem;color:rgba(255,255,255,.55);margin:.25rem 0 1rem}
-label{display:block;font-size:.72rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.55);margin:.9rem 0 .35rem}
-input{width:100%;padding:.75rem .9rem;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#fff;font-size:.95rem}
-input:focus{outline:2px solid var(--orange);outline-offset:1px}
-button{width:100%;margin-top:1.25rem;padding:.85rem;background:var(--grad);color:#fff;border:0;border-radius:8px;font:700 .95rem 'Space Grotesk',sans-serif;cursor:pointer}
-button.secondary{background:rgba(255,255,255,.12)}
-button:hover{filter:brightness(1.1)}
-.msg{border-radius:8px;padding:.7rem .9rem;font-size:.875rem;margin-bottom:1rem}
-.msg.error{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);color:#fca5a5}
-.msg.ok{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#86efac}
-.forgot{margin-top:1.5rem;border-top:1px solid rgba(255,255,255,.1);padding-top:1rem}
-.forgot summary{cursor:pointer;font-size:.85rem;color:rgba(255,255,255,.7)}
-  </style>
+  <link rel="stylesheet" href="{% static 'threesixty/css/ref.css' %}">
+  <link rel="stylesheet" href="{% static 'threesixty/css/legacy.css' %}">
 </head>
 <body>
-  <main class="login-wrap">
-    <div class="login-brand" aria-label="Anupam 360">360</div>
-    <div class="login-card">
-      {% if error %}<div class="msg error" role="alert">{{ error }}</div>{% endif %}
-      {% if notice %}<div class="msg ok" role="status">{{ notice }}</div>{% endif %}
+<!-- Same screens as the reference: User ID -> Password (+ Forgot password / Not you?), first-run "create admin". -->
+<div class="login-wrap" id="loginScreen">
+  <div class="login-card">
+    <div class="logo-row" id="logoRowLogin"><div style="display:flex; flex-direction:column; align-items:center; gap:4px;"><img src="{% if app_logo_url %}{{ app_logo_url }}{% else %}{% static 'threesixty/img/logo-on-light.png' %}{% endif %}" alt="Anupam 360" style="width:240px; max-width:80vw; height:auto; display:block;"></div></div>
+    {% if first_run %}
+      <h1>Sign in</h1>
+      <p class="sub">No accounts yet — set up the admin account below.</p>
+      {% if error %}<p class="login-err show" role="alert">{{ error }}</p>{% endif %}
+      <form method="post" autocomplete="off">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="first_admin">
+        <div class="field" style="margin-bottom:10px;"><label for="fa-user">User ID</label><input id="fa-user" name="username" type="text" required autocapitalize="off" placeholder="e.g. sanjeev01"></div>
+        <div class="field" style="margin-bottom:10px;"><label for="fa-name">Your name</label><input id="fa-name" name="full_name" type="text" placeholder="e.g. Sanjeev Kumar"></div>
+        <div class="field" style="margin-bottom:10px;"><label for="fa-pass">Create a password</label><input id="fa-pass" name="password" type="password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters"></div>
+        <button class="btn btn-primary" style="width:100%; justify-content:center;" type="submit">Create admin account</button>
+      </form>
+    {% else %}
+      <h1 id="loginTitle">Sign in</h1>
+      <p class="sub" id="loginSub">{% if notice %}{{ notice }}{% else %}Enter your User ID and password.{% endif %}</p>
 
-      {% if first_run %}
-        <h1>Create the first admin</h1>
-        <p class="sub">No admin exists yet. This form disappears once one is created.</p>
-        <form method="post" autocomplete="off">
-          {% csrf_token %}
-          <input type="hidden" name="action" value="first_admin">
-          <label for="fa-name">Full name</label>
-          <input id="fa-name" name="full_name" type="text">
-          <label for="fa-user">User ID</label>
-          <input id="fa-user" name="username" type="text" required autocapitalize="off">
-          <label for="fa-pass">Password (at least 8 characters, not common or all numbers)</label>
-          <input id="fa-pass" name="password" type="password" required minlength="8" autocomplete="new-password">
-          <button type="submit">Create admin</button>
-        </form>
-      {% else %}
-        <h1>Sign in</h1>
-        <form method="post">
-          {% csrf_token %}
-          <input type="hidden" name="action" value="login">
-          <input type="hidden" name="next" value="{{ next }}">
+      <div id="useridSection">
+        <div class="field" style="margin-bottom:10px;">
           <label for="li-user">User ID</label>
-          <input id="li-user" name="username" type="text" required autofocus autocapitalize="off" autocomplete="username">
-          <label for="li-pass">Password</label>
-          <input id="li-pass" name="password" type="password" required autocomplete="current-password">
-          <button type="submit">Sign in</button>
-        </form>
+          <input type="text" id="li-user" placeholder="Your User ID" autocomplete="username" autocapitalize="off" autofocus>
+        </div>
+        <button type="button" class="btn btn-primary" style="width:100%; justify-content:center;" id="useridSubmit">Continue</button>
+        <p class="login-err" id="useridErr">Enter your User ID.</p>
+      </div>
 
-        <details class="forgot" {% if panel == 'reset' %}open{% endif %}>
-          <summary>Forgot password?</summary>
-          <p class="sub">Another admin has to confirm with their own password.</p>
-          <form method="post" autocomplete="off">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="reset">
-            <label for="rp-user">Your user ID</label>
-            <input id="rp-user" name="username" type="text" required autocapitalize="off">
-            <label for="rp-new">New password (at least 8 characters, not common or all numbers)</label>
-            <input id="rp-new" name="new_password" type="password" required minlength="8" autocomplete="new-password">
-            <label for="rp-confirm">Confirm new password</label>
-            <input id="rp-confirm" name="confirm_password" type="password" required minlength="8" autocomplete="new-password">
-            <label for="rp-vuser">Confirming admin's user ID</label>
-            <input id="rp-vuser" name="verifier_username" type="text" required autocapitalize="off">
-            <label for="rp-vpass">Confirming admin's password</label>
-            <input id="rp-vpass" name="verifier_password" type="password" required autocomplete="off">
-            <button type="submit" class="secondary">Reset password</button>
-          </form>
-        </details>
-      {% endif %}
-    </div>
-  </main>
+      <form method="post" id="pinSection" style="display:none;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="login">
+        <input type="hidden" name="next" value="{{ next }}">
+        <input type="hidden" name="username" id="li-username">
+        <p class="sub" id="pinAsLabel" style="margin-bottom:14px;"></p>
+        <div class="field" style="margin-bottom:10px;">
+          <label for="li-pass">Password</label>
+          <input type="password" id="li-pass" name="password" placeholder="Your password" autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center;" id="pinSubmit">Sign in</button>
+        <p class="login-err {% if error and panel != 'reset' %}show{% endif %}" id="loginErr" role="alert">{% if panel != 'reset' %}{{ error }}{% endif %}</p>
+        <p style="text-align:center; margin-top:10px;"><a href="#" id="forgotPasswordLink" style="font-size:13px; color:var(--text-dim);">Forgot password?</a></p>
+        <p style="text-align:center; margin-top:6px;"><a href="#" id="backToUseridLink" style="font-size:13px; color:var(--text-dim);">Not you? Change User ID</a></p>
+      </form>
+
+      <form method="post" id="resetPwSection" style="display:none;" autocomplete="off">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="reset">
+        <input type="hidden" name="username" id="rp-user">
+        <p class="sub" id="resetPwSub" style="margin-bottom:14px;">Another admin has to confirm with their own password (not needed if you are the only admin).</p>
+        <div class="field" style="margin-bottom:10px;"><label for="rp-vuser">Verify with another Admin's User ID</label><input id="rp-vuser" name="verifier_username" type="text" autocapitalize="off"></div>
+        <div class="field" style="margin-bottom:10px;"><label for="rp-vpass">That admin's password</label><input id="rp-vpass" name="verifier_password" type="password" autocomplete="off" placeholder="That admin's password"></div>
+        <div class="field" style="margin-bottom:10px;"><label for="rp-new">New password</label><input id="rp-new" name="new_password" type="password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters"></div>
+        <div class="field" style="margin-bottom:10px;"><label for="rp-confirm">Confirm new password</label><input id="rp-confirm" name="confirm_password" type="password" required minlength="8" autocomplete="new-password" placeholder="Re-type the new password"></div>
+        <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center;" id="resetPwSubmit">Reset password</button>
+        <p class="login-err {% if error and panel == 'reset' %}show{% endif %}" id="resetPwErr" role="alert">{% if panel == 'reset' %}{{ error }}{% endif %}</p>
+        <p style="text-align:center; margin-top:10px;"><a href="#" id="resetPwCancel" style="font-size:13px; color:var(--text-dim);">Back to sign in</a></p>
+      </form>
+    {% endif %}
+  </div>
+</div>
+{% if not first_run %}
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var title = $('loginTitle'), sub = $('loginSub');
+  function show(which) {
+    $('useridSection').style.display = which === 'userid' ? '' : 'none';
+    $('pinSection').style.display = which === 'pin' ? '' : 'none';
+    $('resetPwSection').style.display = which === 'reset' ? '' : 'none';
+    title.textContent = which === 'reset' ? 'Reset password' : 'Sign in';
+    if (which === 'userid') sub.textContent = 'Enter your User ID and password.';
+    if (which === 'pin') sub.textContent = '';
+    if (which === 'reset') sub.textContent = '';
+  }
+  function goPin() {
+    var u = $('li-user').value.trim();
+    if (!u) { $('useridErr').classList.add('show'); return; }
+    $('li-username').value = u; $('rp-user').value = u;
+    $('pinAsLabel').textContent = 'Signing in as ' + u;
+    show('pin'); $('li-pass').focus();
+  }
+  $('useridSubmit').addEventListener('click', goPin);
+  $('li-user').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); goPin(); } });
+  $('backToUseridLink').addEventListener('click', function (e) { e.preventDefault(); $('li-pass').value = ''; show('userid'); $('li-user').focus(); });
+  $('forgotPasswordLink').addEventListener('click', function (e) { e.preventDefault(); show('reset'); });
+  $('resetPwCancel').addEventListener('click', function (e) { e.preventDefault(); show('pin'); });
+  {% if panel == 'reset' %}$('li-user').value = '{{ reset_user|escapejs }}'; $('rp-user').value = '{{ reset_user|escapejs }}'; show('reset');
+  {% elif error or notice %}{% if notice %}show('userid');{% else %}$('li-user').value = '{{ last_user|escapejs }}'; $('li-username').value = '{{ last_user|escapejs }}'; $('pinAsLabel').textContent = 'Signing in as {{ last_user|escapejs }}'; show('pin');{% endif %}{% endif %}
+})();
+</script>
+{% endif %}
 </body>
 </html>

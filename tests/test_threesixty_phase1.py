@@ -501,13 +501,13 @@ class TestLoginAndReset:
 
     def test_first_admin_form_only_while_no_admin_exists(self, chennai):
         c = Client()
-        assert b'Create the first admin' in c.get('/360/login/').content
+        assert b'Create admin account' in c.get('/360/login/').content
         res = c.post('/360/login/', {'action': 'first_admin', 'username': 'boss', 'password': 'Boss-secret-2026', 'full_name': 'The Boss'})
         assert res.status_code == 302 and res.url == '/360/'
         assert EmployeeProfile.objects.get(user__username='boss').role == EmployeeProfile.ADMIN
         res = Client().post('/360/login/', {'action': 'first_admin', 'username': 'intruder', 'password': 'Intruder-pass-1'})
         assert res.status_code == 403 and not User.objects.filter(username='intruder').exists()
-        assert b'Create the first admin' not in Client().get('/360/login/').content
+        assert b'Create admin account' not in Client().get('/360/login/').content
 
     def test_first_admin_password_minimum(self):
         res = Client().post('/360/login/', {'action': 'first_admin', 'username': 'boss', 'password': 'password123'})

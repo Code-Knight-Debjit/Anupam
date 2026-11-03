@@ -1,6 +1,8 @@
 // Backup & restore, and the audit log — Admin only (the server enforces it; this is just the screen).
 import { api } from '../api.js';
-import { el, escapeHtml, fmtDateTime, toast, apiErrorMessage, renderTable, confirmDialog } from '../ui.js';
+import { el, escapeHtml, fmtDateTime, apiErrorMessage, renderTable, customConfirm } from '../ui.js';
+import { loadBootstrap } from '../state.js';
+import { mountRefView } from '../customer_common.js';
 
 async function postFile(url, file, extra = {}) {
   const fd = new FormData();
@@ -9,43 +11,46 @@ async function postFile(url, file, extra = {}) {
   return api.post(url, fd);
 }
 
+const COUNT_LABELS = [['customers', 'Customers'], ['contacts', 'Contacts'], ['interactions', 'Interactions'], ['sales_documents', 'Sales documents'], ['payments', 'Payments'], ['tasks', 'Tasks'], ['users', 'Users'], ['branches', 'Branches']];
+
+/** The Backup & restore page of the reference: a download panel with what a backup holds, and a restore panel. */
 export async function mountBackup(root) {
-  const copies = await api.get('backup/safety-copies/');
-  root.innerHTML = `
-    <h2 style="margin-top:0;">Backup &amp; restore</h2>
-    <div class="card" style="max-width:720px;">
-      <h3>Download a backup</h3>
-      <p class="sub">One file with every dataset (customers, contacts, documents, payments, tasks, attendance, lists, users…). It contains password hashes — keep it private. Uploaded images are not inside the file.</p>
-      <a class="btn primary" href="/360/api/backup/export/">Download backup</a>
-    </div>
-    <div class="card" style="max-width:720px;margin-top:12px;">
-      <h3>Restore from a backup</h3>
-      <p class="sub">Restoring <strong>replaces all current data</strong>. A safety copy of the current data is saved first, and nothing changes if the file is damaged.</p>
-      <div class="field"><input type="file" id="bk-file" accept="application/json,.json" aria-label="Backup file"></div>
-      <div id="bk-info"></div>
-      <div class="modal-actions" style="justify-content:flex-start;"><button class="btn" id="bk-describe">Check the file</button><button class="btn danger" id="bk-restore" disabled>Restore…</button></div>
-    </div>
-    <div class="card" style="max-width:720px;margin-top:12px;"><h3>Safety copies</h3>
-      ${renderTable(['File', 'Size', ''], copies.results.map((c) => ({ File: escapeHtml(c.name), Size: `${Math.round(c.size / 1024)} KB`,
-        '': `<a class="btn sm" href="/360/api/backup/safety-copies/${encodeURIComponent(c.name)}">Download</a>` })), { empty: 'No safety copies yet.' })}</div>`;
-  const file = () => el('bk-file').files[0];
-  el('bk-describe').onclick = async () => {
-    if (!file()) { toast('Choose a backup file first.', 'error'); return; }
-    try {
-      const info = await postFile('backup/describe/', file());
-      el('bk-info').innerHTML = `<p class="sub">Made ${escapeHtml(info.created_at || '?')} by ${escapeHtml(info.created_by || '?')} · ${info.users} users</p>
-        ${renderTable(['Dataset', 'Records'], Object.entries(info.contains).map(([k, v]) => ({ Dataset: escapeHtml(k), Records: v })))}
-        ${info.missing.length ? `<p class="sub" style="color:var(--error);">Not in this backup (they will be left empty): ${info.missing.map(escapeHtml).join(', ')}</p>` : ''}`;
-      el('bk-restore').disabled = false;
-    } catch (e) { toast(apiErrorMessage(e), 'error'); el('bk-restore').disabled = true; }
+  mountRefView(root, 'view-backup');
+  const paintSummary = async () => {
+    const s = await api.get('backup/summary/');
+    el('backupSummary').innerHTML = COUNT_LABELS.map(([k, l]) => `<span style="display:inline-block;background:var(--accent-bg);border-radius:12px;padding:3px 11px;margin:0 6px 6px 0;font-size:12.5px;"><b>${s.counts[k]}</b> ${l}</span>`).join('')
+      + `<div class="sub" style="margin-top:4px;">${s.last_backup_at ? 'Last backup downloaded: ' + new Date(s.last_backup_at).toLocaleString('en-IN') : 'No backup has been downloaded from this app yet — please take one.'}</div>`;
   };
-  el('bk-restore').onclick = async () => {
-    if (!await confirmDialog('Replace ALL current data with this backup? A safety copy is saved first.')) return;
+  await paintSummary();
+  el('backupBtn').onclick = () => {
+    const a = document.createElement('a'); a.href = '/360/api/backup/export/'; a.download = ''; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    el('backupHint').textContent = 'Backup downloaded. Keep it somewhere safe (not only on this computer).';
+    setTimeout(paintSummary, 1500);
+  };
+
+  let described = null;
+  const describeText = (d) => `${d.counts.customers} customers, ${d.counts.contacts} contacts, ${d.counts.sales_documents} sales documents, ${d.counts.payments} payments, ${d.counts.tasks} tasks, ${d.counts.users} users`
+    + (d.created_at ? ` — backed up ${new Date(d.created_at).toLocaleString('en-IN')}` : '');
+  el('restoreFileInput').onchange = async () => {
+    described = null; el('restoreHint').textContent = '';
+    const file = el('restoreFileInput').files[0]; if (!file) return;
     try {
-      const res = await postFile('backup/restore/', file(), { confirm: 'yes' });
-      toast(`Restored. Safety copy: ${res.safety_copy}`, 'success');
-      mountBackup(root);
-    } catch (e) { toast(apiErrorMessage(e), 'error'); }
+      described = await postFile('backup/describe/', file);
+      el('restoreHint').innerHTML = `This file has: <b>${escapeHtml(describeText(described))}</b>.`
+        + (described.missing.length ? `<br>It is an older backup, so these are not in it and will be left empty: ${escapeHtml(described.missing.join(', '))}.` : '');
+    } catch (e) { el('restoreHint').textContent = "That doesn't look like an Anupam 360 backup file."; }
+  };
+  el('restoreBtn').onclick = async () => {
+    const file = el('restoreFileInput').files[0];
+    if (!file) { el('restoreHint').textContent = 'Choose a backup file first.'; return; }
+    if (!described) { el('restoreHint').textContent = "Couldn't read that backup file."; return; }
+    if (!await customConfirm('Restore this backup?\n\n' + describeText(described) + '\n\nThis replaces the current data. A safety copy of the CURRENT data is saved first.')) return;
+    try {
+      const res = await postFile('backup/restore/', file, { confirm: 'yes' });
+      el('restoreHint').textContent = `Restore complete. ${Object.keys(described.contains).length} sections restored. Safety copy of the previous data: ${res.safety_copy}.`;
+      el('restoreFileInput').value = ''; described = null;
+      await loadBootstrap(); paintSummary();
+    } catch (e) { el('restoreHint').textContent = 'Restore failed: ' + apiErrorMessage(e) + ' Nothing was changed.'; }
   };
 }
 

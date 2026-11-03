@@ -39,6 +39,7 @@ export const api = {
   get: (path) => request('GET', path),
   post: (path, data) => request('POST', path, data),
   patch: (path, data) => request('PATCH', path, data),
+  put: (path, data) => request('PUT', path, data),
   delete: (path) => request('DELETE', path),
   upload: (path, file) => { const fd = new FormData(); fd.append('file', file); return request('POST', path, fd); },
 

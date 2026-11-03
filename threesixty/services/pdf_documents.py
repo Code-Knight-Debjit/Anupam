@@ -9,12 +9,14 @@ Challans carry no bank / QR block.
 """
 import io
 from datetime import date
+from decimal import Decimal
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
+from django.conf import settings
 from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from xml.sax.saxutils import escape
 
@@ -23,9 +25,9 @@ from .printing import amount_in_words, money, print_totals
 
 PRINTABLE = {'quotation': 'QUOTATION', 'proforma': 'PROFORMA INVOICE', 'dc': 'DELIVERY CHALLAN'}
 PAGE_W, PAGE_H = A4
-MARGIN = 12 * mm
-TOP, BOTTOM = 46 * mm, 30 * mm
-DEFAULT_ACCENT = '#a14000'
+MARGIN = 9 * mm
+TOP, BOTTOM = 52 * mm, 22 * mm
+DEFAULT_ACCENT = '#d97b2f'          # the reference's document accent
 
 _base = ParagraphStyle('base', fontName='Helvetica', fontSize=8.5, leading=11)
 SMALL = ParagraphStyle('small', parent=_base, fontSize=7.5, leading=9.5)
@@ -59,11 +61,39 @@ def _image(path, max_w, max_h):
 
 
 # --------------------------------------------------------------------------- page furniture
+GREY, LINE, DARK = colors.HexColor('#999999'), colors.HexColor('#dddddd'), colors.HexColor('#1e1e1e')
+DOC_LABEL = {'quotation': 'Quotation', 'proforma': 'Proforma Invoice', 'dc': 'Delivery Challan'}
+DEFAULT_LOGO = 'threesixty/img/logo-on-light.png'
+LABEL = ParagraphStyle('label', parent=_base, fontSize=6.5, leading=8, textColor=GREY)
+CELL_VALUE = ParagraphStyle('cellvalue', parent=_base, fontName='Helvetica-Bold', fontSize=8.5, leading=10)
+NUM = ParagraphStyle('num', parent=_base, alignment=2)
+TH = ParagraphStyle('th', parent=_base, fontName='Helvetica-Bold', textColor=colors.white)
+THR = ParagraphStyle('thr', parent=TH, alignment=2)
+TOTAL_LABEL = ParagraphStyle('tl', parent=_base, textColor=colors.HexColor('#666666'))
+GRAND = ParagraphStyle('grand', parent=_base, fontName='Helvetica-Bold', fontSize=10.5, leading=13)
+
+
 def _accent(branch):
     try:
         return colors.HexColor(branch.accent_color or DEFAULT_ACCENT)
     except ValueError:
         return colors.HexColor(DEFAULT_ACCENT)
+
+
+def _default_logo_path():
+    """The app logo the Admin chose on the Branches page, else the built-in one."""
+    from django.contrib.staticfiles import finders
+    from . import branding
+    chosen = branding.info('app')
+    return chosen['path'] if chosen else finders.find(DEFAULT_LOGO)
+
+
+def _fmt_date(d):
+    return f'{d.day}/{d.month}/{d.year}' if d else '—'
+
+
+def _rs(value):
+    return 'Rs. ' + _num(money(value))
 
 
 def _watermark(canvas, branch):
@@ -79,7 +109,7 @@ def _watermark(canvas, branch):
         canvas.setFont('Helvetica-Bold', 90 * size)
         canvas.drawCentredString(0, 0, branch.watermark_text.strip()[:40])
     else:
-        path = _image_path(branch.logo)
+        path = _image_path(branch.logo) or _default_logo_path()
         if path:
             try:
                 w, h = ImageReader(path).getSize()
@@ -91,138 +121,183 @@ def _watermark(canvas, branch):
     canvas.restoreState()
 
 
-def _page_furniture(branch, title):
-    accent = _accent(branch)
+def _letterhead_lines(branch):
+    """The company block: address split over two lines, phone / mobile, e-mail / website, registration numbers."""
+    parts = [p.strip() for p in (branch.letterhead_address or '').replace('\n', ',').split(',') if p.strip()]
+    if len(parts) > 1:                                              # the reference's splitAddressTwoLines: the most even split
+        best, diff = 1, 10 ** 9
+        for i in range(1, len(parts)):
+            d = abs(len(', '.join(parts[:i])) - len(', '.join(parts[i:])))
+            if d < diff:
+                best, diff = i, d
+        lines = [', '.join(parts[:best]), ', '.join(parts[best:])]
+    else:
+        lines = parts
+    if branch.letterhead_phone:
+        lines.append(f'Ph: {branch.letterhead_phone}')
+    if branch.letterhead_mobile:
+        lines.append(f'Mob: {branch.letterhead_mobile}')
+    contact = '   '.join(x for x in (branch.letterhead_email, branch.letterhead_website) if x)
+    if contact:
+        lines.append(contact)
+    reg = '   |   '.join(x for x in (f'GSTIN: {branch.letterhead_gstin}' if branch.letterhead_gstin else '',
+                                     f'Udyam: {branch.udyam_number}' if branch.udyam_number else '') if x)
+    if reg:
+        lines.append(reg)
+    return lines
 
+
+def _page_furniture(branch, title):
     def draw(canvas, doc):
         canvas.saveState()
         _watermark(canvas, branch)
         top = PAGE_H - MARGIN
+        # logo (left), company block (middle), dealership logo (right) — the reference's three-column head
         text_x = MARGIN
-        logo = _image_path(branch.logo)
+        logo = _image_path(branch.logo) or _default_logo_path()
         if logo:
             try:
                 w, h = ImageReader(logo).getSize()
-                height = 20 * mm
-                width = min(height * w / h, 42 * mm)
-                canvas.drawImage(logo, MARGIN, top - height, width, height, mask='auto', preserveAspectRatio=True)
-                text_x = MARGIN + width + 4 * mm
+                box = 32 * mm
+                scale = min(box / w, box / h)
+                canvas.drawImage(logo, MARGIN, top - h * scale - 2 * mm, w * scale, h * scale, mask='auto')
+                text_x = MARGIN + box + 5 * mm
             except Exception:
                 pass
-        canvas.setFillColor(accent)
-        canvas.setFont('Helvetica-Bold', 15)
-        canvas.drawString(text_x, top - 6 * mm, branch.letterhead_name or branch.name)
-        canvas.setFillColor(colors.black)
+        canvas.setFillColor(DARK)
+        canvas.setFont('Helvetica-Bold', 13)
+        canvas.drawString(text_x, top - 5 * mm, branch.letterhead_name or branch.name)
+        canvas.setFillColor(colors.HexColor('#666666'))
         canvas.setFont('Helvetica', 8)
-        y = top - 11 * mm
-        for line in (branch.letterhead_address,
-                     ' | '.join(x for x in (f'Ph: {branch.letterhead_phone}' if branch.letterhead_phone else '',
-                                            f'Mob: {branch.letterhead_mobile}' if branch.letterhead_mobile else '',
-                                            branch.letterhead_email, branch.letterhead_website) if x),
-                     ' | '.join(x for x in (f'GSTIN: {branch.letterhead_gstin}' if branch.letterhead_gstin else '',
-                                            f'Udyam: {branch.udyam_number}' if branch.udyam_number else '') if x)):
-            for part in (line or '').splitlines():
-                if part.strip():
-                    canvas.drawString(text_x, y, part.strip()[:120])
-                    y -= 3.6 * mm
-        canvas.setStrokeColor(accent)
-        canvas.setLineWidth(1.2)
-        canvas.line(MARGIN, PAGE_H - TOP + 6 * mm, PAGE_W - MARGIN, PAGE_H - TOP + 6 * mm)
+        y = top - 10 * mm
+        for line in _letterhead_lines(branch)[:8]:
+            canvas.drawString(text_x, y, line[:110])
+            y -= 3.9 * mm
+        dealer = _image_path(branch.dealer_logo)
+        if dealer:
+            try:
+                w, h = ImageReader(dealer).getSize()
+                box = 38 * mm
+                scale = min(box / w, box / h)
+                canvas.drawImage(dealer, PAGE_W - MARGIN - w * scale, top - h * scale - 2 * mm, w * scale, h * scale, mask='auto')
+            except Exception:
+                pass
+        rule_y = PAGE_H - TOP + 9 * mm
+        canvas.setStrokeColor(LINE)
+        canvas.setLineWidth(0.6)
+        canvas.line(MARGIN, rule_y, PAGE_W - MARGIN, rule_y)
+        canvas.setFillColor(DARK)
         canvas.setFont('Helvetica-Bold', 11)
-        canvas.setFillColor(accent)
-        canvas.drawRightString(PAGE_W - MARGIN, top - 6 * mm, title)
-        # footer: image (shared by both formats) and page number
+        canvas.drawCentredString(PAGE_W / 2, rule_y - 6 * mm, title)
         footer = _image_path(branch.footer_image)
         if footer:
             try:
                 w, h = ImageReader(footer).getSize()
                 width = PAGE_W - 2 * MARGIN
-                height = min(width * h / w, 16 * mm)
+                height = min(width * h / w, 22 * mm)
                 canvas.drawImage(footer, MARGIN, MARGIN - 4 * mm, width, height, mask='auto', preserveAspectRatio=True)
             except Exception:
                 pass
-        canvas.setFillColor(colors.grey)
-        canvas.setFont('Helvetica', 7)
-        canvas.drawRightString(PAGE_W - MARGIN, 6 * mm, f'Page {doc.page}')
         canvas.restoreState()
     return draw
 
 
 # --------------------------------------------------------------------------- content
-def _customer_block(document):
+def _customer_box(document, square):
     customer, contact = document.customer, document.contact
     addr = ', '.join(x for x in (customer.address, customer.area, customer.city, customer.state, customer.pincode) if x)
-    rows = [_p('Bill to', SMALL), _p(customer.name + (f' — {customer.plant}' if customer.plant else ''), BOLD)]
+    rows = [_p('CUSTOMER DETAILS', LABEL), _p(customer.name + (f' — {customer.plant}' if customer.plant else ''), ParagraphStyle('cn', parent=BOLD, fontSize=9.5, leading=12))]
     if addr:
         rows.append(_p(addr))
     if customer.gst_number:
         rows.append(_p(f'GSTIN: {customer.gst_number}'))
     if contact:
-        rows.append(_p(f'Attn: {contact.name}' + (f' ({contact.phone})' if contact.phone else '')))
+        rows.append(_p(f'Attn: {contact.name}'))
+        if contact.phone:
+            rows.append(_p(contact.phone))
     return rows
 
 
-def _meta_block(document, title):
-    label = {'quotation': 'Quotation No.', 'proforma': 'Proforma No.', 'dc': 'Challan No.'}[document.type]
-    pairs = [(label, document.doc_number), ('Date', document.date.strftime('%d-%m-%Y'))]
-    if document.type == 'quotation' and document.valid_till:
-        pairs.append(('Valid till', document.valid_till.strftime('%d-%m-%Y')))
-    if document.ref_no:
-        pairs.append(('Your ref.', document.ref_no))
-    if document.sales_person_name:
-        pairs.append(('Sales person', document.sales_person_name))
-    if document.type == 'dc':
-        pairs += [(l, v) for l, v in (('Vehicle', document.vehicle), ('Transport', document.transport)) if v]
-    if document.payment_terms and document.type != 'dc':
-        pairs.append(('Payment terms', document.payment_terms))
-    return Table([[_p(k, SMALL), _p(v, BOLD)] for k, v in pairs], colWidths=[24 * mm, 36 * mm],
-                 style=TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP'), ('TOPPADDING', (0, 0), (-1, -1), 1),
-                                   ('BOTTOMPADDING', (0, 0), (-1, -1), 1)]))
+def _meta_rows(document):
+    """[(label, value), ...] per row — the reference's quote-meta stack, per document type."""
+    t = document.type
+    number_label = {'quotation': 'Quotation Number', 'proforma': 'Proforma Invoice Number', 'dc': 'Delivery Challan Number'}[t]
+    rows = [[(number_label, document.doc_number or '—'), ('Date', _fmt_date(document.date))],
+            [('Reference Number', document.ref_no or '—'), ('Reference Date', _fmt_date(document.ref_date))]]
+    if t == 'quotation':
+        rows.append([('Quotation Valid Till', _fmt_date(document.valid_till))])
+    if t in ('quotation', 'proforma'):
+        rows.append([('Payment Terms', document.payment_terms or '—')])
+    if t == 'dc':
+        rows.append([('Vehicle Number', document.vehicle or '—'), ('Transport Name', document.transport or '—')])
+    return rows
 
 
-def _items_table(document, totals, accent, show_unit):
+def _meta_box(document, width, square):
+    rows = _meta_rows(document)
+    data, styles = [], [('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('LEFTPADDING', (0, 0), (-1, -1), 4), ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                        ('TOPPADDING', (0, 0), (-1, -1), 2), ('BOTTOMPADDING', (0, 0), (-1, -1), 2)]
+    for r, pair in enumerate(rows):
+        cells = [[_p(label.upper(), LABEL), _p(value, CELL_VALUE)] for label, value in pair]
+        if len(cells) == 1:
+            cells.append('')
+            styles.append(('SPAN', (0, r), (1, r)))
+        data.append(cells)
+        if r:
+            styles.append(('LINEABOVE', (0, r), (-1, r), 0.5, LINE))
+    if any(len(p) == 2 for p in rows):
+        styles.append(('LINEAFTER', (0, 0), (0, -1), 0.5, LINE))
+    for r, pair in enumerate(rows):
+        if len(pair) == 1:
+            styles.append(('LINEAFTER', (0, r), (0, r), 0, colors.white))
+    if not square:
+        styles.append(('ROUNDEDCORNERS', [6, 6, 6, 6]))
+    styles.append(('BOX', (0, 0), (-1, -1), 0.5, LINE))
+    return Table(data, colWidths=[width / 2, width / 2], style=TableStyle(styles))
+
+
+def _items_table(document, totals, accent, width):
     show_disc = document.show_discount_in_pdf
-    head = ['Sr', 'Description']
-    widths = [9 * mm, None]
-    head.append('Qty'); widths.append(16 * mm)
-    if show_unit:
-        head.append('Unit'); widths.append(13 * mm)
-    head.append('Rate'); widths.append(21 * mm)
+    head, widths, right = ['#', 'Item & Description', 'Qty', 'Unit', 'Rate'], [8 * mm, None, 14 * mm, 14 * mm, 24 * mm], [2, 3, 4]
     if show_disc:
-        head.append('Disc %'); widths.append(15 * mm)
-    head.append('Amount'); widths.append(26 * mm)
-    fixed = sum(w for w in widths if w)
-    widths[1] = PAGE_W - 2 * MARGIN - fixed
-    rows = [[_p(h, HEAD) for h in head]]
+        head.append('Discount %'); widths.append(20 * mm); right.append(len(head) - 1)
+    head += ['Tax %', 'Amount']; widths += [14 * mm, 28 * mm]; right += [len(head) - 2, len(head) - 1]
+    widths[1] = width - sum(w for w in widths if w)
+    rows = [[_p(h, THR if i in right else TH) for i, h in enumerate(head)]]
     for line in totals['lines']:
-        row = [_p(line['sr']), _p(line['name']), _p(_num(line['qty'], 0) if line['qty'] == line['qty'].to_integral() else _num(line['qty'])), ]
-        if show_unit:
-            row.append(_p(line['unit']))
-        row.append(_p(_num(line['rate']), RIGHT))
+        qty = line['qty']
+        row = [_p(line['sr']), _p(line['name']), _p(_num(qty, 0) if qty == qty.to_integral() else _num(qty), NUM), _p(line['unit'] or '—', NUM), _p(_rs(line['rate']), NUM)]
         if show_disc:
-            row.append(_p(_num(line['discount'])))
-        row.append(_p(_num(money(line['amount'])), RIGHT))
+            row.append(_p(f"{line['discount'].normalize():f}%", NUM))
+        tax_pct = line['tax_pct']
+        row += [_p(f"{tax_pct.normalize():f}%", NUM), _p(_rs(line['amount']), NUM)]
         rows.append(row)
-    table = Table(rows, colWidths=widths, repeatRows=1, style=TableStyle([
+    return Table(rows, colWidths=widths, repeatRows=1, style=TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), accent), ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.black), ('TOPPADDING', (0, 0), (-1, -1), 2), ('BOTTOMPADDING', (0, 0), (-1, -1), 2)]))
-    return table
+        ('GRID', (0, 0), (-1, -1), 0.5, LINE), ('TOPPADDING', (0, 0), (-1, -1), 4), ('BOTTOMPADDING', (0, 0), (-1, -1), 4)]))
 
 
-def _totals_table(document, totals):
+def _totals_box(document, totals, square):
+    def charge_label(name, pct):
+        return f'{name} Charges' + (f' (+{Decimal(pct).normalize():f}% tax)' if pct else '')
     rows = [('Sub Total', totals['sub_total'])]
-    rows.append(('Tax Amount', totals['tax_total']))
-    for label, key, raw in (('Packing', 'packing', document.packing_charges), ('Freight', 'freight', document.freight_charges),
-                            ('Other charges', 'other', document.other_charges)):
-        if raw:
-            rows.append((label, totals[key]))
+    if totals['tax_total']:
+        rows.append(('Tax Amount', totals['tax_total']))
+    for name, key, amount, pct in (('Packing', 'packing', document.packing_charges, document.packing_tax), ('Freight', 'freight', document.freight_charges, document.freight_tax),
+                                   ('Other', 'other', document.other_charges, document.other_charges_tax)):
+        if totals[key]:
+            rows.append((charge_label(name, pct), totals[key]))
     if totals['round_off']:
-        rows.append(('Round off', totals['round_off']))
-    rows.append(('TOTAL', totals['total']))
-    data = [[_p(k, BOLD if k == 'TOTAL' else _base), _p(_num(money(v)), RIGHT)] for k, v in rows]
-    return Table(data, colWidths=[40 * mm, 30 * mm], hAlign='RIGHT', style=TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.black), ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f2f2f2')),
-        ('TOPPADDING', (0, 0), (-1, -1), 2), ('BOTTOMPADDING', (0, 0), (-1, -1), 2)]))
+        rows.append(('Round Off', totals['round_off']))
+    data = [[_p(k, TOTAL_LABEL), _p(('+' if k == 'Round Off' and v > 0 else '') + _rs(v), ParagraphStyle('tv', parent=NUM, fontName='Helvetica-Bold'))] for k, v in rows]
+    data.append([_p('Total Amount', GRAND), _p(_rs(totals['total']), ParagraphStyle('gv', parent=GRAND, alignment=2))])
+    last = len(data) - 1
+    styles = [('BOX', (0, 0), (-1, -1), 0.5, LINE), ('LINEBELOW', (0, 0), (-1, last - 1), 0.5, colors.HexColor('#eeeeee')),
+              ('BACKGROUND', (0, last), (-1, last), colors.HexColor('#faf8f4')), ('TOPPADDING', (0, 0), (-1, -1), 5), ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+              ('LEFTPADDING', (0, 0), (-1, -1), 8), ('RIGHTPADDING', (0, 0), (-1, -1), 8), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE')]
+    if not square:
+        styles.append(('ROUNDEDCORNERS', [6, 6, 6, 6]))
+    return Table(data, colWidths=[46 * mm, 38 * mm], style=TableStyle(styles))
 
 
 def _terms(document, branch):
@@ -232,68 +307,55 @@ def _terms(document, branch):
     return terms
 
 
-def _bank_and_qr(branch):
-    cells = []
-    bank = [x for x in (f'Bank: {branch.bank_name}' if branch.bank_name else '',
-                        f'Branch: {branch.bank_branch}' if branch.bank_branch else '',
-                        f'A/C No.: {branch.bank_account_no}' if branch.bank_account_no else '',
-                        f'IFSC: {branch.bank_ifsc}' if branch.bank_ifsc else '') if x]
-    cells.append([_p('Bank details', BOLD)] + [_p(b, SMALL) for b in bank] if bank else '')
+def _bank_and_qr(branch, width):
+    bank = [(label, value) for label, value in (('Bank Name', branch.bank_name), ('A/c No.', branch.bank_account_no), ('IFSC Code', branch.bank_ifsc), ('Branch Name', branch.bank_branch)) if value]
+    left = ([_p('BANK DETAILS', LABEL)] + [_p(f'<font color="#888888">{escape(l)}:</font> {escape(v)}', SMALL) for l, v in bank]) if bank else ''
     qr_path = _image_path(branch.payment_qr)
-    qr = _image(qr_path, 28 * mm, 28 * mm) if qr_path else None
+    qr = _image(qr_path, 26 * mm, 26 * mm) if qr_path else None
     if not bank and not qr:
         return None
-    cells.append([_p('Scan to pay', SMALL), qr] if qr else '')
-    return Table([cells], colWidths=[(PAGE_W - 2 * MARGIN) / 2] * 2, style=TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'), ('BOX', (0, 0), (-1, -1), 0.5, colors.black)]))
+    return Table([[left, [_p('SCAN TO PAY', LABEL), qr] if qr else '']], colWidths=[width - 34 * mm, 34 * mm], style=TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'), ('LEFTPADDING', (0, 0), (-1, -1), 0)]))
 
 
 def build_pdf(document, compress=True) -> bytes:
-    """Render `document` (quotation / proforma / challan) to PDF bytes."""
+    """Render `document` (quotation / proforma / challan) to PDF bytes, laid out like the reference's printed document."""
     if document.type not in PRINTABLE:
         raise ServiceError(400, 'Only quotations, proformas and delivery challans can be printed.')
     branch = document.branch
     title = PRINTABLE[document.type]
     accent = _accent(branch)
+    square = branch.doc_format == 2
     items = list(document.items.all())
     totals = print_totals(document, items)
     width = PAGE_W - 2 * MARGIN
     story = []
 
-    customer = _customer_block(document)
-    meta = _meta_block(document, title)
-    show_unit = any(i.unit for i in items)
-    items_table = _items_table(document, totals, accent, show_unit)
-    if branch.doc_format == 2:
-        top = Table([[customer, meta]], colWidths=[width - 62 * mm, 62 * mm], style=TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'), ('LINEAFTER', (0, 0), (0, 0), 0.5, colors.black)]))
-        story.append(Table([[top], [items_table]], colWidths=[width], style=TableStyle([
-            ('BOX', (0, 0), (-1, -1), 0.5, colors.black), ('LINEBELOW', (0, 0), (0, 0), 0.5, colors.black),
-            ('LEFTPADDING', (0, 0), (-1, -1), 0), ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-            ('TOPPADDING', (0, 0), (-1, -1), 0), ('BOTTOMPADDING', (0, 0), (-1, -1), 0)])))
-    else:
-        top = Table([[customer, meta]], colWidths=[width - 66 * mm, 66 * mm], style=TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'), ('BOX', (0, 0), (0, 0), 0.5, colors.black), ('BOX', (1, 0), (1, 0), 0.5, colors.black),
-            ('LEFTPADDING', (0, 0), (-1, -1), 4), ('RIGHTPADDING', (0, 0), (-1, -1), 4)]))
-        story += [top, Spacer(1, 3 * mm), items_table]
-    story.append(Spacer(1, 3 * mm))
-    words = Table([[_p('Amount in words', SMALL)], [_p(amount_in_words(totals['total']), BOLD)]], colWidths=[width - 74 * mm])
-    story.append(Table([[words, _totals_table(document, totals)]], colWidths=[width - 72 * mm, 72 * mm],
-                       style=TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP')])))
-    story.append(Spacer(1, 4 * mm))
-    block = []
-    terms = _terms(document, branch)
-    if terms:
-        block += [_p('Terms & conditions', BOLD)] + [_p(f'{n}. {t}', SMALL) for n, t in enumerate(terms, 1)]
-    if document.remarks.strip():
-        block += [Spacer(1, 2 * mm), _p('Remarks', BOLD), _p(document.remarks, SMALL)]
+    half = (width - 4 * mm) / 2
+    top = Table([[_customer_box(document, square), _meta_box(document, half, square)]], colWidths=[half + 2 * mm, half + 2 * mm], style=TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'), ('LEFTPADDING', (0, 0), (-1, -1), 0), ('RIGHTPADDING', (0, 0), (-1, -1), 0)]))
+    customer_cell = Table([[_customer_box(document, square)]], colWidths=[half], style=TableStyle([
+        ('BOX', (0, 0), (-1, -1), 0.5, LINE), ('LEFTPADDING', (0, 0), (-1, -1), 8), ('TOPPADDING', (0, 0), (-1, -1), 6), ('BOTTOMPADDING', (0, 0), (-1, -1), 6)]
+        + ([] if square else [('ROUNDEDCORNERS', [6, 6, 6, 6])])))
+    top = Table([[customer_cell, _meta_box(document, half, square)]], colWidths=[half + 4 * mm, half], style=TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'), ('LEFTPADDING', (0, 0), (-1, -1), 0), ('RIGHTPADDING', (0, 0), (0, 0), 4 * mm), ('RIGHTPADDING', (1, 0), (1, 0), 0)]))
+    story += [top, Spacer(1, 4 * mm), _items_table(document, totals, accent, width), Spacer(1, 4 * mm)]
+    words = [_p('TOTAL AMOUNT (IN WORDS)', LABEL), Spacer(1, 1 * mm), _p(amount_in_words(totals['total']), BOLD)]
+    story.append(Table([[words, _totals_box(document, totals, square)]], colWidths=[width - 86 * mm, 86 * mm],
+                       style=TableStyle([('VALIGN', (0, 0), (-1, -1), 'BOTTOM'), ('LEFTPADDING', (0, 0), (0, 0), 0), ('RIGHTPADDING', (1, 0), (1, 0), 0)])))
+    story.append(Spacer(1, 5 * mm))
     if document.type != 'dc':                                  # challans carry no bank / QR block
-        bank = _bank_and_qr(branch)
+        bank = _bank_and_qr(branch, width)
         if bank:
-            block += [Spacer(1, 3 * mm), bank]
-    block += [Spacer(1, 10 * mm), Table([[_p(''), _p(f'For {branch.letterhead_name or branch.name}', BOLD)],
-                                         [_p(''), _p('Authorised signatory', SMALL)]], colWidths=[width - 70 * mm, 70 * mm])]
-    story.append(KeepTogether(block))
+            story += [bank, Spacer(1, 5 * mm)]
+    terms = _terms(document, branch)
+    terms_cell = ([_p('TERMS &amp; CONDITIONS'.replace('&amp;', '&'), LABEL), Spacer(1, 1.5 * mm)] + [_p(f'{n}. {t}', SMALL) for n, t in enumerate(terms, 1)]) if terms else ''
+    if document.remarks.strip():
+        terms_cell = (terms_cell or []) + [Spacer(1, 2 * mm), _p('REMARKS', LABEL), _p(document.remarks, SMALL)]
+    sign = [_p(f'For {branch.letterhead_name or branch.name}', ParagraphStyle('sg', parent=BOLD, alignment=2)), Spacer(1, 11 * mm),
+            _p('Authorized Signatory', ParagraphStyle('sig', parent=SMALL, alignment=2, textColor=GREY))]
+    story.append(KeepTogether(Table([[terms_cell, sign]], colWidths=[width - 62 * mm, 62 * mm], style=TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'), ('LEFTPADDING', (0, 0), (0, 0), 0), ('RIGHTPADDING', (1, 0), (1, 0), 0)]))))
 
     out = io.BytesIO()
     pdf = SimpleDocTemplate(out, pagesize=A4, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=TOP, bottomMargin=BOTTOM,

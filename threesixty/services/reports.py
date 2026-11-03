@@ -511,8 +511,12 @@ def export_table(name, result):
 
 
 # --------------------------------------------------------------------------- dashboards
-def personal_dashboard(user, f: Filters):
-    """The numbers of a non-Admin dashboard, for the period (§19)."""
+def personal_dashboard(user, f: Filters, custom=False):
+    """The numbers of a non-Admin dashboard, for the period (§19).
+
+    As in the reference: the preset periods (today / week / month / all) only narrow the Done / Taken / Visited
+    counts; "custom" dates (`custom=True`) narrow every number, each by its own date (task due date, document date,
+    call week, payment date)."""
     today = timezone.localdate()
     mine = Interaction.objects.filter(is_copy=False, date__range=(f.start, f.end)).filter(Q(created_by=user) | Q(joint_with=user)).distinct()
     appts = mine.filter(type=Interaction.TYPE_APPOINTMENT).count()
@@ -521,27 +525,75 @@ def personal_dashboard(user, f: Filters):
     not_visited = interactions.appointments_not_visited(user, f.start, f.end).count()
     tasks = Task.objects.filter(Q(assigned_to=user) | Q(joint_with=user)).distinct().exclude(status='Completed')
     docs = SalesDocument.objects.filter(created_by=user).prefetch_related('items')
+    assignments = CallAssignment.objects.filter(assigned_to=user).exclude(status='Called')
+    if custom:
+        tasks = tasks.filter(due_date__range=(f.start, f.end))
+        docs = docs.filter(date__range=(f.start, f.end))
+        assignments = assignments.filter(week_of__range=(f.start, f.end))
     pending = lambda t: [d for d in docs if d.type == t and (d.order_status or 'Pending') == 'Pending']
     my_payments = list(PaymentCollection.objects.filter(created_by=user).prefetch_related('receipts'))
+
+    def paid_in_period(p):
+        """Fully collected, and the last receipt (or the payment itself when it has none) falls in the period."""
+        if p.amount <= 0 or p.balance() > 0:
+            return False
+        dates = [r.date for r in p.receipts.all() if r.date] or [p.date]
+        return bool(dates[-1]) and f.start <= max(dates) <= f.end
+    pending_payments = [p for p in my_payments if p.balance() > 0 and (not custom or (p.date and f.start <= p.date <= f.end))]
     profile = user.threesixty_profile
     month_start, month_end = att.month_bounds(None)
     days = att.compute_range([profile], month_start, month_end)[user.pk]
     today_record = next((d['record'] for d in days if d['date'] == today), None)
+    # Calls / visits / appointments I logged on each of the last 7 days (the "My last 7 days" chart).
+    week_days = [today - timedelta(days=i) for i in range(6, -1, -1)]
+    week = {d: {'Call': 0, 'Visit': 0, 'Appointment': 0} for d in week_days}
+    for i in (Interaction.objects.filter(is_copy=False, date__range=(week_days[0], today)).filter(Q(created_by=user) | Q(joint_with=user)).distinct()):
+        key = 'Call' if i.type in CALL_TYPES else i.type
+        if i.date in week and key in week[i.date]:
+            week[i.date][key] += 1
     return {
         'period': {'from': f.start.isoformat(), 'to': f.end.isoformat()},
-        'tasks': {'pending': tasks.count(), 'due_today': tasks.filter(due_date=today).count(), 'overdue': tasks.filter(due_date__lt=today).count()},
-        'outreach_pending': CallAssignment.objects.filter(assigned_to=user).exclude(status='Called').count(),
+        'tasks': {'pending': tasks.count(), 'due_today': Task.objects.filter(Q(assigned_to=user) | Q(joint_with=user)).distinct().exclude(status='Completed').filter(due_date=today).count(),
+                  'overdue': Task.objects.filter(Q(assigned_to=user) | Q(joint_with=user)).distinct().exclude(status='Completed').filter(due_date__lt=today).count()},
+        'outreach_pending': assignments.count(),
         'activity': {'calls_done': mine.filter(type__in=CALL_TYPES).count(), 'appointments_taken': appts, 'visits_made': visits,
                      'appointments_not_visited': not_visited, 'visit_pct': rules.visit_percent_of_appointments(appts, appts - not_visited)},
         'pending': {'enquiries': len(pending('enquiry')), 'quotations': len(pending('quotation')), 'proformas': len(pending('proforma')),
                     'challans': len([d for d in docs if d.type == 'dc' and doc_service.dc_is_pending(d)]),
                     'pos': len([d for d in docs if d.type == 'po' and d.order_status != 'Completed'])},
-        'payments': {'pending': len([p for p in my_payments if p.balance() > 0]),
-                     'completed': len([p for p in my_payments if p.amount > 0 and p.balance() == 0])},
+        'payments': {'pending': len(pending_payments), 'completed': len([p for p in my_payments if paid_in_period(p)])},
+        'week': [{'date': d.isoformat(), **week[d]} for d in week_days],
         'attendance': {'today': {'check_in': att.hm(today_record.check_in) if today_record else '', 'check_out': att.hm(today_record.check_out) if today_record else ''},
                        'month': att.tally(days)},
         'calendar': task_calendar(user, month_start, month_end),
     }
+
+
+def home_strip(user):
+    """The greeting banner on the Dashboard: the viewer's own check-in state, tasks due / overdue, and — for people who
+    approve leave (Admin, Branch Manager) — how many of the team are in and how many leave requests are waiting."""
+    from ..models import LeaveRequest
+    today = timezone.localdate()
+    profile = user.threesixty_profile
+    days = att.compute_range([profile], today, today)[user.pk]
+    day = days[0]
+    record = day['record']
+    mine = Task.objects.filter(Q(assigned_to=user) | Q(joint_with=user)).distinct().exclude(status='Completed').exclude(due_date=None)
+    out = {
+        'name': _name(user),
+        'today': {'check_in': att.hm(record.check_in) if record else '', 'check_out': att.hm(record.check_out) if record else '',
+                  'late': bool(day['late']), 'worked_minutes': day['worked'] or 0, 'code': day['code']},
+        'tasks': {'due_today': mine.filter(due_date=today).count(), 'overdue': mine.filter(due_date__lt=today).count()},
+        'team': None,
+    }
+    if RoleRules.is_admin(user) or RoleRules.is_branch_manager(user):
+        team = list(att.team_profiles(user))
+        status = att.compute_range(team, today, today)
+        working = [p for p in team if status[p.user_id][0]['code'] not in ('O', 'LV')]
+        checked_in = [p for p in working if status[p.user_id][0]['record'] and status[p.user_id][0]['record'].check_in]
+        waiting = [l for l in LeaveRequest.objects.filter(status='Pending') if att.can_decide_leave(user, l)]
+        out['team'] = {'in': len(checked_in), 'total': len(working), 'leave_waiting': len(waiting)}
+    return out
 
 
 def task_calendar(user, start, end):
@@ -552,6 +604,7 @@ def task_calendar(user, start, end):
 
 
 def admin_dashboard(user, f: Filters, activity_limit=10):
+    """The company view. As in the reference, the team table counts everything each person ever added (no period)."""
     if not RoleRules.is_admin(user):
         raise ServiceError(403, 'The company dashboard is for the Admin only.')
     from ..models import ApprovalRequest
@@ -559,33 +612,37 @@ def admin_dashboard(user, f: Filters, activity_limit=10):
     docs = list(SalesDocument.objects.exclude(type='dc').exclude(type='po').filter(order_status__in=['Pending', '']).values_list('type', flat=True))
     dcs = [d for d in SalesDocument.objects.filter(type='dc').prefetch_related('items') if doc_service.dc_is_pending(d)]
     pos = SalesDocument.objects.filter(type='po').exclude(order_status='Completed').count()
-    payments = [p for p in PaymentCollection.objects.select_related('customer').prefetch_related('receipts') if p.balance() > 0]
+    payments = [p for p in PaymentCollection.objects.select_related('customer', 'contact').prefetch_related('receipts') if p.balance() > 0]
     payments.sort(key=lambda p: -p.balance())
     pending = ApprovalRequest.objects.filter(status='pending').filter(Q(customer__isnull=False) | Q(contact__isnull=False) | Q(document__isnull=False))
     profiles = list(EmployeeProfile.objects.filter(user__is_active=True, is_active_employee=True).select_related('user'))
-    in_range = Q(created_at__date__range=(f.start, f.end))
-    customers_added = dict(Customer.objects.filter(in_range).values_list('created_by_id').annotate(n=Count('id')))
-    contacts_added = dict(Contact.objects.filter(customer__created_at__date__range=(f.start, f.end))
-                          .values_list('customer__created_by_id').annotate(n=Count('id')))
-    documents_raised = dict(SalesDocument.objects.filter(date__range=(f.start, f.end)).values_list('created_by_id').annotate(n=Count('id')))
+    customers_added = dict(Customer.objects.values_list('created_by_id').annotate(n=Count('id')))
+    contacts_added = dict(Contact.objects.values_list('customer__created_by_id').annotate(n=Count('id')))
+    documents_raised = dict(SalesDocument.objects.values_list('created_by_id').annotate(n=Count('id')))
     last_seen = defaultdict(list)
-    for qs, field in ((Interaction.objects, 'created_by_id'), (SalesDocument.objects, 'created_by_id'), (Customer.objects, 'created_by_id')):
-        for uid, latest in qs.values_list(field).annotate(m=Max('created_at')):
+    for qs in (SalesDocument.objects, Customer.objects):
+        for uid, latest in qs.values_list('created_by_id').annotate(m=Max('created_at')):
             last_seen[uid].append(latest)
     employees = [{
         'user_id': p.user_id, 'name': _name(p.user), 'role': p.role,
         'customers_added': customers_added.get(p.user_id, 0), 'contacts_added': contacts_added.get(p.user_id, 0),
         'documents_raised': documents_raised.get(p.user_id, 0),
         'last_activity': max(last_seen[p.user_id]).isoformat() if last_seen.get(p.user_id) else None} for p in profiles]
+    employees.sort(key=lambda e: -(e['customers_added'] + e['documents_raised']))
     att_today = att.compute_range(profiles, today, today)
     strip = defaultdict(int)
     for p in profiles:
         strip[att_today[p.user_id][0]['code'] or 'not_marked'] += 1
+    # Recent activity — customers added, documents raised and payments logged, newest first (reference order).
     feed = []
-    for d in SalesDocument.objects.select_related('customer', 'created_by').order_by('-created_at')[:activity_limit]:
-        feed.append({'at': d.created_at.isoformat(), 'text': f'{_name(d.created_by)} raised {d.get_type_display()} {d.doc_number} for {d.customer.name}'})
-    for i in Interaction.objects.filter(is_copy=False).select_related('contact__customer', 'created_by').order_by('-created_at')[:activity_limit]:
-        feed.append({'at': i.created_at.isoformat(), 'text': f'{_name(i.created_by)} logged a {i.type.lower()} with {i.contact.name} ({i.contact.customer.name})'})
+    for c in Customer.objects.select_related('created_by').order_by('-created_at'):
+        feed.append({'at': c.created_at.isoformat(), 'label': c.name, 'meta': f'Customer added by {_name(c.created_by) if c.created_by else "Unknown"}'})
+    for d in SalesDocument.objects.select_related('customer', 'created_by').order_by('-created_at'):
+        feed.append({'at': d.created_at.isoformat(), 'label': f'{d.get_type_display()} · {d.customer.name}',
+                     'meta': f'Raised by {_name(d.created_by) if d.created_by else "Unknown"}'})
+    for pay in PaymentCollection.objects.select_related('customer', 'created_by').order_by('-created_at'):
+        feed.append({'at': pay.created_at.isoformat(), 'label': f'Payment logged · {pay.customer.name}',
+                     'meta': f'₹{money(pay.amount)} recorded by {_name(pay.created_by) if pay.created_by else "Unknown"}'})
     feed.sort(key=lambda r: r['at'], reverse=True)
     month_start, month_end = att.month_bounds(None)
     calendar = defaultdict(list)
@@ -598,8 +655,10 @@ def admin_dashboard(user, f: Filters, activity_limit=10):
         'pipeline': {'open_enquiries': docs.count('enquiry'), 'open_quotations': docs.count('quotation'), 'open_proformas': docs.count('proforma'),
                      'pending_pos': pos, 'challans_pending_invoicing': len(dcs)},
         'payments': {'outstanding_total': str(money(sum((p.balance() for p in payments), Decimal('0')))),
-                     'top': [{'id': p.pk, 'customer': p.customer.select_label, 'balance': str(p.balance())} for p in payments[:6]]},
-        'employees': employees, 'activity': feed[:activity_limit], 'attendance_today': dict(strip), 'calendar': dict(calendar),
+                     'top': [{'id': p.pk, 'customer': p.customer.name, 'contact': p.contact.name if p.contact else '', 'balance': str(p.balance())}
+                             for p in payments[:6]]},
+        'employees': employees, 'activity': feed[:activity_limit], 'activity_total': len(feed),
+        'attendance_today': dict(strip), 'calendar': dict(calendar), 'customers_total': Customer.objects.count(),
     }
 
 
@@ -608,11 +667,13 @@ def employee_drill(user, f: Filters, user_id, what):
     if not RoleRules.is_admin(user):
         raise ServiceError(403, 'The company dashboard is for the Admin only.')
     if what == 'customers':
-        qs = Customer.objects.filter(created_by_id=user_id, created_at__date__range=(f.start, f.end))
-        return [_customer_item(c, date=c.created_at.date().isoformat()) for c in qs]
+        qs = Customer.objects.filter(created_by_id=user_id)
+        return [{**_customer_item(c, date=c.created_at.date().isoformat()), 'name': c.name, 'city': c.city,
+                 'contact_count': c.contacts.count(), 'added_on': c.created_at.date().isoformat()} for c in qs.order_by('-created_at')]
     if what == 'contacts':
-        qs = Contact.objects.filter(customer__created_by_id=user_id, customer__created_at__date__range=(f.start, f.end)).select_related('customer')
-        return [{'kind': 'contact', 'id': c.pk, 'label': f'{c.name} — {c.customer.select_label}'} for c in qs]
+        qs = Contact.objects.filter(customer__created_by_id=user_id).select_related('customer')
+        return [{'kind': 'contact', 'id': c.pk, 'label': f'{c.name} — {c.customer.select_label}', 'name': c.name, 'job_title': c.job_title,
+                 'company': c.customer.name, 'phone': c.phone, 'email': c.email} for c in qs]
     if what == 'documents':
-        return [_doc_item(d) for d in SalesDocument.objects.filter(created_by_id=user_id, date__range=(f.start, f.end)).select_related('customer').prefetch_related('items')]
+        return [_doc_item(d) for d in SalesDocument.objects.filter(created_by_id=user_id).select_related('customer').prefetch_related('items')]
     raise ServiceError(400, 'what must be customers, contacts or documents.')

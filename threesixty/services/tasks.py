@@ -17,14 +17,15 @@ from .notifications import notify
 KINDS = ('Call', 'Visit', 'Appointment', 'Task')
 DONE = Task.STATUS_COMPLETED
 OPEN = Task.STATUS_OPEN
-_STATUS_ALIASES = {'Done': DONE, 'Completed': DONE, 'Open': OPEN}
+IN_PROGRESS = Task.STATUS_IN_PROGRESS
+_STATUS_ALIASES = {'Done': DONE, 'Completed': DONE, 'Open': OPEN, 'In Progress': IN_PROGRESS}
 
 
 def normalize_status(value):
     try:
         return _STATUS_ALIASES[value]
     except KeyError:
-        raise ServiceError(400, 'Status must be Open or Done.')
+        raise ServiceError(400, 'Status must be Open, In Progress or Done.')
 
 
 def kind_of(task) -> str:
@@ -122,8 +123,17 @@ def create_task(creator, *, title, assignee_user_ids=None, due_date=None, descri
     if notify_assignees:
         for uid in ids:
             if uid != creator.pk:
-                notify(uid, 'task', f'{_name(creator)} assigned you a task: "{title}"', document=document)
+                shared = f' (shared with {len(ids) - 1} other{"s" if len(ids) > 2 else ""})' if len(ids) > 1 else ''
+                notify(uid, 'task', f'{_name(creator)} assigned you a task: "{title}"{shared}.', document=document)
     return task
+
+
+def notify_new_assignees(actor, task, new_user_ids, total_people):
+    """Editing a task and adding people tells just the new ones (as creating it would)."""
+    shared = f' (shared with {total_people - 1} other{"s" if total_people > 2 else ""})' if total_people > 1 else ''
+    for uid in new_user_ids:
+        if uid != actor.pk:
+            notify(uid, 'task', f'{_name(actor)} assigned you a task: "{task.title}"{shared}.', document=task.related_document)
 
 
 @transaction.atomic
@@ -183,9 +193,9 @@ def schedule_from_document(user, document, kind, due_date, assignee):
     return task
 
 
-def call_task(creator, assignee, contact_name, customer_name, due_date, **links):
+def call_task(creator, assignee, contact_name, customer_name, due_date, description='', **links):
     """A Call task ("call me later", outreach call-again)."""
     return Task.objects.create(
         title=f'Call {contact_name or "contact"} — {customer_name or ""}'.rstrip(' —'), task_type='Call',
-        assigned_to=assignee, due_date=due_date, created_by=creator, **links,
+        description=description, assigned_to=assignee, due_date=due_date, created_by=creator, **links,
     )

@@ -159,6 +159,7 @@ class Holiday(models.Model):
     name = models.CharField(max_length=200)
     is_all_branches = models.BooleanField(default=False)
     branches = models.ManyToManyField(Branch, related_name='holidays', blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     legacy_id = models.CharField(max_length=64, blank=True, null=True, unique=True, db_index=True)
 
     class Meta:
@@ -203,6 +204,8 @@ class LookupItem(models.Model):
     name = models.CharField(max_length=200)
     # Free-form extra data (e.g. tax rate % as a string, category->brand link).
     extra = models.CharField(max_length=200, blank=True)
+    # Transporters and couriers carry contact details (phone, mobile, gst, location, address).
+    details = models.JSONField(default=dict, blank=True)
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
     legacy_id = models.CharField(max_length=64, blank=True, null=True, unique=True, db_index=True)

@@ -101,12 +101,14 @@ export function apiErrorMessage(err) {
 }
 
 let modalRoot = null;
-export function openModal(innerHtml, { onMount } = {}) {
+// Same markup as the reference's dialogs: `.overlay.open > .modal` (add `narrow` / `wide` via opts.size).
+export function openModal(innerHtml, { onMount, size, sticky } = {}) {
   closeModal();
   modalRoot = document.createElement('div');
-  modalRoot.className = 'modal-backdrop open';
-  modalRoot.innerHTML = `<div class="modal">${innerHtml}</div>`;
-  modalRoot.addEventListener('mousedown', (e) => { if (e.target === modalRoot) closeModal(); });
+  modalRoot.className = 'overlay open';
+  modalRoot.innerHTML = `<div class="modal${size ? ' ' + size : ''}">${innerHtml}</div>`;
+  // A dialog that waits for an answer (alert / confirm / prompt) is closed only by its buttons, as in the reference.
+  if (!sticky) modalRoot.addEventListener('mousedown', (e) => { if (e.target === modalRoot) closeModal(); });
   document.body.appendChild(modalRoot);
   if (onMount) onMount(modalRoot.querySelector('.modal'));
   return modalRoot;
@@ -115,21 +117,33 @@ export function closeModal() {
   if (modalRoot) { modalRoot.remove(); modalRoot = null; }
 }
 
-export function confirmDialog(message) {
+// customAlert / customConfirm / customPrompt of the reference (#dlgOverlay): a titled dialog with message text,
+// an optional input, and Cancel / OK buttons — never the browser's own dialogs.
+function dialog({ title, message, input, okLabel = 'OK', cancelLabel = 'Cancel', danger = false, showCancel = true, value = '' }) {
   return new Promise((resolve) => {
     openModal(`
-      <p style="margin-bottom:18px;">${escapeHtml(message)}</p>
+      <h2>${escapeHtml(title)}</h2>
+      <p class="modal-sub" style="white-space:pre-wrap;">${escapeHtml(message || '')}</p>
+      ${input ? `<input type="text" id="dlgInput" value="${escapeHtml(value)}" style="width:100%;margin-bottom:12px;">` : ''}
       <div class="modal-actions">
-        <button class="btn" id="cfNo">Cancel</button>
-        <button class="btn danger" id="cfYes">Confirm</button>
+        ${showCancel ? `<button class="btn" id="dlgCancel">${escapeHtml(cancelLabel)}</button>` : ''}
+        <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="dlgOk">${escapeHtml(okLabel)}</button>
       </div>`, {
+      size: 'narrow', sticky: true,
       onMount: (modal) => {
-        modal.querySelector('#cfNo').onclick = () => { closeModal(); resolve(false); };
-        modal.querySelector('#cfYes').onclick = () => { closeModal(); resolve(true); };
+        const inputEl = modal.querySelector('#dlgInput');
+        if (inputEl) { inputEl.focus(); inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') modal.querySelector('#dlgOk').click(); }); }
+        const cancel = modal.querySelector('#dlgCancel');
+        if (cancel) cancel.onclick = () => { closeModal(); resolve(input ? null : false); };
+        modal.querySelector('#dlgOk').onclick = () => { const v = inputEl ? inputEl.value : true; closeModal(); resolve(v); };
       },
     });
   });
 }
+export const customAlert = (message, title = 'Notice') => dialog({ title, message, showCancel: false });
+export const customConfirm = (message, { title = 'Please confirm', okLabel = 'OK', danger = false } = {}) => dialog({ title, message, okLabel, danger });
+export const customPrompt = (message, value = '', title = 'Enter a value') => dialog({ title, message, input: true, value });
+export function confirmDialog(message) { return customConfirm(message); }
 
 export function qs(obj) {
   const parts = [];
@@ -213,4 +227,34 @@ export function enhanceCustomerSelect(select, customers, { blank = '— select �
   select.parentNode.insertBefore(box, select);
   render('');
   return { refresh: render, search: box };
+}
+
+// ---- exports (reference: exportRowsToExcel) --------------------------------------------------------------------
+export async function getXlsx() {
+  if (!window.XLSX) await loadScript(window.THREESIXTY_VENDOR.xlsx);
+  return window.XLSX;
+}
+/** One sheet from an array of row objects, saved as `<prefix>-<timestamp>.xlsx`. */
+export async function exportRowsToExcel(rows, filenamePrefix, sheetName) {
+  if (!rows.length) { await customAlert('Nothing to export.'); return; }
+  const XLSX = await getXlsx();
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), String(sheetName).slice(0, 31));
+  XLSX.writeFile(wb, `${filenamePrefix}-${Date.now()}.xlsx`);
+}
+
+export async function getJsPdf() {
+  if (!(window.jspdf && window.jspdf.jsPDF)) {
+    await loadScript(window.THREESIXTY_VENDOR.jspdf);
+    await loadScript(window.THREESIXTY_VENDOR.autotable);
+  }
+  return window.jspdf.jsPDF;
+}
+// The branded PDF / Print / multi-sheet Excel exports (letterhead, cards, sections, watermark) live in report_export.js.
+export { exportRowsToPdf, exportListPdf, printRowsTable, exportSheetsToExcel } from './report_export.js';
+/** Downloads text as a file. */
+export function downloadText(text, filename, type = 'text/plain') {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }

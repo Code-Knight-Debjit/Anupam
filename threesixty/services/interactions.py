@@ -59,7 +59,9 @@ def log_interaction(user, contact, type_, date, notes='', followup_date=None, al
     if followup:                                                  # REQ-INT-01
         Task.objects.create(
             title=f'{type_} {contact.name} — {customer.name}', assigned_to=user, task_type=type_,
-            due_date=followup, related_contact=contact, related_customer=customer, created_by=user,
+            description=notes or f'{type_} requested by the customer on {followup.strftime("%d/%m/%Y")}.',
+            due_date=followup, related_contact=contact, related_customer=customer, related_document=linked_doc,
+            created_by=user, joint_names=[(u.get_full_name() or u.username) for u in joint],
         )
     if type_ == Interaction.TYPE_VISIT:                           # REQ-INT-03
         for task in Task.objects.filter(related_contact=contact, status=task_service.OPEN):
@@ -72,7 +74,9 @@ def log_interaction(user, contact, type_, date, notes='', followup_date=None, al
         title = f'Joint {type_.lower()} with {name} — {contact.name}, {customer.name}'
         Task.objects.create(
             title=title, assigned_to=member, task_type=type_, due_date=followup or date,
-            related_contact=contact, related_customer=customer, created_by=user,
+            description=notes or f'Joint {type_.lower()} with {name}.',
+            related_contact=contact, related_customer=customer, related_document=linked_doc, created_by=user,
+            joint_names=[name] + [(u.get_full_name() or u.username) for u in joint if u.pk != member.pk],
         )
         notify(member, 'task', f'{name} assigned you a task: "{title}"', customer=customer)
     return interaction

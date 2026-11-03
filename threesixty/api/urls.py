@@ -20,6 +20,7 @@ urlpatterns = [
     path('holidays/', views_core.HolidayResource.as_view(), name='holidays'),
     path('holidays/<int:pk>/', views_core.HolidayResource.as_view(), name='holiday-detail'),
 
+    path('lookups/default-tax/', views_core.default_tax_rate, name='default-tax-rate'),
     path('lookups/', views_core.LookupItemResource.as_view(), name='lookups'),
     path('lookups/<int:pk>/', views_core.LookupItemResource.as_view(), name='lookup-detail'),
 
@@ -32,6 +33,7 @@ urlpatterns = [
     path('employees/', views_core.EmployeeResource.as_view(), name='employees'),
     path('employees/<int:pk>/', views_core.EmployeeResource.as_view(), name='employee-detail'),
 
+    path('customers/cards/', views_customers.customers_cards, name='customers-cards'),
     path('customers/', views_customers.CustomerResource.as_view(), name='customers'),
     path('customers/<int:pk>/', views_customers.CustomerResource.as_view(), name='customer-detail'),
     path('customers/duplicate-check/', views_customers.duplicate_check, name='customer-duplicate-check'),
@@ -46,6 +48,8 @@ urlpatterns = [
     path('customers/<int:pk>/contact-access/', views_customers.customer_contact_access, name='customer-contact-access'),
     path('customers/<int:customer_id>/contacts/', views_customers.ContactResource.as_view(),
          name='customer-contacts'),
+    path('contacts/<int:pk>/profile/', views_customers.contact_profile, name='contact-profile'),
+    path('customers/<int:pk>/transactions/', views_customers.customer_transactions, name='customer-transactions'),
     path('contacts/', views_customers.ContactResource.as_view(), name='contacts'),
     path('contacts/<int:pk>/', views_customers.ContactResource.as_view(), name='contact-detail'),
     path('contacts/<int:contact_id>/interactions/', views_customers.InteractionResource.as_view(),
@@ -55,6 +59,7 @@ urlpatterns = [
 
     path('sales-documents/', views_sales.SalesDocumentResource.as_view(), name='sales-documents'),
     path('sales-documents/<int:pk>/', views_sales.SalesDocumentResource.as_view(), name='sales-document-detail'),
+    path('sales-documents/next-number/', views_sales.next_number, name='sales-document-next-number'),
     path('sales-documents/export/', views_sales.documents_export, name='sales-documents-export'),
     path('sales-documents/<int:pk>/pdf/', views_sales.document_pdf, name='sales-document-pdf'),
     path('sales-documents/<int:pk>/print/', views_sales.document_pdf, name='sales-document-print'),
@@ -79,6 +84,8 @@ urlpatterns = [
          name='payment-collection-receipts'),
 
     path('backup/export/', views_admin.backup_export, name='backup-export'),
+    path('branding/<str:kind>/', views_admin.branding_logo, name='branding-logo'),
+    path('backup/summary/', views_admin.backup_summary, name='backup-summary'),
     path('backup/describe/', views_admin.backup_describe, name='backup-describe'),
     path('backup/restore/', views_admin.backup_restore, name='backup-restore'),
     path('backup/safety-copies/', views_admin.safety_copies, name='backup-safety-copies'),
@@ -91,6 +98,7 @@ urlpatterns = [
     path('dashboard/admin/', views_reports.dashboard_admin, name='dashboard-admin'),
     path('dashboard/admin/drill/', views_reports.dashboard_admin_drill, name='dashboard-admin-drill'),
     path('dashboard/personal/', views_reports.dashboard_personal, name='dashboard-personal'),
+    path('dashboard/home/', views_reports.dashboard_home, name='dashboard-home'),
 
     path('labels/options/', views_labels.label_options, name='label-options'),
     path('labels/autofill/', views_labels.label_autofill, name='label-autofill'),
@@ -119,6 +127,7 @@ urlpatterns = [
     path('attendance/', views_attendance.AttendanceRecordResource.as_view(), name='attendance'),
     path('attendance/<int:pk>/', views_attendance.AttendanceRecordResource.as_view(), name='attendance-detail'),
     path('attendance/me/', views_attendance.my_attendance, name='attendance-me'),
+    path('attendance/month/', views_attendance.attendance_month, name='attendance-month'),
     path('attendance/summary/', views_attendance.attendance_summary, name='attendance-summary'),
     path('attendance/report/', views_attendance.attendance_report, name='attendance-report'),
     path('attendance/check-in/', views_attendance.check_in, name='attendance-check-in'),

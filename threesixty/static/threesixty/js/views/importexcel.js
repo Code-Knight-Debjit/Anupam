@@ -12,6 +12,7 @@
 // matched against employee full names.
 import { api } from '../api.js';
 import { el, escapeHtml, toast, loadScript } from '../ui.js';
+import { mountRefView } from '../customer_common.js';
 
 const TEMPLATE_COLS = [
   'Company', 'Plant', 'Address', 'Area', 'City', 'State', 'Pincode', 'Website', 'GST Number', 'Plant Location',
@@ -128,7 +129,7 @@ function buildCompanyRows(rawRows) {
 
 async function runImport(file, resultEl, hintEl) {
   hintEl.textContent = '';
-  resultEl.style.display = 'none';
+  resultEl.classList.remove('show');
   resultEl.textContent = '';
   let XLSX;
   try { XLSX = await getXlsx(); } catch (e) { hintEl.textContent = e.message; return; }
@@ -210,25 +211,12 @@ async function runImport(file, resultEl, hintEl) {
   if (badPins.length) msg += ` Map location not understood for: ${badPins.slice(0, 5).join('; ')}${badPins.length > 5 ? '…' : ''}.`;
   if (unresolvedNames.length) msg += ` Could not match: ${unresolvedNames.slice(0, 5).join('; ')}${unresolvedNames.length > 5 ? '…' : ''}.`;
   resultEl.textContent = msg;
-  resultEl.style.display = 'block';
+  resultEl.classList.add('show');
 }
 
 export async function mountImportExcel(root) {
-  root.innerHTML = `
-    <h2 style="margin-top:0;">Import Excel</h2>
-    <div class="card" style="max-width:640px;margin-bottom:var(--sp-3);">
-      <p class="sub">Download the template and fill it in — one row per contact person; repeat the company name to add more.</p>
-      <button class="btn" id="downloadTemplateBtn">Download template</button>
-    </div>
-    <div class="card" style="max-width:640px;">
-      <div class="field"><label>File to import (.xlsx, .xls, .csv)</label><input type="file" id="importFileInput" accept=".xlsx,.xls,.csv"></div>
-      <button class="btn primary" id="importFileBtn">Import file</button>
-      <p class="sub" id="importHint" style="color:var(--error);"></p>
-      <div class="sub import-result" id="importResult" style="display:none;margin-top:10px;"></div>
-    </div>`;
-
+  mountRefView(root, 'view-import');
   const resultEl = el('importResult');
-
   el('downloadTemplateBtn').addEventListener('click', async () => {
     try { await downloadTemplate(); } catch (e) { toast(e.message || 'Could not build the template.', 'error'); }
   });
@@ -238,6 +226,6 @@ export async function mountImportExcel(root) {
     if (!file) { hintEl.textContent = 'Choose a file first.'; return; }
     const btn = el('importFileBtn');
     btn.disabled = true; btn.textContent = 'Importing…';
-    try { await runImport(file, resultEl, hintEl); } finally { btn.disabled = false; btn.textContent = 'Import file'; }
+    try { await runImport(file, resultEl, hintEl); el('importFileInput').value = ''; } finally { btn.disabled = false; btn.textContent = 'Import file'; }
   });
 }

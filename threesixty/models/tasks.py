@@ -18,8 +18,9 @@ class Task(models.Model):
     PRIORITY_CHOICES = [(PRIORITY_LOW, 'Low'), (PRIORITY_MEDIUM, 'Medium'), (PRIORITY_HIGH, 'High')]
 
     STATUS_OPEN = 'Open'
+    STATUS_IN_PROGRESS = 'In Progress'
     STATUS_COMPLETED = 'Completed'
-    STATUS_CHOICES = [(STATUS_OPEN, 'Open'), (STATUS_COMPLETED, 'Completed')]
+    STATUS_CHOICES = [(STATUS_OPEN, 'Open'), (STATUS_IN_PROGRESS, 'In Progress'), (STATUS_COMPLETED, 'Completed')]
 
     title = models.CharField(max_length=500)
     description = models.TextField(blank=True)
@@ -29,6 +30,9 @@ class Task(models.Model):
     joint_with = models.ManyToManyField(
         settings.AUTH_USER_MODEL, related_name='threesixty_joint_tasks', blank=True,
     )
+    # Display-only names for tasks born from a joint visit / appointment (the reference's `jointNames`, shown as the
+    # "Joint with" tile). Not assignees — `assigned_to` + `joint_with` are the people the task is given to.
+    joint_names = models.JSONField(default=list, blank=True)
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default=PRIORITY_MEDIUM)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
     task_type = models.CharField(max_length=40, blank=True)  # e.g. Call / Visit / Appointment

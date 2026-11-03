@@ -48,7 +48,14 @@ def _safe_next(request):
 
 def _login_context(request, **extra):
     ctx = {'first_run': not EmployeeProfile.objects.filter(role=EmployeeProfile.ADMIN).exists(),
-           'next': request.GET.get('next', '')}
+           'next': request.GET.get('next', ''),
+           # echoed back so the two-step form re-opens on the password step for the same user after an error
+           'last_user': request.POST.get('username', '')[:150], 'reset_user': request.POST.get('username', '')[:150]}
+    from .services import branding
+    chosen = branding.info('app')
+    side = branding.info('sidebar')
+    ctx['app_logo_url'] = chosen['url'] if chosen else ''
+    ctx['wallpaper_logo_url'] = (side or chosen or {}).get('url', '')
     ctx.update(extra)
     return ctx
 

@@ -31,10 +31,19 @@ def _uploaded_backup(request):
 def backup_export(request):
     """Download a full backup (one JSON file)."""
     data = backup_service.build_backup(request.user)
+    backup_service.mark_backup_downloaded()
     audit.record(request.user, 'backup.export', summary=f'{sum(data["counts"].values())} records', request=request)
     response = HttpResponse(backup_service.dump(data), content_type='application/json')
     response['Content-Disposition'] = f'attachment; filename="anupam360-backup-{timezone.localtime():%Y%m%d-%H%M}.json"'
     return response
+
+
+@require_GET
+@role_360_required(EmployeeProfile.ADMIN)
+@input_errors_as_400
+def backup_summary(request):
+    """The figures on the Backup page: what a backup would hold now, and when one was last downloaded."""
+    return JsonResponse(backup_service.summary())
 
 
 @role_360_required(EmployeeProfile.ADMIN)
@@ -143,4 +152,23 @@ def customer_logo(request, pk):
     if request.method == 'DELETE':
         customer.logo.delete(save=True)
         return JsonResponse(serialize_customer(customer))
+    return error_response(ApiError(405, 'POST or DELETE only.'))
+
+
+@role_360_required(EmployeeProfile.ADMIN)
+@input_errors_as_400
+def branding_logo(request, kind):
+    """POST (multipart `file`, optional `aspect`) sets the app / sidebar logo; DELETE goes back to the built-in one."""
+    from ..services import branding
+    if request.method == 'POST':
+        uploaded = request.FILES.get('file')
+        if uploaded is None:
+            return error_response(ApiError(400, 'Choose an image file.'))
+        value = branding.set_logo(kind, uploaded, request.POST.get('aspect'))
+        audit.record(request.user, 'branding.logo', summary=f'{kind} logo changed', request=request)
+        return JsonResponse(value)
+    if request.method == 'DELETE':
+        branding.clear(kind)
+        audit.record(request.user, 'branding.logo', summary=f'{kind} logo reset', request=request)
+        return JsonResponse({'deleted': True})
     return error_response(ApiError(405, 'POST or DELETE only.'))

@@ -103,6 +103,15 @@ def my_attendance(request):
 @require_GET
 @staff_360_required
 @input_errors_as_400
+def attendance_month(request):
+    """The Attendance page's data: this month for me and (Admin / Branch Manager) my team."""
+    branch = request.GET.get('branch') or None
+    return JsonResponse(att.team_month(request.user, request.GET.get('month'), int(branch) if branch else None))
+
+
+@require_GET
+@staff_360_required
+@input_errors_as_400
 def attendance_summary(request):
     start, end = att.month_bounds(request.GET.get('month'))
     return JsonResponse({'from': start.isoformat(), 'to': end.isoformat(), 'results': att.summary(request.user, start, end)})

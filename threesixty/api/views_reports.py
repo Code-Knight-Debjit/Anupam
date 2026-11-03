@@ -69,4 +69,12 @@ def dashboard_personal(request):
     # Always the viewer's own numbers, whatever the role (the Admin's company view is /dashboard/admin/).
     params = {k: v for k, v in request.GET.items() if k in ('from', 'to')}
     f = report_service.parse_filters(request.user, params)
-    return JsonResponse(report_service.personal_dashboard(request.user, f))
+    return JsonResponse(report_service.personal_dashboard(request.user, f, custom=request.GET.get('custom') == '1'))
+
+
+@require_GET
+@staff_360_required
+@input_errors_as_400
+def dashboard_home(request):
+    """The greeting banner: my check-in state, tasks due / overdue, and (Admin / Branch Manager) the team's attendance."""
+    return JsonResponse(report_service.home_strip(request.user))
