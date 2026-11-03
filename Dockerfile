@@ -18,7 +18,11 @@ COPY requirements.txt .
 RUN python -m venv /venv
 ENV PATH="/venv/bin:$PATH"
 
+# sentence-transformers pulls in PyTorch, whose default Linux wheel bundles several GB of NVIDIA CUDA libraries that a
+# server without a GPU never uses (and that filled the VPS disk while building). Install the CPU-only build first;
+# requirements.txt is then satisfied by it.
 RUN pip install --upgrade pip && \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
 # ──────────────────────────────────────────────
