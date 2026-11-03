@@ -6,7 +6,7 @@
 import { api } from '../api.js';
 import { state, isAdmin, isBranchManager, isBranchStaff } from '../state.js';
 import { navigate } from '../router.js';
-import { el, escapeHtml, customAlert, customConfirm, apiErrorMessage, exportRowsToExcel, exportRowsToPdf, printRowsTable, downloadText, initials } from '../ui.js';
+import { el, escapeHtml, customAlert, customConfirm, apiErrorMessage, exportRowsToExcel, exportListPdf, printRowsTable, downloadText, initials } from '../ui.js';
 import {
   mountRefView, useOverlays, openOverlay, closeOverlay, waLink, webUrl, dotColorForTitle, initialsOf, companyLabel, geoLink, pinOf, fmtD,
   CALL_ICON_SVG, EMAIL_ICON_SVG, WHATSAPP_ICON_SVG, copyText, showManualCopy,
@@ -344,7 +344,7 @@ export async function mountCustomers(root) {
   el('selectAllBox').onchange = (e) => { const list = filtered(); list.forEach((c) => { if (e.target.checked) selectedIds.add(c.id); else selectedIds.delete(c.id); }); render(); };
   el('clearContactSelectionBtn').onclick = () => { selectedContactIds.clear(); selectedIds.clear(); render(); };
   el('exportExcelBtn').onclick = () => { const l = exportList(); if (!l.length) { customAlert('Nothing to export.'); return; } exportRowsToExcel(flattenRows(l), 'anupam360-contacts', 'Contacts'); };
-  el('exportPdfBtn').onclick = () => { const l = exportList(); if (!l.length) { customAlert('Nothing to export.'); return; } exportRowsToPdf(flattenRows(l), 'Anupam 360 — Customer Export', 'anupam360-contacts', ['Company', 'Area', 'City', 'State', 'Industry', 'Source', 'Assigned To', 'Contact Name', 'Job Title', 'Phone', 'Phone 2', 'Email']); };
+  el('exportPdfBtn').onclick = () => { const l = exportList(); if (!l.length) { customAlert('Nothing to export.'); return; } exportListPdf(flattenRows(l), 'Anupam 360 — Customer Export', 'anupam360-contacts', { noWatermark: true, columns: ['Company', 'Area', 'City', 'State', 'Industry', 'Source', 'Assigned To', 'Contact Name', 'Job Title', 'Phone', 'Phone 2', 'Email'] }); };
   el('printListBtn').onclick = () => { const l = exportList(); if (!l.length) { customAlert('Nothing to print.'); return; } printRowsTable(flattenRows(l), 'Anupam 360 — Customer List'); };
   el('bulkAssignBtn').onclick = () => openBulkAssign('assign');
   el('bulkDeassignBtn').onclick = () => openBulkAssign('deassign');

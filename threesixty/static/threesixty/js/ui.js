@@ -251,7 +251,7 @@ export async function getJsPdf() {
   return window.jspdf.jsPDF;
 }
 // The branded PDF / Print / multi-sheet Excel exports (letterhead, cards, sections, watermark) live in report_export.js.
-export { exportRowsToPdf, printRowsTable, exportSheetsToExcel } from './report_export.js';
+export { exportRowsToPdf, exportListPdf, printRowsTable, exportSheetsToExcel } from './report_export.js';
 /** Downloads text as a file. */
 export function downloadText(text, filename, type = 'text/plain') {
   const url = URL.createObjectURL(new Blob([text], { type }));

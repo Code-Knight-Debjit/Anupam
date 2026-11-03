@@ -25,9 +25,10 @@ function branchOf(name) {
   return state.branches.find((x) => (state.me.branch_ids || []).includes(x.id)) || state.branches[0] || null;
 }
 export function branchLetterhead(name) {
-  const b = branchOf(name) || {};
+  // As in the reference: with no branch named (a list export) the letterhead is just "Anupam Bearings" and the app logo.
+  const b = (name && state.branches.find((x) => x.name === name)) || {};
   return {
-    logo: b.logo_url || window.THREESIXTY_LOGO || '', companyName: b.letterhead_name || b.name || 'Anupam Bearings', address: b.letterhead_address || '',
+    logo: b.logo_url || window.THREESIXTY_LOGO || '', companyName: b.letterhead_name || 'Anupam Bearings', address: b.letterhead_address || '',
     phone: b.letterhead_phone || '', mobile: b.letterhead_mobile || '', email: b.letterhead_email || '', website: b.letterhead_website || '',
     gstNumber: b.letterhead_gstin || '', udyamNumber: b.udyam_number || '', accentColor: b.accent_color || ACCENT, branch: b,
   };
@@ -36,24 +37,24 @@ const contactLine = (lh) => [lh.phone, lh.mobile, lh.email, lh.website].filter(B
 const regLine = (lh) => [lh.gstNumber ? 'GSTIN: ' + lh.gstNumber : '', lh.udyamNumber ? 'Udyam: ' + lh.udyamNumber : ''].filter(Boolean).join('   |   ');
 const SIZE = { small: 30, medium: 50, large: 75 };
 const sizeKey = (n) => (n <= 40 ? 'small' : n >= 65 ? 'large' : 'medium');
-function watermark(name) {
+export function watermark(name) {
   const b = branchOf(name);
   if (!b || !b.watermark_enabled) return null;
   const text = String(b.watermark_text || '').trim();
   if (b.watermark_type === 'text' && !text) return null;
   return { type: b.watermark_type === 'text' ? 'text' : 'logo', text: text.toUpperCase(), size: sizeKey(b.watermark_size || 50), lh: branchLetterhead(b.name) };
 }
-async function dataUrl(src) {
+export async function dataUrl(src) {
   if (!src || /^data:/.test(src)) return src || '';
   try {
     const blob = await (await fetch(src, { credentials: 'same-origin' })).blob();
     return await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(''); r.readAsDataURL(blob); });
   } catch (e) { return ''; }
 }
-const imageSize = (src) => new Promise((res) => { const i = new Image(); i.onload = () => res(i.naturalWidth / (i.naturalHeight || 1) || 1); i.onerror = () => res(1); i.src = src; });
+export const imageSize = (src) => new Promise((res) => { const i = new Image(); i.onload = () => res(i.naturalWidth / (i.naturalHeight || 1) || 1); i.onerror = () => res(1); i.src = src; });
 const fitBox = (aspect, maxW, maxH) => { let w = maxW, h = w / aspect; if (h > maxH) { h = maxH; w = h * aspect; } return { w, h }; };
 
-function pdfWatermark(doc, wm, logo) {
+export function pdfWatermark(doc, wm, logo) {
   if (!wm) return;
   try {
     const pw = doc.internal.pageSize.getWidth(), ph = doc.internal.pageSize.getHeight(), n = doc.internal.getNumberOfPages();
@@ -81,7 +82,7 @@ function pdfWatermark(doc, wm, logo) {
     }
   } catch (e) { console.error('watermark failed', e); }
 }
-function wmHtml(wm) {
+export function wmHtml(wm) {
   if (!wm) return '';
   const base = '.wm-mark{position:fixed; left:0; top:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; pointer-events:none; z-index:0; overflow:hidden;}';
   if (wm.type === 'logo') {
@@ -210,6 +211,26 @@ export async function exportRowsToPdf(rows, ttl, filenamePrefix, options) {
       doc.text('Page ' + p + ' of ' + n, pw - M, ph - 6, { align: 'right' });
     }
     pdfWatermark(doc, watermark(opts.branch || ''), logo);
+    doc.save(`${filenamePrefix}-${Date.now()}.pdf`);
+  } catch (e) { console.error(e); await customAlert('PDF export failed: ' + e.message); }
+}
+
+/** The reference's plain list PDF (customer list, sales lists): a title, today's date and one grid table, in landscape A4. The sales
+ *  lists carry the watermark of the user's own branch; the customer list does not. */
+export async function exportListPdf(rows, ttl, filenamePrefix, { columns, noWatermark } = {}) {
+  try {
+    if (!rows || !rows.length) { await customAlert('Nothing to export.'); return; }
+    const JsPDF = await getJsPdf();
+    const doc = new JsPDF({ orientation: 'landscape' });
+    doc.setFontSize(14); doc.text(ttl, 14, 10);
+    doc.setFontSize(9); doc.setTextColor(120); doc.text(new Date().toLocaleDateString('en-IN'), 14, 15);
+    const cols = columns || Object.keys(rows[0]);
+    doc.autoTable({ startY: 19, head: [cols], body: rows.map((r) => cols.map((c) => (r[c] !== undefined && r[c] !== null ? String(r[c]) : ''))), margin: { top: 5 },
+      styles: { fontSize: 7.5, cellPadding: 2 }, headStyles: { fillColor: [217, 123, 47] }, theme: 'grid' });
+    if (!noWatermark) {
+      const wm = watermark('');
+      if (wm) { const l = wm.type === 'logo' ? await dataUrl(wm.lh.logo) : ''; pdfWatermark(doc, wm, l ? { data: l, aspect: await imageSize(l) } : null); }
+    }
     doc.save(`${filenamePrefix}-${Date.now()}.pdf`);
   } catch (e) { console.error(e); await customAlert('PDF export failed: ' + e.message); }
 }

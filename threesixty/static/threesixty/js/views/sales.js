@@ -5,9 +5,9 @@
 import { api } from '../api.js';
 import { state, isAdmin, isBranchManager, isBranchStaff, isSalesManager } from '../state.js';
 import { navigate } from '../router.js';
-import { el, escapeHtml, fmtMoney, customAlert, customConfirm, apiErrorMessage, exportRowsToExcel, exportRowsToPdf, printRowsTable } from '../ui.js';
+import { el, escapeHtml, fmtMoney, customAlert, customConfirm, apiErrorMessage, exportRowsToExcel, exportListPdf, printRowsTable } from '../ui.js';
 import { mountRefView, useOverlays, openOverlay, closeOverlay, waLink, fmtD, WHATSAPP_ICON_SVG } from '../customer_common.js';
-import { deleteDoc, pdfUrl, printPdf } from './sales_legacy.js';
+import { deleteDoc, docPdf, docPrint } from './sales_legacy.js';
 import { openDocView } from './sales_pages.js';
 import { openInvoiceDone, openPricing, openSupply } from './sales_dialogs.js';
 
@@ -293,8 +293,8 @@ function wireTable(wrap) {
     else if (act === 'edit') navigate('salesform', tab, d.id);
     else if (act === 'clone') navigate('salesform', tab, 'new', d.id);
     else if (act === 'delete') deleteDoc(d, reload);
-    else if (act === 'print') printPdf(d);
-    else if (act === 'pdf') window.location.href = pdfUrl(d, true);
+    else if (act === 'print') docPrint(d);
+    else if (act === 'pdf') docPdf(d);
     else if (act === 'calllog') openCallLogPage(d.id);
     else if (act === 'invoice') openInvoiceDone(d.id, Number(b.dataset.idx), reload);
     else if (act === 'pricing') openPricing(d.id, Number(b.dataset.idx));
@@ -316,11 +316,14 @@ function exportRows() {
     if (filters.branch) l = l.filter((d) => branchName(d) === filters.branch);
     return l.map((d) => ({ Date: d.date || '', Branch: branchName(d), 'Customer Name': customerName(d), 'Contact Person': d.contact_name || '', 'Added by': addedByName(d), Status: d.order_status || 'Pending' }));
   }
-  if (tab === 'quotation' || tab === 'proforma') {
+  if (tab === 'proforma') {          // the reference has no special export for proformas: its generic one (number, date, customer, contact, item count)
+    return docs.map((d) => ({ 'PI No': d.doc_number, Date: d.date || '', Customer: customerName(d), Contact: d.contact_name || '', Items: (d.items || []).length }));
+  }
+  if (tab === 'quotation') {
     let l = docs.filter(isPending);
     if (filters.customer) l = l.filter((d) => customerName(d) === filters.customer);
     if (filters.branch) l = l.filter((d) => branchName(d) === filters.branch);
-    const q = tab === 'quotation';
+    const q = true;
     return l.map((d) => ({ [q ? 'Quotation No' : 'PI No']: d.doc_number, Date: d.date || '', Branch: branchName(d), Company: customerName(d), Contact: d.contact_name || '',
       [q ? 'Quotation Value' : 'Invoice Value']: fmtMoney(docValue(d)), 'Order Status': d.order_status || 'Pending',
       'Last Contact On': lastContact(d) ? new Date(lastContact(d)).toLocaleString('en-IN') : '', 'Call Me Later': toDate(callLater(d)) }));
@@ -403,8 +406,8 @@ export async function mountSales(root, subtab) {
   el('salesNewBtn').onclick = () => navigate('salesform', tab, 'new');
   el('salesHistoryBtn').onclick = () => navigate({ po: 'pohistory', quotation: 'quotationhistory', dc: 'dchistory', proforma: 'proformahistory', enquiry: 'enqhistory' }[tab]);
   const title = { po: 'anupam360-sales-orders', enquiry: 'anupam360-enquiries', quotation: 'anupam360-quotations', proforma: 'anupam360-proformas', dc: 'anupam360-challans' }[tab];
-  el('salesExportExcelBtn').onclick = () => exportRowsToExcel(exportRows(), title, CFG[tab].plural);
-  el('salesExportPdfBtn').onclick = () => exportRowsToPdf(exportRows(), `Anupam 360 — ${CFG[tab].plural}`, title);
+  el('salesExportExcelBtn').onclick = () => exportRowsToExcel(exportRows(), title, CFG[tab].label);
+  el('salesExportPdfBtn').onclick = () => exportListPdf(exportRows(), `Anupam 360 — ${CFG[tab].plural}`, title);
   el('salesPrintBtn').onclick = () => printRowsTable(exportRows(), `Anupam 360 — ${CFG[tab].plural}`);
   el('salesHistoryBtn').closest('.row-menu-dropdown').querySelectorAll('button').forEach((b) => { if (b.textContent.startsWith('Watermark')) b.onclick = () => { window.closeRowMenus(); openWatermark(); }; });
   await renderView();

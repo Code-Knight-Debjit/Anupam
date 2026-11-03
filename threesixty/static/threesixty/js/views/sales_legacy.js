@@ -8,6 +8,8 @@
 // `computeQuotationDocData` print layout) is out of scope here — this view
 // covers data entry/approval only; printing uses the browser's own print.
 import { api } from '../api.js';
+import { docPdf, docPrint, docPreview } from '../doc_print.js';
+import { useOverlays } from '../customer_common.js';
 import { state, isAdmin, isBranchManager, isSalesManager, isBranchStaff } from '../state.js';
 import {
   el, escapeHtml, fmtDate, fmtDateTime, fmtMoney, toast, apiErrorMessage, openModal, closeModal,
@@ -258,34 +260,20 @@ async function openForm(type, doc, onSaved) {
   });
 }
 
-// After saving a quotation / proforma / challan: Skip, Preview, Print or PDF.
-// All three are the same server-made PDF, so what you preview is what prints.
-function pdfUrl(doc, download) { return `/360/api/sales-documents/${doc.id}/pdf/${download ? '?download=1' : ''}`; }
-function printPdf(doc) {
-  const frame = document.createElement('iframe');
-  frame.style.cssText = 'position:fixed;width:0;height:0;border:0;';
-  frame.src = pdfUrl(doc);
-  frame.onload = () => { try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { window.open(pdfUrl(doc), '_blank'); } };
-  document.body.appendChild(frame);
-  setTimeout(() => frame.remove(), 60000);
-}
-function offerPrint(doc) {
-  openModal(`
-    <h2>${escapeHtml(doc.doc_number)} saved</h2>
-    <p class="sub">What would you like to do with it?</p>
-    <div class="modal-actions">
-      <button class="btn" id="pp-skip">Skip</button>
-      <button class="btn" id="pp-preview">Preview</button>
-      <button class="btn" id="pp-print">Print</button>
-      <button class="btn primary" id="pp-pdf">PDF</button>
-    </div>`, {
-    onMount: (modal) => {
-      modal.querySelector('#pp-skip').onclick = closeModal;
-      modal.querySelector('#pp-preview').onclick = () => { window.open(pdfUrl(doc), '_blank'); closeModal(); };
-      modal.querySelector('#pp-print').onclick = () => { printPdf(doc); closeModal(); };
-      modal.querySelector('#pp-pdf').onclick = () => { window.location.href = pdfUrl(doc, true); closeModal(); };
-    },
+// After saving a quotation / proforma / challan: Skip, Preview, Print or PDF. The document is laid out by the reference's own
+// builder (doc_print.js), so the preview, the print and the PDF are the same page.
+const printPdf = (doc) => docPrint(doc);
+async function offerPrint(doc) {
+  const label = (TYPES[doc.type] || {}).label || 'Document';
+  const choice = await new Promise((resolve) => {
+    openModal(`
+      <h2>${escapeHtml(label)} saved</h2>
+      <p class="modal-sub" style="white-space:pre-wrap;">${escapeHtml(doc.doc_number)} has been saved. Would you like to preview, print it or download the PDF now?</p>
+      <div class="modal-actions">
+        <button class="btn" data-c="skip">Skip</button><button class="btn" data-c="preview">Preview</button><button class="btn" data-c="print">Print</button><button class="btn btn-primary" data-c="pdf">PDF</button>
+      </div>`, { size: 'narrow', sticky: true, onMount: (modal) => { modal.querySelectorAll('[data-c]').forEach((b) => { b.onclick = () => { closeModal(); resolve(b.dataset.c); }; }); } });
   });
+  if (choice === 'pdf') docPdf(doc); else if (choice === 'print') docPrint(doc); else if (choice === 'preview') { useOverlays('quotPreviewOverlay'); await docPreview(doc); }
 }
 
 function askOutcome(doc, onDone) {
@@ -391,4 +379,4 @@ async function deleteDoc(doc, onDone) {
   } catch (e) { toast(apiErrorMessage(e), 'error'); }
 }
 
-export { openForm, askOutcome, cloneDoc, recordAgainstItems, openCallLog, offerPrint, deleteDoc, pdfUrl, printPdf };
+export { openForm, askOutcome, cloneDoc, recordAgainstItems, openCallLog, offerPrint, deleteDoc, printPdf, docPdf, docPrint, docPreview };

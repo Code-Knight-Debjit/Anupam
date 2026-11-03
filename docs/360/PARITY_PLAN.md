@@ -85,7 +85,7 @@ Legend: ☐ not started · ◐ in progress · ☑ signed off (all cases pass, di
 | 9 | **Proforma Invoice** (list, form, Win/Lose history) | JS 6746–6969 | ☑ |
 | 10 | **Delivery Challan** (list, form, view, Invoice Done, DC history) | JS 8043–8443 | ☑ |
 | 11 | **Pending PO** (list, form, pricing dialog, Supply Qty, PO history) | JS 8443–8662 | ☑ |
-| 12 | Sales print/PDF/Excel exports + watermark (all doc types) | JS 8548–9330 | ☑ (printed document laid out like the reference's; list exports use its column sets; Watermark edits the branch's) |
+| 12 | Sales print/PDF/Excel exports + watermark (all doc types) | JS 8548–9330 | ☑ (the printed document, its Preview, the shipping label and every Excel / PDF / Print export are produced by the reference's own code in the browser — `doc_print_ref.js` is generated from it; compared file by file in `tests/parity`) |
 | 13 | **Payment Collection** (list, form, view, Received, history) | body L965–1076, JS 10152–10511 | ☑ `flow_payments.py` |
 | 14 | **Print Label** | body L937–964, JS 6091–6746 | ☑ `flow_labels.py` |
 | 15 | **Reports** (8 tabs + exports) | body L989–1016, JS 10511–11560 | ☑ `flow_reports.py` |

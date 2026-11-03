@@ -5,7 +5,7 @@ import { state, isSalesManager } from '../state.js';
 import { navigate } from '../router.js';
 import { el, escapeHtml, fmtMoney, customAlert, customConfirm, apiErrorMessage, exportRowsToExcel, exportRowsToPdf, printRowsTable } from '../ui.js';
 import { mountRefView, useOverlays, openOverlay, closeOverlay, fmtD } from '../customer_common.js';
-import { pdfUrl, printPdf } from './sales_legacy.js';
+import { docPdf, docPrint, docPreview } from './sales_legacy.js';
 
 const num = (v) => Number(v) || 0;
 const docValue = (d) => num(d.total_amount) || (d.items || []).reduce((s, i) => s + num(i.value), 0) || num(d.quotation_value);
@@ -104,9 +104,9 @@ export async function openDocView(docId, onChange) {
   }
   const printable = ['quotation', 'dc', 'proforma'].includes(t);
   ['sdvPdfBtn', 'sdvPrintBtn', 'sdvPreviewBtn'].forEach((id) => { el(id).style.display = printable ? 'inline-flex' : 'none'; });
-  el('sdvPdfBtn').onclick = () => { window.location.href = pdfUrl(doc, true); };
-  el('sdvPrintBtn').onclick = () => printPdf(doc);
-  el('sdvPreviewBtn').onclick = () => window.open(pdfUrl(doc), '_blank');
+  el('sdvPdfBtn').onclick = () => docPdf(doc);
+  el('sdvPrintBtn').onclick = () => docPrint(doc);
+  el('sdvPreviewBtn').onclick = () => docPreview(doc);
   const canClone = ['quotation', 'proforma', 'dc'].includes(t) && !(isSalesManager() && t === 'quotation');
   el('sdvCloneBtn').style.display = canClone ? 'inline-flex' : 'none';
   el('sdvCloneBtn').onclick = () => { closeOverlay('salesDocViewOverlay'); navigate('salesform', t, 'new', doc.id); };
@@ -180,8 +180,17 @@ function historyPage(kind) {
     el(cfg.filter).innerHTML = `<select id="hfCustomer"><option value="">All customers</option>${customers.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</select><select id="hfBranch"><option value="">All branches</option>${state.branches.map((b) => `<option>${escapeHtml(b.name)}</option>`).join('')}</select><button class="btn" id="hfClear">Clear filters</button>`;
     el('hfCustomer').onchange = (e) => { f.customer = e.target.value; draw(); }; el('hfBranch').onchange = (e) => { f.branch = e.target.value; draw(); };
     el('hfClear').onclick = () => { f = { customer: '', branch: '' }; el('hfCustomer').value = ''; el('hfBranch').value = ''; draw(); };
-    const rows = () => filtered().map((d) => ({ 'Doc No.': d.doc_number, Date: d.date || '', Branch: d.branch_name, Customer: customerName(d), Contact: d.contact_name || '', Value: docValue(d), Status: d.order_status, 'Order Value / Reason': d.order_status === 'Win' ? (d.order_value !== null && d.order_value !== undefined ? d.order_value : docValue(d)) : (d.lost_reason || '') }));
-    el(cfg.ex + 'ExcelBtn').onclick = () => exportRowsToExcel(rows(), 'anupam360-' + cfg.type + '-history', cfg.title);
+    // The columns, sheet names and file names of the reference's exports.
+    const money = (v) => fmtMoney(num(v));
+    const lastOn = (d) => (d.last_contact_on ? new Date(d.last_contact_on).toLocaleString('en-IN') : '');
+    const laterOn = (d) => (d.call_later_date ? new Date(d.call_later_date).toLocaleDateString('en-IN') : '');
+    const rows = () => filtered().map((d) => (cfg.type === 'enquiry'
+      ? { 'Enquiry No.': d.doc_number || '', Date: d.date || '', 'Customer Name': customerName(d), 'Contact Person': d.contact_name || '', 'Added by': (d.created_by && d.created_by.full_name) || '', Status: d.order_status || '' }
+      : { [cfg.type === 'quotation' ? 'Quotation No' : 'Proforma Invoice No']: d.doc_number, Date: d.date || '', Company: customerName(d), Contact: d.contact_name || '',
+        [cfg.type === 'quotation' ? 'Quotation Value' : 'Invoice Value']: money(docValue(d)), 'Order Status': d.order_status || '',
+        'Order Value': d.order_status === 'Win' ? money(d.order_value || 0) : '', 'Lost Reason': d.order_status === 'Lose' ? (d.lost_reason || '') : '', 'Last Contact On': lastOn(d), 'Call Me Later': laterOn(d) }));
+    const sheet = { enquiry: 'Enquiry History', quotation: 'Quotation History', proforma: 'Proforma Invoice History' }[cfg.type];
+    el(cfg.ex + 'ExcelBtn').onclick = () => exportRowsToExcel(rows(), 'anupam360-' + cfg.type + '-history', sheet);
     el(cfg.ex + 'PdfBtn').onclick = () => exportRowsToPdf(rows(), 'Anupam 360 — ' + cfg.title, 'anupam360-' + cfg.type + '-history');
     el(cfg.ex + 'PrintBtn').onclick = () => printRowsTable(rows(), 'Anupam 360 — ' + cfg.title);
     el(cfg.back).onclick = () => navigate(...cfg.backTo);
@@ -215,7 +224,7 @@ export async function mountDcHistory(root) {
     el('dcHistoryTxWrap').innerHTML = tx.length ? `<div class="table-scroll"><table class="report"><tr><th>Bill Date</th><th>Bill Number</th><th>DC No.</th><th>Customer</th><th>Item Name</th><th>Qty Invoiced</th><th>Recorded By</th></tr>${tx.map(({ d, it, l }) => `<tr><td>${l.bill_date ? fmtD(l.bill_date) : '—'}</td><td>${escapeHtml(l.bill_number || '—')}</td><td>${escapeHtml(d.doc_number || '—')}</td><td>${escapeHtml(customerName(d))}</td><td>${escapeHtml(it.item_name || '—')}</td><td>${num(l.qty_invoiced)}</td><td>${escapeHtml((l.recorded_by && l.recorded_by.full_name) || '—')}</td></tr>`).join('')}</table></div>` : '<div class="empty">No invoice transactions recorded yet.</div>';
     document.querySelectorAll('#dcHistoryCompletedWrap [data-act]').forEach((b) => b.onclick = () => {
       const d = docs.find((x) => String(x.id) === b.dataset.id), a = b.dataset.act;
-      if (a === 'view') openDocView(d.id, draw); else if (a === 'print') printPdf(d); else if (a === 'pdf') window.location.href = pdfUrl(d, true);
+      if (a === 'view') openDocView(d.id, draw); else if (a === 'print') docPrint(d); else if (a === 'pdf') docPdf(d);
       else if (a === 'calllog') navigate('contactlog', d.id); else if (a === 'edit') navigate('salesform', 'dc', d.id);
     });
   };
@@ -266,11 +275,27 @@ export async function mountPoHistory(root) {
     el('phtClear').onclick = () => { Object.keys(ft).forEach((k) => { ft[k] = ''; }); filterRows(); draw(); };
   };
   filterRows();
-  const exportCompleted = () => [...document.querySelectorAll('#poHistoryCompletedWrap tr')].slice(1).map((tr) => Object.fromEntries(['S.No.', 'Customer Name', 'PO No.', 'Date', 'Item Name', 'Make', 'Ordered Qty', 'Supplied Qty', 'Rate', 'Discount %', 'Amount', 'Value'].map((h, i) => [h, tr.children[i].innerText])));
-  const exportTx = () => [...document.querySelectorAll('#poHistoryTransactionsWrap tr')].slice(1).map((tr) => Object.fromEntries(['Date', 'PO No.', 'Customer', 'Item Name', 'Qty Supplied', 'Bill Number & Date', 'Recorded By'].map((h, i) => [h, tr.children[i].innerText])));
-  [['poHistCompleted', exportCompleted, 'Completed Sales Orders'], ['poHistTx', exportTx, 'Supply Transactions']].forEach(([p, get, title]) => {
-    el(p + 'ExcelBtn').onclick = () => exportRowsToExcel(get(), 'anupam360-' + p, title);
-    el(p + 'PdfBtn').onclick = () => exportRowsToPdf(get(), 'Anupam 360 — ' + title, 'anupam360-' + p);
+  // Same rows, columns, sheet names and files as the reference (they follow the filters, not the screen's table).
+  const m2 = (v) => fmtMoney(num(v));
+  const exportCompleted = () => {
+    const out = [];
+    docs.filter((d) => d.order_status === 'Completed').forEach((d) => d.items.forEach((it) => out.push({ d, it })));
+    return out.filter(({ d, it }) => (!fc.customer || customerName(d) === fc.customer) && (!fc.ponumber || has(d.doc_number, fc.ponumber)) && (!fc.date || d.date === fc.date) && (!fc.itemName || has(it.item_name, fc.itemName)) && (!fc.make || has(it.make, fc.make)))
+      .sort((a, b) => new Date(b.d.date || 0) - new Date(a.d.date || 0))
+      .map(({ d, it }, i) => { const unit = num(it.rate) * (1 - num(it.discount) / 100);
+        return { 'S.No': i + 1, 'Customer Name': customerName(d), 'PO No': d.doc_number, Date: d.date || '', 'Item Name': it.item_name || '', Make: it.make || '', 'Ordered Qty': num(it.qty), 'Supplied Qty': num(it.supplied),
+          Rate: num(it.rate), 'Discount %': num(it.discount), Amount: m2(unit), Value: m2(num(it.qty) * unit) }; });
+  };
+  const exportTx = () => {
+    const out = [];
+    docs.forEach((d) => d.items.forEach((it) => (it.supply_log || []).forEach((l) => out.push({ d, it, l }))));
+    return out.filter(({ d, it, l }) => (!ft.customer || customerName(d) === ft.customer) && (!ft.ponumber || has(d.doc_number, ft.ponumber)) && (!ft.itemName || has(it.item_name, ft.itemName)) && (!ft.date || l.date === ft.date))
+      .sort((a, b) => new Date(b.l.date || 0) - new Date(a.l.date || 0))
+      .map(({ d, it, l }) => ({ Date: l.date || '', 'PO No': d.doc_number, Customer: customerName(d), 'Item Name': it.item_name || '', 'Qty Supplied': num(l.qty_supplied), 'Bill Number & Date': l.remarks || '', 'Recorded By': (l.recorded_by && l.recorded_by.full_name) || '' }));
+  };
+  [['poHistCompleted', exportCompleted, 'Completed Sales Orders', 'Completed POs', 'anupam360-po-history-completed'], ['poHistTx', exportTx, 'Supply Transactions', 'Supply Transactions', 'anupam360-po-history-transactions']].forEach(([p, get, title, sheetName, prefix]) => {
+    el(p + 'ExcelBtn').onclick = () => exportRowsToExcel(get(), prefix, sheetName);
+    el(p + 'PdfBtn').onclick = () => exportRowsToPdf(get(), 'Anupam 360 — ' + title, prefix);
     el(p + 'PrintBtn').onclick = () => printRowsTable(get(), 'Anupam 360 — ' + title);
   });
   el('poHistBackBtn').onclick = () => navigate('sales', 'po');
