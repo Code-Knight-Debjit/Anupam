@@ -193,6 +193,60 @@ def schedule_from_document(user, document, kind, due_date, assignee):
     return task
 
 
+ENQUIRY_TASK = 'Enquiry'      # marks the task that carries an enquiry's assignment (one shared task per enquiry)
+
+
+def enquiry_task(document):
+    return Task.objects.filter(related_document=document, task_type=ENQUIRY_TASK).order_by('id').first()
+
+
+def can_assign_enquiry(user, document) -> bool:
+    return RoleRules.is_admin(user) or RoleRules.is_branch_manager(user) or document.created_by_id == user.pk
+
+
+@transaction.atomic
+def assign_enquiry(user, document, assignee_user_ids, due_date=None):
+    """Give an Enquiry to one or more employees. The assignment IS a task linked to the enquiry, so it shows on each
+    assignee's Task tab; assigning again changes who has it (new people are told), and an empty list takes it back.
+    Returns the task, or None when the assignment was removed."""
+    if document.type != 'enquiry':
+        raise ServiceError(400, 'Only an enquiry can be assigned.')
+    if not can_assign_enquiry(user, document):
+        raise ServiceError(403, 'Only an Admin, a Branch Manager or the person who raised the enquiry can assign it.')
+    ids = list(dict.fromkeys(assignee_user_ids or []))
+    task = enquiry_task(document)
+    if not ids:
+        if task is not None and task.status != DONE:
+            task.delete()
+        return None
+    who = document.contact.name if document.contact_id else ''
+    title = f'Follow up enquiry {document.doc_number} — {document.customer.name}'
+    if task is None:
+        task = Task.objects.create(
+            title=title, description=f'Enquiry from {document.customer.name}' + (f' ({who})' if who else '') + '.',
+            assigned_to_id=ids[0], task_type=ENQUIRY_TASK, due_date=due_date, related_document=document,
+            related_customer=document.customer, related_contact=document.contact, created_by=user,
+        )
+        before = set()
+    else:
+        before = assignee_ids(task)
+        task.assigned_to_id = ids[0]
+        task.title = title
+        if due_date is not None:
+            task.due_date = due_date
+        if task.status == DONE:                  # handing a finished follow-up to someone again re-opens it
+            task.status, task.completed_at, task.completed_by = OPEN, None, None
+        task.version += 1
+        task.save()
+    task.joint_with.set(ids[1:])
+    new = [i for i in ids if i not in before]
+    shared = f' (shared with {len(ids) - 1} other{"s" if len(ids) > 2 else ""})' if len(ids) > 1 else ''
+    for uid in new:
+        if uid != user.pk:
+            notify(uid, 'task', f'{_name(user)} assigned you enquiry {document.doc_number}: "{title}"{shared}.', document=document)
+    return task
+
+
 def call_task(creator, assignee, contact_name, customer_name, due_date, description='', **links):
     """A Call task ("call me later", outreach call-again)."""
     return Task.objects.create(

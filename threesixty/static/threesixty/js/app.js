@@ -29,6 +29,8 @@ import { mountBranches } from './views/branches.js';
 import { mountBackup, mountAuditLog } from './views/backup.js';
 import { mountApprovals } from './views/approvals.js';
 import { initA11y } from './a11y.js';
+import './combobox.js';
+import './pager.js';
 
 // Menu visibility comes from the server (`me.nav`, REQ-ROLE-03/04) — the endpoints behind each menu enforce the
 // same rules, this only tidies the UI. Like the reference, only the items are hidden — a non-admin still sees the

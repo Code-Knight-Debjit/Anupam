@@ -91,13 +91,38 @@ async function withDoc(d, fn) {
   } catch (e) { console.error(e); await customAlert('Could not prepare the document: ' + (e.message || e)); }
 }
 
-/** PDF download, browser print dialog, and the on-page Preview of a Quotation / Proforma Invoice / Delivery Challan. */
+// Print = the PDF. The document is built once, by the same code as the PDF download, and that very file is what gets printed — so
+// Print and PDF can never differ, and the browser adds no page header / footer (date, title, address, page numbers) because it is
+// printing a PDF, not a web page. (The old route printed an HTML copy of the layout, which is what produced those extras and the
+// floating footer image.)
+let printFrame = null;
+function printPdfBlob(blob) {
+  const url = URL.createObjectURL(blob);
+  if (printFrame) printFrame.remove();
+  const f = printFrame = document.createElement('iframe');
+  f.id = 'docPdfPrintFrame'; f.title = 'Print';
+  f.style.cssText = 'position:fixed; right:0; bottom:0; width:1px; height:1px; border:0; opacity:0; pointer-events:none;';
+  let done = false;
+  const go = () => {
+    if (done) return; done = true;
+    try { f.contentWindow.focus(); f.contentWindow.print(); }
+    catch (e) { console.error(e); window.open(url, '_blank'); }          // the browser wouldn't print it in place: open the PDF so it can be printed from there
+  };
+  f.onload = () => setTimeout(go, 500);
+  f.src = url;
+  document.body.appendChild(f);
+  setTimeout(() => URL.revokeObjectURL(url), 10 * 60 * 1000);
+}
+const pdfToPrinter = (sd) => ref.withPdfSink(() => ref.printQuotationPdf(sd), (blob) => printPdfBlob(blob));
+
+/** PDF download, Print (the same PDF, printed), and the on-page Preview of a Quotation / Proforma Invoice / Delivery Challan. */
 export const docPdf = (d) => withDoc(d, (sd) => ref.printQuotationPdf(sd));
-export const docPrint = (d) => withDoc(d, (sd) => ref.printQuotationPrint(sd));
+export const docPrint = (d) => withDoc(d, pdfToPrinter);
 export const docPreview = (d) => {
   useOverlays('quotPreviewOverlay');
   return withDoc(d, (sd) => {
     ref.previewQuotationDoc(sd);
+    document.getElementById('quotPreviewPrintBtn').onclick = () => pdfToPrinter(sd);
     document.getElementById('quotPreviewCloseBtn').onclick = () => closeOverlay('quotPreviewOverlay');
   });
 };

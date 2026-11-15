@@ -272,11 +272,14 @@ def apply_edit(document, data, user):
     data = dict(data)
     data.pop('version', None)
     if 'customer_id' in data and int(data['customer_id']) != document.customer_id:
-        raise ServiceError(400, 'The customer of a document cannot be changed; raise a new document instead.')
+        _move_to_customer(user, document, data)
     if 'contact_id' in data and data['contact_id']:
         _contact_for(user, document.customer, data['contact_id'])
     status = data.pop('order_status', None)
     new_number = (data.pop('doc_number', None) or '').strip()
+    new_branch_id = data.pop('branch_id', None)
+    if new_branch_id not in (None, '') and str(new_branch_id) != str(document.branch_id):
+        new_number = _move_to_branch(document, new_branch_id, new_number)
     if new_number and new_number != document.doc_number:           # the reference lets the number be retyped (docNumberEditable)
         document.doc_number = new_number
         if document.type not in NOT_GENERATED:
@@ -298,6 +301,41 @@ def apply_edit(document, data, user):
         complete_enquiry_for(document, user)
     save_terms_as_default(user, document, data)
     return document
+
+
+def _move_to_customer(user, document, data):
+    """A quotation's customer can be corrected after it is made. The new customer must be one the person can see; the contact
+    must be one of THAT customer's (none is kept from the old customer), and follow-up tasks tied to the quotation follow along.
+    Other document types stay with the customer they were raised for."""
+    if document.type != 'quotation':
+        raise ServiceError(400, 'The customer of this document cannot be changed; raise a new document instead.')
+    customer = _visible_customer(user, data['customer_id'])
+    document.customer = customer
+    if not data.get('contact_id'):
+        document.contact = None
+        data['contact_id'] = None
+    document.tasks.exclude(related_contact__customer=customer).update(related_contact=None)
+    document.tasks.update(related_customer=customer)
+
+
+def _move_to_branch(document, branch_id, typed_number):
+    """Editing a document and picking another branch moves it there. A generated number belongs to a branch's own sequence,
+    so the document takes the next number of the NEW branch — unless the person typed a different number, which is kept
+    as typed (and pushes that branch's counter forward, like any typed number). Returns the number still to be applied."""
+    if document.type == 'dc':
+        raise ServiceError(400, "A delivery challan's branch can't be changed — its stock was already issued from that branch.")
+    try:
+        branch = Branch.objects.get(pk=branch_id, is_active=True)
+    except (Branch.DoesNotExist, ValueError, TypeError):
+        raise ServiceError(400, 'branch_id must be an active branch.')
+    old_number = document.doc_number
+    document.branch = branch
+    if document.type in NOT_GENERATED:
+        return typed_number
+    if not typed_number or typed_number == old_number:
+        document.doc_number = allocate_next_number(branch, document.type)
+        return ''
+    return typed_number
 
 
 def save_terms_as_default(user, document, data):
@@ -521,6 +559,9 @@ def snapshot(document):
                                               'ref_no', 'terms', 'order_status', 'contact_id', 'sales_person_id')}
     data['date'] = document.date
     data['valid_till'] = document.valid_till
+    data['doc_number'] = document.doc_number
+    data['customer_id'] = document.customer_id
+    data['branch_id'] = document.branch_id
     data['items'] = [{k: getattr(i, k) for k in ITEM_FIELDS} for i in document.items.all()]
     return _jsonable(data)
 
