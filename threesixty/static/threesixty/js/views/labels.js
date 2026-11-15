@@ -3,6 +3,7 @@
 // Download PDF are one and the same label. Picking a customer fills the form; the person (Attn) and phone are filled
 // only when a person is picked (REQ-LBL-07). What is in the form is exactly what is printed.
 import { api } from '../api.js';
+import { makeCustomerCombobox } from '../combobox.js';
 import { state } from '../state.js';
 import { el, escapeHtml, customAlert, apiErrorMessage } from '../ui.js';
 import { mountRefView, useOverlays, openOverlay, closeOverlay } from '../customer_common.js';
@@ -38,6 +39,7 @@ export async function mountLabels(root) {
   if (own) el('lc-branch').value = String(own);
   el('lc-cust').innerHTML = '<option value="">— Select customer —</option>' + customers.map((c) => `<option value="${c.id}">${escapeHtml(c.label || c.name || '—')}</option>`).join('');
   el('lc-person').innerHTML = '<option value="">— Select person —</option>';
+  makeCustomerCombobox(el('lc-cust'), { create: false });
 
   let people = [];
   el('lc-cust').addEventListener('change', async () => {

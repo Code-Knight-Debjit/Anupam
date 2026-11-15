@@ -67,6 +67,7 @@ urlpatterns = [
     path('sales-documents/<int:pk>/outcome/', views_sales.document_outcome, name='sales-document-outcome'),
     path('sales-documents/<int:pk>/clone/', views_sales.document_clone, name='sales-document-clone'),
     path('sales-documents/<int:pk>/schedule/', views_sales.document_schedule, name='sales-document-schedule'),
+    path('sales-documents/<int:pk>/assign/', views_sales.document_assign, name='sales-document-assign'),
     path('sales-documents/<int:document_id>/calls/', views_sales.DocumentCallLogResource.as_view(),
          name='sales-document-calls'),
     path('supply-log/<int:pk>/', views_sales.SupplyLogEntryResource.as_view(), name='supply-log-detail'),

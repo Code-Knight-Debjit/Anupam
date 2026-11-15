@@ -23,6 +23,10 @@ let docTheme = null, companies = [];
 const branchLetterhead = (n) => ctx.branchLetterhead(n);
 const applyPdfWatermark = (d, n) => ctx.applyPdfWatermark(d, n);
 const wmHtml = (n) => ctx.wmHtml(n);
+// 360 addition (not in the reference): while a sink is set, savePdfBlob hands the finished PDF (watermark included) to it instead of
+// downloading it — that is how Print prints the very same PDF the PDF button saves. The PDF itself is built exactly as before.
+let pdfSink = null;
+export const withPdfSink = (fn, sink) => { pdfSink = sink; try { fn(); } finally { pdfSink = null; } };
 export const sync = () => { docTheme = ctx.docTheme; companies = ctx.companies; };
 function runAutoTable(doc, opts) { doc.autoTable(opts); return true; }
 '''
@@ -50,5 +54,9 @@ export function previewQuotationDoc(salesDoc) {
 }
 export { printQuotationPdf, printQuotationPrint, buildQuotationPrintHtml, labelPdfParts, labelPrintParts, LABEL_SIZES, SALES_DOC_CONFIG, DEFAULT_DOC_THEME, DEFAULT_LOGO_ASPECT, amountInWords };
 '''
-open(J + 'doc_print_ref.js', 'w').write(header + '\n'.join(body) + '\n' + tail)
+text = header + '\n'.join(body) + '\n' + tail
+HOOK_OLD = "    const blob = doc.output('blob');\n"
+HOOK_NEW = "    const blob = doc.output('blob');\n    if(pdfSink){ pdfSink(blob, filename); return; }\n"
+assert text.count(HOOK_OLD) == 1
+open(J + 'doc_print_ref.js', 'w').write(text.replace(HOOK_OLD, HOOK_NEW))
 print('ok', theme_end)

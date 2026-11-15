@@ -52,11 +52,30 @@ window.toggleRowMenu = (btn) => {
   const wasOpen = dd.classList.contains('open');
   window.closeRowMenus();
   if (wasOpen) return;
-  const r = btn.getBoundingClientRect();
-  dd.style.top = `${r.bottom + 4}px`;
-  dd.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 190))}px`;
-  dd.classList.add('open');
+  dd.classList.add('open');                       // open first so it can be measured
+  placeRowMenu(btn, dd);
 };
+// The menu is position:fixed. It drops below its button; when that would run off the bottom of the window (a row near the end of the
+// list) it opens ABOVE the button instead, and it is always kept inside the window.
+function placeRowMenu(btn, dd) {
+  const gap = 4, margin = 8;
+  const r = btn.getBoundingClientRect();
+  dd.style.maxHeight = ''; dd.style.overflowY = '';
+  const h = dd.offsetHeight, w = dd.offsetWidth;
+  const below = window.innerHeight - r.bottom - gap - margin, above = r.top - gap - margin;
+  let top;
+  if (h <= below) top = r.bottom + gap;
+  else if (h <= above) top = r.top - gap - h;
+  else {                                           // fits neither side: use the roomier side and let the menu scroll
+    const useAbove = above > below, room = Math.max(120, useAbove ? above : below);
+    dd.style.maxHeight = room + 'px'; dd.style.overflowY = 'auto';
+    top = useAbove ? r.top - gap - Math.min(h, room) : r.bottom + gap;
+  }
+  dd.style.top = `${Math.max(margin, top)}px`;
+  dd.style.left = `${Math.max(margin, Math.min(r.left, window.innerWidth - w - margin))}px`;
+}
+window.addEventListener('resize', () => window.closeRowMenus && window.closeRowMenus());
+window.addEventListener('scroll', (e) => { if (!(e.target.closest && e.target.closest('.row-menu-dropdown'))) window.closeRowMenus(); }, true);
 document.addEventListener('click', (e) => { if (!e.target.closest('.row-menu-wrap')) window.closeRowMenus(); });
 window.el = el;                      // the reference markup calls el('…') inline
 

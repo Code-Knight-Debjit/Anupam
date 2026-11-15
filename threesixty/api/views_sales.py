@@ -11,7 +11,7 @@ import re
 from django.http import HttpResponse, JsonResponse
 
 from ..models import (
-    ApprovalRequest, DocumentCallLog, InvoiceLogEntry, SalesDocument, SalesDocumentItem, SupplyLogEntry,
+    ApprovalRequest, DocumentCallLog, InvoiceLogEntry, SalesDocument, SalesDocumentItem, SupplyLogEntry, Task,
 )
 from ..permissions import RoleRules, staff_360_required
 from ..services import approvals as approval_service
@@ -36,7 +36,9 @@ def document_queryset(user):
     return doc_service.visible_documents(user).select_related(
         'customer', 'branch', 'contact', 'reference', 'created_by', 'sales_person').prefetch_related(
         Prefetch('items', queryset=SalesDocumentItem.objects.prefetch_related('supply_log', 'invoice_log')),
-        'call_log')
+        'call_log',
+        Prefetch('tasks', queryset=Task.objects.filter(task_type='Enquiry').select_related('assigned_to').prefetch_related('joint_with'),
+                 to_attr='enquiry_tasks'))
 
 
 class SalesDocumentResource(JsonResource):
@@ -154,6 +156,24 @@ def document_schedule(request, pk):
     task = task_service.schedule_from_document(
         request.user, document, data.get('kind'), doc_service._parse_date(data['due_date'], 'due_date'), assignee)
     return JsonResponse({'task_id': task.pk, 'title': task.title}, status=201)
+
+
+@staff_360_required
+@input_errors_as_400
+def document_assign(request, pk):
+    """POST {assignee_ids: [user ids, primary first], due_date?} — give an Enquiry to employees; it becomes a task on
+    each of their Task tabs. An empty list takes the assignment back."""
+    if request.method != 'POST':
+        return error_response(ApiError(405, 'POST only.'))
+    data = parse_body(request)
+    document = _document_or_404(request, pk)
+    ids = [int(i) for i in dict.fromkeys(data.get('assignee_ids') or [])]
+    found = set(User.objects.filter(pk__in=ids, is_active=True, threesixty_profile__is_active_employee=True).values_list('pk', flat=True))
+    if len(found) != len(ids):
+        return error_response(ApiError(400, 'One or more assignees do not exist or are inactive.'))
+    due = doc_service._parse_date(data['due_date'], 'due_date') if data.get('due_date') else None
+    task_service.assign_enquiry(request.user, document, ids, due)
+    return JsonResponse(serialize_sales_document(_document_or_404(request, document.pk)))
 
 
 class DocumentCallLogResource(JsonResource):

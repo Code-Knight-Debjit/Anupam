@@ -12,6 +12,10 @@ let docTheme = null, companies = [];
 const branchLetterhead = (n) => ctx.branchLetterhead(n);
 const applyPdfWatermark = (d, n) => ctx.applyPdfWatermark(d, n);
 const wmHtml = (n) => ctx.wmHtml(n);
+// 360 addition (not in the reference): while a sink is set, savePdfBlob hands the finished PDF (watermark included) to it instead of
+// downloading it — that is how Print prints the very same PDF the PDF button saves. The PDF itself is built exactly as before.
+let pdfSink = null;
+export const withPdfSink = (fn, sink) => { pdfSink = sink; try { fn(); } finally { pdfSink = null; } };
 export const sync = () => { docTheme = ctx.docTheme; companies = ctx.companies; };
 function runAutoTable(doc, opts) { doc.autoTable(opts); return true; }
 const DEFAULT_LOGO_ASPECT = 3384/1007; // width/height of the default Anupam Bearings logo asset
@@ -122,6 +126,7 @@ function savePdfBlob(doc, filename, noWatermark, branchName){
   if(!noWatermark) applyPdfWatermark(doc, branchName);
   try{
     const blob = doc.output('blob');
+    if(pdfSink){ pdfSink(blob, filename); return; }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

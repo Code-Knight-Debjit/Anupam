@@ -421,7 +421,7 @@ async function openTaskForm(task) {
         </div></div>
       <div class="field"><label for="tk-priority">Priority</label><select id="tk-priority"><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option></select></div>
       <div class="field"><label for="tk-due">Due date</label><input type="date" id="tk-due" value="${task && task.due_date ? task.due_date : ''}"></div>
-      <div class="field span2"><label for="tk-customer">Related customer (optional)</label><select id="tk-customer"><option value="">None</option>${customers.map((c) => `<option value="${c.id}">${escapeHtml(c.label || c.name)}</option>`).join('')}</select></div>
+      <div class="field span2"><label for="tk-customer">Related customer (optional)</label><select id="tk-customer" data-combo="customer" data-combo-create data-combo-placeholder="Search customer… (optional)"><option value="">None</option>${customers.map((c) => `<option value="${c.id}">${escapeHtml(c.label || c.name)}</option>`).join('')}</select></div>
     </div>
     <div class="modal-actions"><button class="btn" id="taskFormCancelBtn">Cancel</button><button class="btn btn-primary" id="taskFormSaveBtn">Save task</button></div>
     <p class="field-hint" id="taskFormHint"></p>`, {
@@ -435,7 +435,7 @@ async function openTaskForm(task) {
       };
       label();
       const panel = m.querySelector('#tkDdPanel');
-      m.querySelector('#tkDdBtn').onclick = (e) => { e.stopPropagation(); panel.style.display = panel.style.display === 'none' ? 'block' : 'none'; };
+      m.querySelector('#tkDdBtn').onclick = (e) => { e.stopPropagation(); panel.style.display = panel.style.display === 'none' ? 'flex' : 'none'; };
       m.addEventListener('click', (e) => { if (!e.target.closest('#tkDdPanel') && !e.target.closest('#tkDdBtn')) panel.style.display = 'none'; });
       m.addEventListener('change', (e) => { if (e.target.classList.contains('tk-assignee-check')) label(); });
       const search = m.querySelector('#tkDdSearch');

@@ -3,11 +3,13 @@
 // Totals shown here are a live preview with the reference's formula; the server recomputes and stores the real ones.
 import { enablePasteTable } from '../paste_table.js';
 import { api } from '../api.js';
-import { state, isSalesManager } from '../state.js';
+import { state, isSalesManager, isAdmin } from '../state.js';
 import { navigate } from '../router.js';
 import { el, escapeHtml, fmtMoney, customAlert, apiErrorMessage } from '../ui.js';
 import { mountRefView, titleCaseWords } from '../customer_common.js';
 import { offerPrint } from './sales_legacy.js';
+import { makeCustomerCombobox } from '../combobox.js';
+import { createCustomerDialog } from '../customer_quick.js';
 
 const CFG = {
   enquiry: {
@@ -142,17 +144,38 @@ function totals() {
 
 // ---- header fields -----------------------------------------------------------------------------------------------------------------------
 const show = (id, on) => { el(id).style.display = on ? 'flex' : 'none'; };
+// The number shown under the title and in the number box. New document: the next number of the chosen branch (and that branch's
+// default terms, fresh from the server). Editing: picking another branch re-numbers the document with that branch's next number;
+// picking the original branch again puts its own number back. Returns what the server said (or null).
+let numberReq = 0;
 async function refreshNumber() {
-  if (editing) { el('salesModalSub').textContent = `${cfg.prefix} document ${editing.doc_number || ''}`; return; }
-  if (type === 'po') { el('salesModalSub').textContent = ''; return; }
+  if (editing) {
+    const sub = el('salesModalSub'), picked = el('sf-branch').value;
+    if (type === 'dc' || type === 'po' || !picked || String(picked) === String(editing.branch_id)) {
+      el('sf-docnumber').value = editing.doc_number; sub.textContent = `${cfg.prefix} document ${editing.doc_number || ''}`; return null;
+    }
+    const req = ++numberReq;
+    try {
+      const r = await api.get(`sales-documents/next-number/?type=${type}&branch_id=${picked}`);
+      if (req !== numberReq || el('sf-branch').value !== picked) return null;
+      const b = state.branches.find((x) => String(x.id) === String(picked));
+      el('sf-docnumber').value = r.number;
+      sub.textContent = `Moving to ${b ? b.name : 'the new branch'} — it will be numbered ${r.number} (was ${editing.doc_number}).`;
+      return r;
+    } catch (e) { return null; }
+  }
+  if (type === 'po') { el('salesModalSub').textContent = ''; return null; }
   // Like the reference, a number is previewed before a branch is picked — for the person's own (first) branch then.
   const branch = el('sf-branch').value || (state.me.branch_ids || [])[0] || (state.branches[0] || {}).id;
-  if (!branch) { el('salesModalSub').textContent = ''; el('sf-docnumber').value = ''; return; }
+  if (!branch) { el('salesModalSub').textContent = ''; el('sf-docnumber').value = ''; return null; }
+  const req = ++numberReq;
   try {
     const r = await api.get(`sales-documents/next-number/?type=${type}&branch_id=${branch}`);
+    if (req !== numberReq) return null;
     el('salesModalSub').textContent = `This will be numbered automatically as ${r.number}.`;
     el('sf-docnumber').value = r.number;
-  } catch (e) { /* the server numbers it anyway */ }
+    return r;
+  } catch (e) { return null; /* the server numbers it anyway */ }
 }
 function fillContacts(customerId, selected) {
   const c = customers.find((x) => String(x.id) === String(customerId));
@@ -176,13 +199,15 @@ function fill() {
   el('sf-branch').innerHTML = '<option value="">Select branch</option>' + state.branches.map((b) => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
   el('sf-branch').value = doc ? String(doc.branch_id) : '';
   el('sf-branch-wrap').classList.toggle('span2', !!cfg.besideDate);
+  el('sf-branch').disabled = !!editing && type === 'dc';      // a challan's stock was issued from its branch, so it stays there
+  el('sf-branch').title = el('sf-branch').disabled ? "A delivery challan stays in the branch its stock was issued from." : '';
   show('sf-docnumber-wrap', true);
   el('sf-docnumber-label').textContent = cfg.docNumberLabel;
   el('sf-docnumber').readOnly = false; el('sf-docnumber').style.background = 'var(--panel)'; el('sf-docnumber').style.color = 'var(--text)';
   if (editing) el('sf-docnumber').value = editing.doc_number; else if (isClone && type === 'po') el('sf-docnumber').value = '';
   el('sf-customer').innerHTML = '<option value="">Select customer</option>' + customers.map((c) => `<option value="${c.id}">${escapeHtml(customerLabel(c))}</option>`).join('');
   el('sf-customer').value = doc ? String(doc.customer_id) : '';
-  if (editing) { el('sf-customer').disabled = true; }
+  if (editing && type !== 'quotation') { el('sf-customer').disabled = true; }     // only a quotation's customer can be corrected after it is made
   fillAddress();
   show('sf-contact-wrap', cfg.hasContact);
   if (cfg.hasContact) fillContacts(doc ? doc.customer_id : '', doc ? doc.contact_id : null);
@@ -223,6 +248,9 @@ function fill() {
   if (cfg.hasTerms) {
     el('sf-terms').value = doc && Array.isArray(doc.terms) && doc.terms.length ? doc.terms.join('\n') : branchTerms(el('sf-branch').value).join('\n');
     el('sf-terms-savedefault').checked = false; termsEdited = isClone;
+    // Only an admin can change a branch's default terms (the server ignores the box for anyone else) — say so instead of silently doing nothing.
+    el('sf-terms-savedefault').disabled = !isAdmin();
+    el('sf-terms-savedefault').closest('label, div').title = isAdmin() ? '' : 'Only an admin can change the default terms of a branch.';
   }
   buildHead(); el('salesItemRows').innerHTML = '';
   if (cfg.itemCols.length) {
@@ -244,7 +272,10 @@ function fill() {
   if (isClone) {
     el('salesModalTitle').textContent = `Clone of ${cfg.label} ${cloneSrc.doc_number || ''}`.trim();
     el('salesModalSub').textContent = `A copy of ${cloneSrc.doc_number || 'the original'} — it will be saved as a new ${cfg.label.toLowerCase()} with its own number. Check the date, items and rates, then save.`;
-  } else refreshNumber();
+  } else {
+    // A new document starts from the default terms of the branch its number is previewed for (the person's own), fresh from the server.
+    refreshNumber().then((r) => { if (r && cfg.hasTerms && !editing && !termsEdited && Array.isArray(r.terms) && r.terms.length) el('sf-terms').value = r.terms.join('\n'); });
+  }
   if (isClone) refreshNumber().then(() => { el('salesModalSub').textContent = `A copy of ${cloneSrc.doc_number || 'the original'} — it will be saved as a new ${cfg.label.toLowerCase()} with its own number. Check the date, items and rates, then save.`; });
 }
 
@@ -302,6 +333,10 @@ async function save() {
       saved = await api.post('sales-documents/', data);
       if (saved.enquiry_completed) await customAlert(`Linked enquiry ${saved.enquiry_completed} has been marked as Completed.`);
     }
+    if (cfg.hasTerms && data.save_terms_as_default && isAdmin()) {        // the next new document in this branch starts from these terms
+      const b = state.branches.find((x) => x.id === data.branch_id);
+      if (b) b.terms = data.terms.join('\n');
+    }
     navigate('sales', type);
     if (['quotation', 'dc', 'proforma'].includes(type)) setTimeout(() => offerPrint(saved), 400);
   } catch (e) { await customAlert('Could not save: ' + apiErrorMessage(e)); }
@@ -319,8 +354,36 @@ export async function mountSalesForm(root, docType, rest) {
   fill();
   const back = () => { if (window.history.length > 1) window.history.back(); else navigate('sales', type); };
   el('salesFormBackBtn').onclick = back; el('salesCancelBtn').onclick = back; el('salesSaveBtn').onclick = save;
-  el('sf-customer').addEventListener('change', () => { fillContacts(el('sf-customer').value, null); fillAddress(); });
-  el('sf-branch').addEventListener('change', () => { refreshNumber(); if (cfg.hasTerms && !editing && !termsEdited) el('sf-terms').value = branchTerms(el('sf-branch').value).join('\n'); });
+  // Customer picker: type to search, and "+ Create new customer" when they aren't there yet. The dialog opens on top of this form, so
+  // nothing typed so far is lost; the new customer is then selected and its contact filled in.
+  let justCreated = null;
+  const customerOptions = () => '<option value="">Select customer</option>' + customers.map((c) => `<option value="${c.id}">${escapeHtml(customerLabel(c))}</option>`).join('');
+  makeCustomerCombobox(el('sf-customer'), {
+    onCreate: async (text) => {
+      const created = await createCustomerDialog(text);
+      if (!created) return null;
+      customers = (await api.get('customers/cards/')).results;
+      el('sf-customer').innerHTML = customerOptions();
+      justCreated = created.id;
+      const c = customers.find((x) => x.id === created.id) || created;
+      return { value: String(created.id), label: customerLabel(c) };
+    },
+  });
+  el('sf-customer').addEventListener('change', () => {
+    fillContacts(el('sf-customer').value, null); fillAddress();
+    if (justCreated !== null && String(justCreated) === el('sf-customer').value && cfg.hasContact) {
+      const only = [...el('sf-contact').options].filter((o) => o.value);
+      if (only.length === 1) el('sf-contact').value = only[0].value;
+    }
+    justCreated = null;
+  });
+  el('sf-branch').addEventListener('change', async () => {
+    const r = await refreshNumber();
+    if (cfg.hasTerms && !editing && !termsEdited) {
+      const fresh = r && Array.isArray(r.terms) && r.terms.length ? r.terms : branchTerms(el('sf-branch').value);
+      el('sf-terms').value = fresh.join('\n');
+    }
+  });
   el('sf-status').addEventListener('change', statusBubble);
   el('sf-terms').addEventListener('input', () => { termsEdited = true; });
   el('salesAddItemBtn').onclick = () => addRow();

@@ -177,7 +177,7 @@ function historyPage(kind) {
       cfg.wrap.forEach((w) => el(w).querySelectorAll('[data-view]').forEach((b) => b.onclick = () => openDocView(b.dataset.view, draw)));
     };
     const customers = [...new Set(docs.map(customerName))].sort();
-    el(cfg.filter).innerHTML = `<select id="hfCustomer"><option value="">All customers</option>${customers.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</select><select id="hfBranch"><option value="">All branches</option>${state.branches.map((b) => `<option>${escapeHtml(b.name)}</option>`).join('')}</select><button class="btn" id="hfClear">Clear filters</button>`;
+    el(cfg.filter).innerHTML = `<select id="hfCustomer" data-combo="customer" data-combo-placeholder="All customers — type to search"><option value="">All customers</option>${customers.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</select><select id="hfBranch"><option value="">All branches</option>${state.branches.map((b) => `<option>${escapeHtml(b.name)}</option>`).join('')}</select><button class="btn" id="hfClear">Clear filters</button>`;
     el('hfCustomer').onchange = (e) => { f.customer = e.target.value; draw(); }; el('hfBranch').onchange = (e) => { f.branch = e.target.value; draw(); };
     el('hfClear').onclick = () => { f = { customer: '', branch: '' }; el('hfCustomer').value = ''; el('hfBranch').value = ''; draw(); };
     // The columns, sheet names and file names of the reference's exports.
@@ -229,7 +229,7 @@ export async function mountDcHistory(root) {
     });
   };
   const customers = [...new Set(docs.map(customerName))].sort();
-  el('dcHistFilterRow').innerHTML = `<select id="dchCustomer"><option value="">All customers</option>${customers.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</select><input type="text" id="dchItem" placeholder="Item name or DC No." style="max-width:200px;"><button class="btn" id="dchClear">Clear filters</button>`;
+  el('dcHistFilterRow').innerHTML = `<select id="dchCustomer" data-combo="customer" data-combo-placeholder="All customers — type to search"><option value="">All customers</option>${customers.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</select><input type="text" id="dchItem" placeholder="Item name or DC No." style="max-width:200px;"><button class="btn" id="dchClear">Clear filters</button>`;
   el('dchCustomer').onchange = (e) => { f.customer = e.target.value; draw(); }; el('dchItem').oninput = (e) => { f.itemName = e.target.value; draw(); };
   el('dchClear').onclick = () => { f = { customer: '', itemName: '' }; el('dchCustomer').value = ''; el('dchItem').value = ''; draw(); };
   el('dcHistBackBtn').onclick = () => navigate('sales', 'dc');
@@ -267,8 +267,8 @@ export async function mountPoHistory(root) {
   };
   const filterRows = () => {
     const custs = (pred) => [...new Set(docs.filter(pred).map(customerName))].sort();
-    el('poHistCompletedFilterRow').innerHTML = `<select id="phcCustomer"><option value="">All customers</option>${custs((d) => d.order_status === 'Completed').map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</select><input type="text" id="phcPoNo" placeholder="PO No." style="max-width:120px;"><input type="date" id="phcDate"><input type="text" id="phcItemName" placeholder="Item name" style="max-width:130px;"><input type="text" id="phcMake" placeholder="Make" style="max-width:110px;"><button class="btn" id="phcClear">Clear filters</button>`;
-    el('poHistTxFilterRow').innerHTML = `<select id="phtCustomer"><option value="">All customers</option>${custs(() => true).map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</select><input type="text" id="phtPoNo" placeholder="PO No." style="max-width:120px;"><input type="text" id="phtItemName" placeholder="Item name" style="max-width:130px;"><input type="date" id="phtDate"><button class="btn" id="phtClear">Clear filters</button>`;
+    el('poHistCompletedFilterRow').innerHTML = `<select id="phcCustomer" data-combo="customer" data-combo-placeholder="All customers — type to search"><option value="">All customers</option>${custs((d) => d.order_status === 'Completed').map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</select><input type="text" id="phcPoNo" placeholder="PO No." style="max-width:120px;"><input type="date" id="phcDate"><input type="text" id="phcItemName" placeholder="Item name" style="max-width:130px;"><input type="text" id="phcMake" placeholder="Make" style="max-width:110px;"><button class="btn" id="phcClear">Clear filters</button>`;
+    el('poHistTxFilterRow').innerHTML = `<select id="phtCustomer" data-combo="customer" data-combo-placeholder="All customers — type to search"><option value="">All customers</option>${custs(() => true).map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</select><input type="text" id="phtPoNo" placeholder="PO No." style="max-width:120px;"><input type="text" id="phtItemName" placeholder="Item name" style="max-width:130px;"><input type="date" id="phtDate"><button class="btn" id="phtClear">Clear filters</button>`;
     [['phcCustomer', fc, 'customer'], ['phcPoNo', fc, 'ponumber'], ['phcDate', fc, 'date'], ['phcItemName', fc, 'itemName'], ['phcMake', fc, 'make'], ['phtCustomer', ft, 'customer'], ['phtPoNo', ft, 'ponumber'], ['phtItemName', ft, 'itemName'], ['phtDate', ft, 'date']]
       .forEach(([id, obj, key]) => el(id).addEventListener(id.endsWith('Customer') || id.endsWith('Date') ? 'change' : 'input', (e) => { obj[key] = e.target.value; draw(); }));
     el('phcClear').onclick = () => { Object.keys(fc).forEach((k) => { fc[k] = ''; }); filterRows(); draw(); };

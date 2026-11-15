@@ -2,6 +2,7 @@
 // Payment Overview and Received Payment dialogs, Payment History, and the Payment Log (the chat-style log page shared with
 // the sales documents). The server decides who sees which payments; the screens follow the reference markup.
 import { api } from '../api.js';
+import { makeCustomerCombobox } from '../combobox.js';
 import { state, isAdmin, isBranchManager, isBranchStaff } from '../state.js';
 import { navigate } from '../router.js';
 import { el, escapeHtml, fmtMoney, customAlert, customConfirm, apiErrorMessage } from '../ui.js';
@@ -141,7 +142,7 @@ function customerOptions() {
 }
 function filterRowHtml(ids) {
   return `
-    <select id="${ids.customer}"><option value="">All customers</option>${customerOptions().map(([v, t]) => `<option value="${escapeHtml(v)}" ${filters.customer === v ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select>
+    <select id="${ids.customer}" data-combo="customer" data-combo-placeholder="All customers — type to search"><option value="">All customers</option>${customerOptions().map(([v, t]) => `<option value="${escapeHtml(v)}" ${filters.customer === v ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select>
     <select id="${ids.branch}"><option value="">All branches</option>${state.branches.map((b) => `<option value="${escapeHtml(b.name)}" ${filters.branch === b.name ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('')}</select>
     <input type="text" id="${ids.search}" placeholder="Search customer or remarks" value="${escapeHtml(filters.search)}" style="max-width:220px;">
     <button class="btn" id="${ids.clear}">Clear filters</button>`;
@@ -233,6 +234,7 @@ export async function mountPaymentForm(root, sub) {
   el('paymentFormTitle').textContent = editing ? 'Edit Payment' : 'New Payment';
   el('pay-customer').innerHTML = '<option value="">Select customer</option>' + customers.map((c) => `<option value="${c.id}">${escapeHtml(c.label || c.name)}</option>`).join('');
   el('pay-customer').value = p ? String(p.customer_id) : '';
+  makeCustomerCombobox(el('pay-customer'));
   const fillContacts = async (customerId, selected) => {
     const contacts = customerId ? await api.all(`customers/${customerId}/contacts/`) : [];
     el('pay-contact').innerHTML = '<option value="">Select contact</option>' + contacts.map((c) => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>${escapeHtml(c.name || 'Unnamed')} — ${escapeHtml(c.job_title || '')}</option>`).join('');

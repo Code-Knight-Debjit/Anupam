@@ -331,6 +331,15 @@ def serialize_sales_document(document, include_items=True):
         data['call_later_bucket'] = doc_service.call_later_bucket(document)
         if document.type == 'dc':
             data['invoice_pending'] = doc_service.dc_is_pending(document)
+        if document.type == 'enquiry':
+            tasks = getattr(document, 'enquiry_tasks', None)
+            if tasks is None:
+                tasks = list(document.tasks.filter(task_type='Enquiry').select_related('assigned_to').prefetch_related('joint_with')[:1])
+            task = tasks[0] if tasks else None
+            people = ([task.assigned_to] + [u for u in task.joint_with.all() if u.pk != task.assigned_to_id]) if task else []
+            data['assignees'] = [serialize_user_ref(u) for u in people]
+            data['assignment_task_id'] = task.id if task else None
+            data['assignment_status'] = task.status if task else ''
         data['call_log'] = [serialize_document_call_log_entry(e) for e in document.call_log.all()]
     return data
 

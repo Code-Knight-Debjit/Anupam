@@ -10,6 +10,7 @@ import { mountRefView, useOverlays, openOverlay, closeOverlay, waLink, fmtD, WHA
 import { deleteDoc, docPdf, docPrint } from './sales_legacy.js';
 import { openDocView } from './sales_pages.js';
 import { openInvoiceDone, openPricing, openSupply } from './sales_dialogs.js';
+import { canAssign, assigneeChips, openAssignDialog } from './enquiry_assign.js';
 
 const CFG = {
   enquiry: { label: 'Enquiry', plural: 'Enquiries', statuses: [['Pending', '#e0a30c'], ['Completed', '#2f9e52'], ['Regretted', '#d9534f']] },
@@ -60,7 +61,7 @@ const lastContactSelect = (id, cur) => `<select id="${id}">${LAST_CONTACT_OPTS.m
 function applySearch(list) {
   const q = search.trim().toLowerCase();
   if (!q) return list;
-  return list.filter((d) => [d.doc_number, customerName(d), d.contact_name, ...(d.items || []).map((i) => i.item_name)].some((v) => (v || '').toLowerCase().includes(q)));
+  return list.filter((d) => [d.doc_number, customerName(d), d.contact_name, ...(d.items || []).map((i) => i.item_name), ...(d.assignees || []).map((a) => a.full_name)].some((v) => (v || '').toLowerCase().includes(q)));
 }
 
 // ---- cells ---------------------------------------------------------------------------------------------------------------------
@@ -137,7 +138,7 @@ function renderFilters() {
   const branchOptions = state.branches.map((b) => `<option value="${escapeHtml(b.name)}" ${filters.branch === b.name ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('');
   const pendingDocs = docs.filter((d) => (tab === 'po' ? d.order_status !== 'Completed' : isPending(d)));
   const customerNames = [...new Set(pendingDocs.map((d) => customerName(d)).filter(Boolean))].sort();
-  const customerSelect = `<select id="fltCustomer"><option value="">All customers</option>${customerNames.map((c) => `<option value="${escapeHtml(c)}" ${filters.customer === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select>`;
+  const customerSelect = `<select id="fltCustomer" data-combo="customer" data-combo-placeholder="All customers — type to search"><option value="">All customers</option>${customerNames.map((c) => `<option value="${escapeHtml(c)}" ${filters.customer === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select>`;
   const branchSelect = `<select id="fltBranch"><option value="">All branches</option>${branchOptions}</select>`;
   if (tab === 'quotation' || tab === 'proforma') {
     wrap.innerHTML = `${customerSelect}${branchSelect}${callLaterSelect('fltCallLater', filters.callLater)}${lastContactSelect('fltLastContact', filters.lastContact)}<button class="btn" id="fltClear">Clear filters</button>`;
@@ -164,14 +165,16 @@ function renderTable() {
     const list = common(docs.filter(isPending)).sort(byDateDesc);
     html = !list.length ? empty('No pending enquiries', 'Click "+ New Enquiry" to add one, or check Completed &amp; Regretted.') : `
       <div class="table-scroll"><table class="report">
-        <tr><th>Enquiry No. / Date / Branch / Added by</th><th>Customer Name</th><th>Contact Person</th><th>Status</th><th></th></tr>
+        <tr><th>Enquiry No. / Date / Branch / Added by</th><th>Customer Name</th><th>Contact Person</th><th>Assigned to</th><th>Status</th><th></th></tr>
         ${list.map((d) => `<tr>
           <td data-label="Enquiry No. / Date / Branch / Added by" style="white-space:nowrap;">${stackedFirstCell(d)}</td>
           <td data-label="Customer Name">${escapeHtml(customerName(d))}</td>
           <td data-label="Contact Person">${contactWithWa(d)}</td>
+          <td data-label="Assigned to">${assigneeChips(d)}</td>
           <td data-label="Status">${statusSelect(d, cfg)}</td>
           <td data-label="Actions" style="white-space:nowrap;">
             <button class="btn btn-icon" style="padding:5px 9px; font-size:12px;" data-act="view" data-id="${d.id}">View</button>
+            ${canAssign(d) ? `<button class="btn btn-icon" style="padding:5px 9px; font-size:12px;" data-act="assign" data-id="${d.id}">Assign</button>` : ''}
             <button class="btn btn-icon" style="padding:5px 9px; font-size:12px;" data-act="edit" data-id="${d.id}">Edit</button>
             <button class="btn-danger-text" data-act="delete" data-id="${d.id}">Delete</button></td></tr>`).join('')}
       </table></div>`;
@@ -290,6 +293,7 @@ function wireTable(wrap) {
     const d = find(b.dataset.id); if (!d) return;
     const act = b.dataset.act;
     if (act === 'view') openDocView(d.id, reload);
+    else if (act === 'assign') openAssignDialog(d, reload);
     else if (act === 'edit') navigate('salesform', tab, d.id);
     else if (act === 'clone') navigate('salesform', tab, 'new', d.id);
     else if (act === 'delete') deleteDoc(d, reload);
@@ -314,7 +318,7 @@ function exportRows() {
   if (tab === 'enquiry') {
     let l = docs.filter(isPending);
     if (filters.branch) l = l.filter((d) => branchName(d) === filters.branch);
-    return l.map((d) => ({ Date: d.date || '', Branch: branchName(d), 'Customer Name': customerName(d), 'Contact Person': d.contact_name || '', 'Added by': addedByName(d), Status: d.order_status || 'Pending' }));
+    return l.map((d) => ({ Date: d.date || '', Branch: branchName(d), 'Customer Name': customerName(d), 'Contact Person': d.contact_name || '', 'Added by': addedByName(d), 'Assigned to': (d.assignees || []).map((a) => a.full_name).join(', '), Status: d.order_status || 'Pending' }));
   }
   if (tab === 'proforma') {          // the reference has no special export for proformas: its generic one (number, date, customer, contact, item count)
     return docs.map((d) => ({ 'PI No': d.doc_number, Date: d.date || '', Customer: customerName(d), Contact: d.contact_name || '', Items: (d.items || []).length }));
